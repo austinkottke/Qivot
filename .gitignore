@@ -1,0 +1,18 @@
+# Build output
+build/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+Makefile*
+*.pro.user*
+.qmake.stash
+
+# macOS
+.DS_Store

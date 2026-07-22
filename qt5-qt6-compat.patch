@@ -1,0 +1,328 @@
+diff --git a/README.md b/README.md
+index 468d0df..00660fa 100644
+--- a/README.md
++++ b/README.md
+@@ -46,6 +46,24 @@ Remarks: QObject is rarely used in DQuest , and QiModel is not QObject-based.
+ 
+ See Tutorials
+ 
++Qt Compatibility
++----------------
++
++**This fork has been updated for Qt 5.15 and Qt 6.** DQuest now builds against
++both **Qt 5** and **Qt 6** from a single codebase (no `QT_VERSION` guards
++required). The port replaces APIs that were removed in Qt 6 with equivalents
++that exist in both major versions:
++
++* `QVariant::Type` field types are stored as `QMetaType` ids (`int`)
++* `QVariant::type()` comparisons use `QVariant::userType()` against `QMetaType::*`
++* `QVariant::typeToName()` → `QMetaType(id).name()`
++* `qVariantFromValue()` → `QVariant::fromValue()`
++* `QStringRef` → `QStringView`
++* `QRegExp` → `QRegularExpression`
++
++Verified building and passing the unit test suite on Qt 5.15. Minimum Qt 5
++requirement is 5.10 (for `QStringView`).
++
+ Features
+ --------
+ 
+diff --git a/src/qifield.cpp b/src/qifield.cpp
+index f9bef58..452c38b 100644
+--- a/src/qifield.cpp
++++ b/src/qifield.cpp
+@@ -47,8 +47,8 @@ static QString unescape(QString value) {
+                 QString key = iter.key();
+                 int len = key.size();
+ 
+-                QStringRef ref(&value,i,len);
+-                if (ref == key) {
++                QStringView ref = QStringView(value).mid(i,len);
++                if (ref == QStringView(key)) {
+                     q = iter.value();
+                     i+=len-1;
+                     found = true;
+@@ -73,7 +73,7 @@ template <>
+ bool QiField<QStringList>::set(QVariant value){
+     QString str;
+ 
+-    if (value.type() == QVariant::String) {
++    if (value.userType() == QMetaType::QString) {
+         str = value.toString();
+         QStringList list = str.split(SEP);
+         QStringList result;
+@@ -93,7 +93,7 @@ template <>
+ QVariant QiField<QStringList>::get(bool convert) const {
+     QVariant val = QiBaseField::get(convert);
+ 
+-    if (convert && val.type() == QVariant::StringList ) {
++    if (convert && val.userType() == QMetaType::QStringList ) {
+         QStringList list = val.toStringList();
+         QStringList result;
+         QString str;
+diff --git a/src/qifield.h b/src/qifield.h
+index e45514f..b231080 100644
+--- a/src/qifield.h
++++ b/src/qifield.h
+@@ -21,9 +21,9 @@ public:
+     QiField(){
+     }
+ 
+-    /// Return the type id of the field
+-    static QVariant::Type type(){
+-        return (QVariant::Type) qMetaTypeId<T>();
++    /// Return the QMetaType id of the field
++    static int type(){
++        return qMetaTypeId<T>();
+     }
+ 
+     /// Copy the value from a QVariant object
+diff --git a/src/qiforeignkey.h b/src/qiforeignkey.h
+index 2e57ec8..269650b 100644
+--- a/src/qiforeignkey.h
++++ b/src/qiforeignkey.h
+@@ -134,7 +134,7 @@ public:
+     }
+ 
+     static QiClause clause() {
+-        QVariant v = qVariantFromValue( (void*) qiMetaInfo<T>());
++        QVariant v = QVariant::fromValue( (void*) qiMetaInfo<T>());
+         return QiClause(QiClause::FOREIGN_KEY , v );
+     }
+ 
+diff --git a/src/qimodelmetainfo.h b/src/qimodelmetainfo.h
+index 4c2ef22..6cdc650 100644
+--- a/src/qimodelmetainfo.h
++++ b/src/qimodelmetainfo.h
+@@ -18,12 +18,12 @@ QiModelMetaInfo* qiMetaInfo();
+ class QiModelMetaInfoField {
+ public:
+     inline QiModelMetaInfoField(){
+-        type = QVariant::Invalid;
++        type = QMetaType::UnknownType;
+     }
+ 
+     inline QiModelMetaInfoField(QString name,
+                                 int offset,
+-                                QVariant::Type type,
++                                int type,
+                                 QiClause defaultClause,
+                                 QiClause c = QiClause()) :
+         name(name),
+@@ -38,7 +38,8 @@ public:
+     /// Offset of the field
+     int offset;
+ 
+-    QVariant::Type type;
++    /// The QMetaType id of the field (e.g. QMetaType::QString)
++    int type;
+ 
+     /// The clause of the field
+     QiClause clause;
+diff --git a/src/qisqlitestatement.cpp b/src/qisqlitestatement.cpp
+index 92e317e..72237e1 100644
+--- a/src/qisqlitestatement.cpp
++++ b/src/qisqlitestatement.cpp
+@@ -22,7 +22,7 @@ QString QiSqliteStatement::_createTableIfNotExists(QiModelMetaInfo *info) {
+ 
+         if (typeName.isNull()) {
+             qWarning() << QString("%1::%3 - QiField<%2> is not supported yet")
+-                        .arg(info->name()).arg(QVariant::typeToName(f->type)).arg(f->name);
++                        .arg(info->name()).arg(QString::fromUtf8(QMetaType(f->type).name())).arg(f->name);
+             continue;
+         }
+ 
+@@ -57,32 +57,32 @@ QString QiSqliteStatement::_createTableIfNotExists(QiModelMetaInfo *info) {
+     return sql;
+ }
+ 
+-QString QiSqliteStatement::columnTypeName(QVariant::Type type) {
++QString QiSqliteStatement::columnTypeName(int type) {
+     QString res;
+     switch (type){
+-    case QVariant::Int:
+-    case QVariant::UInt:
+-    case QVariant::LongLong:
+-    case QVariant::ULongLong:
++    case QMetaType::Int:
++    case QMetaType::UInt:
++    case QMetaType::LongLong:
++    case QMetaType::ULongLong:
+         res = "INTEGER";
+         break;
+-    case QVariant::Double:
++    case QMetaType::Double:
+         res = "DOUBLE";
+         break;
+-    case QVariant::String:
+-    case QVariant::StringList:
++    case QMetaType::QString:
++    case QMetaType::QStringList:
+         res = "TEXT";
+         break;
+-    case QVariant::DateTime:
++    case QMetaType::QDateTime:
+         res = "DATETIME";
+         break;
+-    case QVariant::Date:
++    case QMetaType::QDate:
+         res = "DATE";
+         break;
+-    case QVariant::ByteArray:
++    case QMetaType::QByteArray:
+         res = "BLOB";
+         break;
+-    case QVariant::Bool:
++    case QMetaType::Bool:
+         res = "BOOLEAN";
+     default:
+         break;
+diff --git a/src/qisqlitestatement.h b/src/qisqlitestatement.h
+index 6facb9c..035611e 100644
+--- a/src/qisqlitestatement.h
++++ b/src/qisqlitestatement.h
+@@ -15,7 +15,7 @@ class QiSqliteStatement : public QiSqlStatement
+ public:
+     QiSqliteStatement();
+ 
+-    QString columnTypeName(QVariant::Type type);
++    QString columnTypeName(int type);
+     QString columnConstraint(QiClause clause);
+ 
+     virtual QString driverName();
+diff --git a/src/qisqlstatement.cpp b/src/qisqlstatement.cpp
+index 1dfb12a..6355897 100644
+--- a/src/qisqlstatement.cpp
++++ b/src/qisqlstatement.cpp
+@@ -154,10 +154,10 @@ QString QiSqlStatement::orderBy(QiQueryRules rules){
+ QString QiSqlStatement::formatValue(QVariant value,bool trimStrings) {
+     QString res;
+ 
+-    switch (value.type() ){
++    switch (value.userType() ){
+ 
+-    case QVariant::String:
+-    case QVariant::Char:
++    case QMetaType::QString:
++    case QMetaType::QChar:
+         res = value.toString();
+         if (trimStrings)
+             res = res.trimmed();
+diff --git a/src/qiwhere.cpp b/src/qiwhere.cpp
+index 53d68ad..5f50540 100644
+--- a/src/qiwhere.cpp
++++ b/src/qiwhere.cpp
+@@ -67,14 +67,15 @@ QiWhere::QiWhere(const QiWhere &other){
+ }
+ 
+ QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){
+-    QRegExp rx("^\\s*[a-zA-Z0-9]+");
+-    int pos = rx.indexIn(fieldAndOp);
++    QRegularExpression rx("^\\s*[a-zA-Z0-9]+");
++    QRegularExpressionMatch match = rx.match(fieldAndOp);
+ 
+-    if (pos < 0){
++    if (!match.hasMatch()){
+         qWarning() << QString("QiWhere() : can not parse %1").arg(fieldAndOp);
+         return;
+     }
+-    int len = rx.matchedLength();
++    int pos = match.capturedStart();
++    int len = match.capturedLength();
+ 
+     QString str = fieldAndOp.mid(pos,len);
+ //    m_left = str.trimmed();
+@@ -298,8 +299,7 @@ QString variantToString(QVariant v,bool quoteString){
+     /// @todo Implement QVariant::convert()
+ //    qDebug() << v.userType() << v;
+ 
+-    if (v.type() == QVariant::UserType &&
+-        v.userType() == typeId) {
++    if (v.userType() == typeId) {
+ 
+         QiWhere w = v.value<QiWhere>();
+         QString pattern = "( %1 )";
+@@ -311,7 +311,7 @@ QString variantToString(QVariant v,bool quoteString){
+         QiWhereFieldPriv f;
+         f = v.value<QiWhereFieldPriv>();
+         res = f;
+-    } else if (v.type() == QVariant::String
++    } else if (v.userType() == QMetaType::QString
+                && quoteString) {
+         res = QString("\"%1\"").arg(v.toString());
+     } else {
+diff --git a/tests/unittests/coretests.cpp b/tests/unittests/coretests.cpp
+index 4b7a755..54e7e00 100644
+--- a/tests/unittests/coretests.cpp
++++ b/tests/unittests/coretests.cpp
+@@ -44,7 +44,7 @@ void CoreTests::sqliteColumnConstraint(){
+     //    clause = QiClause(QiClause::PRIMARY_KEY) | clause;
+     //    QVERIFY(sql.columnConstraint(clause) == "PRIMARY KEY AUTOINCREMENT");
+ 
+-    QiModelMetaInfoField f1("id",0,QVariant::Invalid,
++    QiModelMetaInfoField f1("id",0,QMetaType::UnknownType,
+                             QiClause(QiClause::PRIMARY_KEY));
+     clause = f1.clause;
+     QVERIFY(sql.columnConstraint(clause) == "PRIMARY KEY AUTOINCREMENT");
+@@ -105,7 +105,7 @@ void CoreTests::clause()
+     c2 = c1 | c2;
+     QVERIFY(c2.testFlag(QiClause::PRIMARY_KEY));
+ 
+-    QVariant v1 = qVariantFromValue( (void*) qiMetaInfo<Model4>());
++    QVariant v1 = QVariant::fromValue( (void*) qiMetaInfo<Model4>());
+     c2 = QiClause(QiClause::FOREIGN_KEY , v1 );
+     QVariant v2 = c2.flag(QiClause::FOREIGN_KEY);
+ 
+@@ -128,10 +128,10 @@ void CoreTests::where(){
+ 
+     QiWhere price("price");
+     QVariant v = "price";
+-    QVERIFY(v.type() == QVariant::String);
++    QVERIFY(v.userType() == QMetaType::QString);
+ 
+     // The data field is not stored in QString.
+-    QVERIFY(price.left().type() != QVariant::String);
++    QVERIFY(price.left().userType() != QMetaType::QString);
+ 
+     QiWhere filter = price > 3;
+     QVERIFY(filter.toString() == "price > 3");
+@@ -320,7 +320,7 @@ void CoreTests::qiList(){
+ void CoreTests::stringlistField(){
+     QiField<QStringList> field;
+ 
+-    QVERIFY(field.type() == (QVariant::Type) qMetaTypeId<QStringList>());
++    QVERIFY(field.type() == qMetaTypeId<QStringList>());
+     QFETCH(QStringList,list);
+     QFETCH(QString,str);
+ 
+diff --git a/tests/unittests/testrunner.cpp b/tests/unittests/testrunner.cpp
+index 3b21d1e..992d27d 100644
+--- a/tests/unittests/testrunner.cpp
++++ b/tests/unittests/testrunner.cpp
+@@ -41,7 +41,7 @@ bool TestRunner::run(QString executable,QStringList args){
+ void TestRunner::parse() {
+     QProcess *process = qobject_cast<QProcess*>(sender());
+ 
+-    QRegExp regexp("Totals: ([0-9]*) passed, ([0-9]*) failed, ([0-9]*) skipped");
++    QRegularExpression regexp("Totals: ([0-9]*) passed, ([0-9]*) failed, ([0-9]*) skipped");
+ 
+     while (process->canReadLine()) {
+         QByteArray line = process->readLine();
+@@ -50,12 +50,11 @@ void TestRunner::parse() {
+         if (string.size() == 0)
+             continue;
+         qDebug().nospace() << string.toLocal8Bit().constData();
+-        if (regexp.exactMatch(string)){
+-            string.replace(regexp,"\\1 \\2 \\3");
+-            QStringList token = string.split(" ");
+-            m_passed += token.at(0).toInt();
+-            m_failed += token.at(1).toInt();
+-            m_skipped += token.at(2).toInt();
++        QRegularExpressionMatch match = regexp.match(string);
++        if (match.hasMatch()){
++            m_passed += match.captured(1).toInt();
++            m_failed += match.captured(2).toInt();
++            m_skipped += match.captured(3).toInt();
+             findResult = true;
+         }
+     }
