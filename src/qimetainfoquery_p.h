@@ -5,13 +5,13 @@
 
 /// Query class for internal use
 
-class _DQMetaInfoQuery : public QiSharedQuery {
+class _QiMetaInfoQuery : public QiSharedQuery {
 public:
-    inline _DQMetaInfoQuery(QiModelMetaInfo *metaInfo,QiConnection connection) : QiSharedQuery(connection) , m_metaInfo(metaInfo){
+    inline _QiMetaInfoQuery(QiModelMetaInfo *metaInfo,QiConnection connection) : QiSharedQuery(connection) , m_metaInfo(metaInfo){
         setMetaInfo(metaInfo);
     }
 
-    _DQMetaInfoQuery& operator=(const QiSharedQuery &rhs ) {
+    _QiMetaInfoQuery& operator=(const QiSharedQuery &rhs ) {
         QiSharedQuery::operator =(rhs);
         return *this;
     }

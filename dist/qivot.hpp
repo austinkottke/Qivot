@@ -1068,6 +1068,7 @@ private:
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QExplicitlySharedDataPointer>
+#include <functional>
 
 
 class QiModelMetaInfo;
@@ -1311,6 +1312,21 @@ public:
       QiError if it succeeded.
      */
     QiError lastError();
+
+    // --- Reactive change notifications --------------------------------------
+    /// Register a callback fired (on the connection's thread) whenever a table
+    /// is changed through Qivot (save / remove / update / batch save).
+    /** @return An id you can pass to removeChangeHook(). Used by QiListModel's
+        live mode; you rarely call it directly. */
+    int addChangeHook(std::function<void(const QString &table)> hook);
+
+    /// Remove a change hook registered with addChangeHook().
+    void removeChangeHook(int id);
+
+    /// Notify listeners that a table changed. Called internally by the write
+    /// operations; call it yourself only after a raw SQL write you want views
+    /// to react to.
+    void notifyChanged(const QString &table);
 
 signals:
 
@@ -4211,13 +4227,13 @@ private:
 
 /// Query class for internal use
 
-class _DQMetaInfoQuery : public QiSharedQuery {
+class _QiMetaInfoQuery : public QiSharedQuery {
 public:
-    inline _DQMetaInfoQuery(QiModelMetaInfo *metaInfo,QiConnection connection) : QiSharedQuery(connection) , m_metaInfo(metaInfo){
+    inline _QiMetaInfoQuery(QiModelMetaInfo *metaInfo,QiConnection connection) : QiSharedQuery(connection) , m_metaInfo(metaInfo){
         setMetaInfo(metaInfo);
     }
 
-    _DQMetaInfoQuery& operator=(const QiSharedQuery &rhs ) {
+    _QiMetaInfoQuery& operator=(const QiSharedQuery &rhs ) {
         QiSharedQuery::operator =(rhs);
         return *this;
     }
@@ -4491,6 +4507,10 @@ class QiConnectionPriv : public QSharedData
     /// The last error from a connection-level operation
     QiError lastError;
 
+    /// Reactive change listeners (id -> callback)
+    QVector<QPair<int, std::function<void(const QString&)>>> changeHooks;
+    int nextHookId = 1;
+
     QMutex mutex;
 };
 
@@ -4757,6 +4777,36 @@ QiError QiConnection::lastError(){
     error = d->lastError;
     d->mutex.unlock();
     return error;
+}
+
+int QiConnection::addChangeHook(std::function<void(const QString&)> hook){
+    QMutexLocker lock(&d->mutex);
+    int id = d->nextHookId++;
+    d->changeHooks.append(qMakePair(id, std::move(hook)));
+    return id;
+}
+
+void QiConnection::removeChangeHook(int id){
+    QMutexLocker lock(&d->mutex);
+    for (int i = 0 ; i < d->changeHooks.size() ; i++) {
+        if (d->changeHooks.at(i).first == id) {
+            d->changeHooks.removeAt(i);
+            break;
+        }
+    }
+}
+
+void QiConnection::notifyChanged(const QString &table){
+    // Snapshot under lock, then invoke outside it (a hook may add/remove hooks).
+    QVector<QPair<int, std::function<void(const QString&)>>> hooks;
+    {
+        QMutexLocker lock(&d->mutex);
+        if (d->changeHooks.isEmpty())
+            return;
+        hooks = d->changeHooks;
+    }
+    for (const auto &h : hooks)
+        h.second(table);
 }
 
 void QiConnection::setLastError(const QiError &error){
@@ -5626,6 +5676,9 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
+    if (res)
+        m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+
     return res;
 }
 
@@ -5661,6 +5714,9 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
+    if (res)
+        m_connection.notifyChanged(tableName());   // reactive
+
     return res;
 }
 
@@ -5668,7 +5724,7 @@ bool QiModel::load(QiWhere where){
     m_error.clear();
     bool res = false;
 
-    _DQMetaInfoQuery query( metaInfo() ,  m_connection);
+    _QiMetaInfoQuery query( metaInfo() ,  m_connection);
 
     query = query.filter(where).limit(1);
     if (query.exec()){
@@ -5723,7 +5779,7 @@ bool QiModel::remove() {
         return false;
     }
 
-    _DQMetaInfoQuery query( info ,  m_connection);
+    _QiMetaInfoQuery query( info ,  m_connection);
 
     query = query.filter( filter );
 
@@ -5735,6 +5791,9 @@ bool QiModel::remove() {
     }
 
     m_connection.setLastQuery( query.lastQuery());
+
+    if (res)
+        m_connection.notifyChanged(info->name());   // reactive
 
     return res;
 }
@@ -6122,6 +6181,11 @@ bool QiSharedList::save(bool forceInsert,bool forceAllField) {
         }
     }
 
+    if (res) {                              // reactive: one notification per table
+        for (int g = 0 ; g < groupMeta.size() ; g++)
+            connection.notifyChanged(groupMeta.at(g)->name());
+    }
+
     return res;
 }
 
@@ -6339,6 +6403,12 @@ bool QiSharedQuery::remove(){
 
     data->connection.setLastQuery(data->query);
 
+    if (res) {
+        QiQueryRules rules; rules = *this;
+        if (rules.metaInfo())
+            data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
+    }
+
     return res;
 }
 
@@ -6371,6 +6441,12 @@ int QiSharedQuery::update(const QVariantMap &values) {
     QiLog::logQuery(data->query, timer.nsecsElapsed());
 
     data->connection.setLastQuery(data->query);
+
+    if (ok) {
+        QiQueryRules rules; rules = *this;
+        if (rules.metaInfo())
+            data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
+    }
 
     return ok ? data->query.numRowsAffected() : -1;
 }

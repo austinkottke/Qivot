@@ -5,6 +5,7 @@
 #include <qifieldref.h>
 #include <qirelation.h>
 #include <qilog.h>
+#include <qilistmodel.h>
 #include "sqlitetests.h"
 
 // A model with a meaningful string primary key and NO auto-increment id column.
@@ -1524,5 +1525,38 @@ void SqliteTests::jsonComplex() {
     QVERIFY(reparsed.value("meta").toObject().value("author").toString() == "Ada");
     QVERIFY(reparsed.value("meta").toObject().value("nested").toObject().value("deep").toBool());
     QVERIFY(reparsed.value("tags").toArray().size() == 3);
+}
+
+void SqliteTests::reactive() {
+    // A live model auto-refreshes when its table changes — no manual refresh.
+    QiListModel model;
+    model.setLive<User>(connect, []{ return User::objects().all(); });
+    const int before = model.count();
+
+    User u; u.userId = "reactiveU"; u.name = "R"; u.passwd = "12345678";
+    QVERIFY(u.save());
+    QVERIFY(model.count() == before);          // notification is deferred to the event loop
+    QTest::qWait(30);
+    QVERIFY(model.count() == before + 1);       // refreshed automatically after save()
+
+    // A change through a *different* code path (bulk update) also triggers it —
+    // here we just prove remove() shrinks the live model on its own.
+    User loaded;
+    QVERIFY(loaded.load( User::col().userId == "reactiveU" ));
+    QVERIFY(loaded.remove());
+    QVERIFY(model.count() == before + 1);       // still deferred
+    QTest::qWait(30);
+    QVERIFY(model.count() == before);           // shrank automatically
+
+    // Bursts coalesce into a single refresh (no per-write storm).
+    for (int i = 0; i < 5; i++) {
+        User b; b.userId = QString("burst%1").arg(i); b.name = "B"; b.passwd = "12345678";
+        QVERIFY(b.save());
+    }
+    QTest::qWait(30);
+    QVERIFY(model.count() == before + 5);
+    (void) User::objects().filter( User::col().userId.expr("like", "burst%") ).remove();
+    QTest::qWait(30);
+    QVERIFY(model.count() == before);
 }
 

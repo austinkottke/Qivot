@@ -17,4 +17,5 @@ SUBDIRS += \
     jsonnested \
     jsonhttp \
     qmlmodel \
+    reactive \
     index

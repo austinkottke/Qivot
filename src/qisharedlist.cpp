@@ -136,6 +136,11 @@ bool QiSharedList::save(bool forceInsert,bool forceAllField) {
         }
     }
 
+    if (res) {                              // reactive: one notification per table
+        for (int g = 0 ; g < groupMeta.size() ; g++)
+            connection.notifyChanged(groupMeta.at(g)->name());
+    }
+
     return res;
 }
 

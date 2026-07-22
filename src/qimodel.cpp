@@ -101,6 +101,9 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
+    if (res)
+        m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+
     return res;
 }
 
@@ -136,6 +139,9 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
+    if (res)
+        m_connection.notifyChanged(tableName());   // reactive
+
     return res;
 }
 
@@ -143,7 +149,7 @@ bool QiModel::load(QiWhere where){
     m_error.clear();
     bool res = false;
 
-    _DQMetaInfoQuery query( metaInfo() ,  m_connection);
+    _QiMetaInfoQuery query( metaInfo() ,  m_connection);
 
     query = query.filter(where).limit(1);
     if (query.exec()){
@@ -198,7 +204,7 @@ bool QiModel::remove() {
         return false;
     }
 
-    _DQMetaInfoQuery query( info ,  m_connection);
+    _QiMetaInfoQuery query( info ,  m_connection);
 
     query = query.filter( filter );
 
@@ -210,6 +216,9 @@ bool QiModel::remove() {
     }
 
     m_connection.setLastQuery( query.lastQuery());
+
+    if (res)
+        m_connection.notifyChanged(info->name());   // reactive
 
     return res;
 }

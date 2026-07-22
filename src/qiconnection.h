@@ -6,6 +6,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QExplicitlySharedDataPointer>
+#include <functional>
 
 #include <qimodelmetainfo.h>
 #include <qiindex.h>
@@ -253,6 +254,21 @@ public:
       QiError if it succeeded.
      */
     QiError lastError();
+
+    // --- Reactive change notifications --------------------------------------
+    /// Register a callback fired (on the connection's thread) whenever a table
+    /// is changed through Qivot (save / remove / update / batch save).
+    /** @return An id you can pass to removeChangeHook(). Used by QiListModel's
+        live mode; you rarely call it directly. */
+    int addChangeHook(std::function<void(const QString &table)> hook);
+
+    /// Remove a change hook registered with addChangeHook().
+    void removeChangeHook(int id);
+
+    /// Notify listeners that a table changed. Called internally by the write
+    /// operations; call it yourself only after a raw SQL write you want views
+    /// to react to.
+    void notifyChanged(const QString &table);
 
 signals:
 

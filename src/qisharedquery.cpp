@@ -210,6 +210,12 @@ bool QiSharedQuery::remove(){
 
     data->connection.setLastQuery(data->query);
 
+    if (res) {
+        QiQueryRules rules; rules = *this;
+        if (rules.metaInfo())
+            data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
+    }
+
     return res;
 }
 
@@ -242,6 +248,12 @@ int QiSharedQuery::update(const QVariantMap &values) {
     QiLog::logQuery(data->query, timer.nsecsElapsed());
 
     data->connection.setLastQuery(data->query);
+
+    if (ok) {
+        QiQueryRules rules; rules = *this;
+        if (rules.metaInfo())
+            data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
+    }
 
     return ok ? data->query.numRowsAffected() : -1;
 }

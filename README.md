@@ -40,6 +40,8 @@ HTTP on a worker thread**, writing the results into your database.
   level and category; see every statement with its params, row count and timing.
 - 🖥️ **[QML-ready](#exposing-models-to-qml)** — opt models into `Q_GADGET`, or bind
   a query result to a `ListView` with `QiListModel`.
+- ⚡ **[Reactive queries](#reactive-queries-live-models)** — a live `QiListModel`
+  re-runs itself on any change, so bound views update automatically. No reload.
 - 🎯 **Modern & portable** — Qt **5.15 and 6** from one codebase, C++17,
   `[[nodiscard]]` on the operations that matter.
 - 📦 **[Header-only option](#install)** — drop in a single generated
@@ -140,9 +142,10 @@ Every snippet assumes an open connection. Runnable programs live in
 that shows string & composite keys, `CHECK`, enums, cascading foreign keys,
 has-many relations, bulk update and column migrations end to end;
 [`jsonnested`](examples/jsonnested), which round-trips a nested JSON document
-through a graph of related models; and [`jsonhttp`](examples/jsonhttp), which
-imports a REST API into SQLite on a worker thread (with a tiny local server so it
-runs offline).
+through a graph of related models; [`reactive`](examples/reactive), a Qt Quick
+to-do list whose view updates itself via live models; and
+[`jsonhttp`](examples/jsonhttp), which imports a REST API into SQLite on a worker
+thread (with a tiny local server so it runs offline).
 
 **Getting started** ·
 [Setup](#project-setup-qmake) ·
@@ -1489,6 +1492,37 @@ ApplicationWindow {
 ```
 
 See [`examples/qmlmodel`](examples/qmlmodel) for a complete, runnable Qt Quick app.
+
+### Reactive queries (live models)
+
+Make a `QiListModel` **live** and it re-runs its query automatically whenever its
+table changes — so a bound `ListView` updates itself after any `save()` /
+`remove()` / `update()`, from anywhere, with **no manual reload**:
+
+```c++
+QiListModel *tasks = new QiListModel(this);
+tasks->setLive<Task>(connection, [] {
+    return Task::objects().orderBy(Task::col().id.desc()).all();
+});
+// ...later, from anywhere:
+Task t; t.title = "buy milk"; t.save();     // the ListView bound to `tasks` updates itself
+```
+
+How it works: every Qivot write (`save`, `remove`, `update`, batch `QiList::save`)
+notifies its connection which table changed; live models watching that table
+re-run their query, **coalesced** to one refresh per event-loop turn (a burst of
+writes = a single update). It runs on the connection's thread — great for the
+usual GUI-thread app. You can also observe changes directly:
+
+```c++
+int id = connection.addChangeHook([](const QString &table) {
+    qDebug() << table << "changed";
+});
+// connection.removeChangeHook(id);
+```
+
+The runnable [`examples/reactive`](examples/reactive) app is a to-do list whose
+view never calls reload — tick "auto-add" and watch rows appear on their own.
 
 ## Compatibility & requirements
 

@@ -1,8 +1,49 @@
+#include <QTimer>
+#include <QPointer>
 #include "qilistmodel.h"
 #include "qiabstractmodel.h"
 
 QiListModel::QiListModel(QObject *parent)
     : QAbstractListModel(parent) , m_metaInfo(nullptr) {
+}
+
+QiListModel::~QiListModel() {
+    if (m_hookId >= 0)
+        m_liveConn.removeChangeHook(m_hookId);
+}
+
+void QiListModel::setLive(QiConnection connection, const QStringList &tables,
+                          std::function<QiSharedList()> query) {
+    if (m_hookId >= 0)
+        m_liveConn.removeChangeHook(m_hookId);
+
+    m_liveConn = connection;
+    m_watch = tables;
+    m_query = std::move(query);
+
+    if (m_query)
+        setList(m_query());            // initial load
+
+    QPointer<QiListModel> self(this);
+    m_hookId = m_liveConn.addChangeHook([self, this](const QString &table) {
+        if (!self)
+            return;                    // model gone
+        if (m_watch.isEmpty() || m_watch.contains(table))
+            scheduleRefresh();
+    });
+}
+
+void QiListModel::scheduleRefresh() {
+    if (m_refreshPending)
+        return;                        // coalesce a burst of writes into one refresh
+    m_refreshPending = true;
+    QTimer::singleShot(0, this, [this]() { refreshNow(); });
+}
+
+void QiListModel::refreshNow() {
+    m_refreshPending = false;
+    if (m_query)
+        setList(m_query());
 }
 
 void QiListModel::setList(const QiSharedList &list) {

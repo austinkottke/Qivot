@@ -148,6 +148,9 @@ private Q_SLOTS:
     /// Test complex/nested JSON serialization into structured model fields
     void jsonComplex();
 
+    /// Test reactive change notifications (QiListModel live auto-refresh)
+    void reactive();
+
 private:
     QiConnection connect;
     QSqlDatabase db;
