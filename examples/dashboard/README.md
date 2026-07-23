@@ -1,17 +1,13 @@
-# Tutorial — an analytics dashboard (window functions + async)
+# Tutorial — Query Playground
 
-A Qt Quick sales dashboard that showcases several of Qivot's later features in
-one app:
+A step-by-step tour of Qivot queries in one small Qt Quick app. Each **step** is
+one query, shown with its exact code and its **live result** — read it top to
+bottom to learn the query API, from `count()` to window functions to running a
+query off the UI thread.
 
-- **`qiRawQuery`** — a `WITH` CTE + `RANK()` / running-`SUM()` **window functions**
-  the typed builder can't express, mapped back into typed rows for a leaderboard.
-- **`QiAsync` + `QiConnectionPool` + `QiCancelToken`** — a heavy "Recompute" job
-  runs on a background thread with its own pooled connection, shows a live
-  progress bar, and can be **cancelled** mid-flight.
+<img src="screenshot.svg" alt="Numbered recipe cards, each with code and a live result" width="300">
 
-<img src="screenshot.svg" alt="Leaderboard with rank medals, revenue bars and running totals" width="300">
-
-*(stylized mockup — run it for the live leaderboard + async progress)*
+*(stylized mockup — run it for all 8 live cards)*
 
 > **Run it**
 > ```sh
@@ -20,77 +16,87 @@ one app:
 > ./dashboard
 > ```
 
+The data: 8 customers and 600 sales, seeded on launch.
+
 ---
 
-## Leaderboard — window functions via `qiRawQuery`
+## The 8 steps
 
-Per-customer revenue, ranked, with a running cumulative total — one query the
-query builder can't express, run raw and mapped into typed `LeaderRow` objects:
+Each card in the app is one line of code and its result:
 
-```cpp
-QiList<LeaderRow> rows = qiRawQuery<LeaderRow>(
-    "WITH totals AS ("
-    "  SELECT customer AS cid, SUM(amount) AS total, COUNT(*) AS orders"
-    "  FROM sale GROUP BY customer) "
-    "SELECT c.name AS name, t.total AS total, t.orders AS orders, "
-    "       RANK() OVER (ORDER BY t.total DESC) AS rnk, "
-    "       SUM(t.total) OVER (ORDER BY t.total DESC "
-    "                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running "
-    "FROM totals t JOIN customer c ON c.id = t.cid ORDER BY t.total DESC");
-```
+| # | What | Code | Result |
+|---|------|------|--------|
+| 1 | Count rows | `Sale::objects().count()` | `600 sales` |
+| 2 | Sum (aggregate) | `Sale::objects().call("sum", "amount")` | `$312,950` |
+| 3 | Average | `Sale::objects().call("avg", "amount")` | `$522 per sale` |
+| 4 | Filter | `Sale::objects().filter(Sale::col().amount > 900).count()` | `62 sales over $900` |
+| 5 | Order + limit | `Sale::objects().orderBy(Sale::col().amount.desc()).limit(3).all()` | `$999, $998, $997` |
+| 6 | One-to-many | `qiHasMany<Sale>(customer, "customer").count()` | `Ada made 75 sales` |
+| 7 | Window function | `qiRawQuery<LeaderRow>("… RANK() OVER (ORDER BY total DESC) …")` | `#1 Ken Thompson — $39,425` |
+| 8 | Off the UI thread | `QiAsync::run([](QiConnection &c){ return Sale::objects(c).count(); })` | `600 sales (worker thread)` |
 
-`LeaderRow` is a plain `QiModel` whose fields (`name`, `total`, `orders`, `rnk`,
-`running`) match the result columns — it's never a table, just a typed carrier
-for the query. The QML renders it as a ranked list with medals, share-of-total
-bars, and the running total.
+Steps 1–7 run when the app opens. Step 8 has a **Run** button — it runs the same
+count on a background thread (via `QiAsync` and a pooled connection) and fills in
+the result when it lands, without blocking the UI.
 
-## Recompute — async, pooled, cancellable
+## How it's built (it's tiny)
 
-Pressing **Recompute** kicks off a heavy job on Qt's thread pool. Each worker
-thread gets its own connection from a `QiConnectionPool` (configured once), and
-the job checks a `QiCancelToken` so **Cancel** stops it cleanly:
+The controller builds a list of `{step, title, code, result}` — running each
+query and stringifying its result:
 
 ```cpp
-QiAsync::configure("QSQLITE", "dashboard.db");
+void DashboardStore::buildRecipes() {
+    auto add = [this](int step, QString title, QString code, QString result) {
+        m_recipes << QVariantMap{ {"step",step}, {"title",title}, {"code",code}, {"result",result} };
+    };
 
-QFuture<int> f = QiAsync::runCancelable(m_token,
-    [prog](QiConnection &c, const QiCancelToken &token) -> int {
-        for (int i = 0; i < 100; i++) {
-            if (token.isCanceled()) return -1;          // cooperative cancel
-            (void) Sale::objects(c).call("sum", "amount");   // real work, worker connection
-            QThread::msleep(25);
-            prog->store((i + 1));                        // report progress
-        }
-        return 100;
-    });
+    add(1, "Count every row",
+        "Sale::objects().count()",
+        QString("%1 sales").arg(Sale::objects().count()));
+
+    add(7, "Rank with a window function",
+        "qiRawQuery<LeaderRow>(\"… RANK() OVER (…) …\")",
+        topCustomerLine());
+    // …
+}
 ```
 
-A `QTimer` on the GUI thread polls the shared progress counter to drive the bar,
-and a `QFutureWatcher` reports completion. The whole time, the UI stays
-responsive — the pulsing dots keep animating, and Cancel works instantly.
+Step 7's window-function query is the one thing the typed builder can't express,
+so it uses `qiRawQuery<LeaderRow>` — raw SQL mapped back into a typed model:
 
-- **Needs** `QT += concurrent` and a **file-based** database (worker threads open
-  their own connection to it; a `:memory:` DB is private per connection). WAL is
-  enabled so the worker's reads don't contend with the main connection.
+```cpp
+QiList<LeaderRow> ranked = qiRawQuery<LeaderRow>(
+    "WITH t AS (SELECT customer AS cid, SUM(amount) AS total FROM sale GROUP BY customer) "
+    "SELECT c.name AS name, t.total AS total, "
+    "       RANK() OVER (ORDER BY t.total DESC) AS rnk "
+    "FROM t JOIN customer c ON c.id = t.cid ORDER BY t.total DESC");
+```
 
-## What it demonstrates
+And the QML just lists the cards — a number badge, the title, the code in a mono
+box, and the green result:
 
-- **`qiRawQuery<T>`** — CTEs + window functions → typed models.
-- **`QiConnectionPool`** — one connection per worker thread.
-- **`QiAsync::runCancelable` + `QiCancelToken`** — off-thread work with progress
-  and cooperative cancellation, without freezing the UI.
+```qml
+ListView {
+    model: store.recipes
+    delegate: Rectangle {
+        Text { text: modelData.title }
+        Text { text: modelData.code; font.family: "Menlo, monospace" }
+        Text { text: "→ " + modelData.result; color: "#30D158" }
+    }
+}
+```
 
 ## Files
 
 | File | Role |
 |---|---|
-| `models.h` | `Customer`, `Sale`, and the `LeaderRow` view-model. |
-| `dashboardstore.h` / `.cpp` | QML controller: the leaderboard query + the async recompute. |
-| `main.cpp` | Opens a file DB, seeds customers and sales, loads the QML. |
-| `main.qml` | The two-tab UI: window-function leaderboard + async progress/cancel. |
+| `models.h` | `Customer`, `Sale`, and the `LeaderRow` view-model (for step 7). |
+| `dashboardstore.h` / `.cpp` | Builds the 8 recipes; runs step 8 on a worker thread. |
+| `main.cpp` | Opens a file DB, seeds customers + sales, loads the QML. |
+| `main.qml` | The scrolling list of numbered recipe cards. |
 
 ## See also
 
-- [`keyset`](../keyset) / [`asyncquery`](../asyncquery) — the paging and async
-  primitives, in focused console form.
-- [`manytomany`](../manytomany) — relations (one-to-many + many-to-many) in QML.
+- [`keyset`](../keyset), [`asyncquery`](../asyncquery) — the paging and async
+  primitives on their own.
+- [`prefetch`](../prefetch) — load a whole list's relations without N+1.

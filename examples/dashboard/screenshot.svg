@@ -1,89 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="760" viewBox="0 0 400 760" font-family="-apple-system, Helvetica, Arial, sans-serif">
-  <defs>
-    <linearGradient id="b1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C9A400"/><stop offset="1" stop-color="#FFD60A"/></linearGradient>
-    <linearGradient id="b2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7E838B"/><stop offset="1" stop-color="#AEB4BE"/></linearGradient>
-    <linearGradient id="b3" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C77A00"/><stop offset="1" stop-color="#FF9F0A"/></linearGradient>
-    <linearGradient id="b4" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0866C7"/><stop offset="1" stop-color="#0A84FF"/></linearGradient>
-  </defs>
-  <rect width="400" height="760" rx="22" fill="#0B0B10"/>
-  <clipPath id="cl"><rect width="400" height="760" rx="22"/></clipPath>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="820" viewBox="0 0 400 820" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <rect width="400" height="820" rx="22" fill="#0B0B10"/>
+  <clipPath id="cl"><rect width="400" height="820" rx="22"/></clipPath>
   <g clip-path="url(#cl)">
-    <!-- header -->
-    <text x="20" y="46" fill="#fff" font-size="26" font-weight="700">Sales Analytics</text>
-    <text x="20" y="66" fill="#8A8A93" font-size="12">Window functions · async · cancellation</text>
-    <!-- tabs -->
-    <text x="72" y="100" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">Leaderboard</text>
-    <rect x="24" y="110" width="96" height="2" fill="#0A84FF"/>
-    <text x="250" y="100" fill="#8A8A93" font-size="14" font-weight="700" text-anchor="middle">Recompute</text>
-    <line x1="0" y1="117" x2="400" y2="117" stroke="#1D1D24"/>
+    <text x="20" y="46" fill="#fff" font-size="26" font-weight="700">Query Playground</text>
+    <text x="20" y="66" fill="#8A8A93" font-size="12">One small query per step — code and live result</text>
 
-    <!-- total banner -->
-    <text x="20" y="150" fill="#8A8A93" font-size="10" font-weight="700">TOTAL REVENUE</text>
-    <text x="20" y="180" fill="#30D158" font-size="28" font-weight="700">$312,950</text>
-    <text x="380" y="170" fill="#8A8A93" font-size="12" text-anchor="end">8 customers</text>
-
-    <!-- rows -->
-    <g>
-      <!-- row template: card + medal + name + amount + bar + sub -->
-      <!-- 1 -->
-      <rect x="14" y="196" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="232" r="20" fill="url(#b1)"/><text x="46" y="240" text-anchor="middle" font-size="20">🥇</text>
-      <text x="78" y="224" fill="#fff" font-size="16" font-weight="700">Ken Thompson</text>
-      <text x="372" y="224" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$39,425</text>
-      <rect x="78" y="234" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="234" width="294" height="6" rx="3" fill="url(#b1)"/>
-      <text x="78" y="256" fill="#8A8A93" font-size="11">75 orders · 12.6% of total</text>
-      <text x="372" y="256" fill="#6D6D75" font-size="11" text-anchor="end">running $39,425</text>
-
-      <!-- 2 -->
-      <rect x="14" y="276" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="312" r="20" fill="url(#b2)"/><text x="46" y="320" text-anchor="middle" font-size="20">🥈</text>
-      <text x="78" y="304" fill="#fff" font-size="16" font-weight="700">Ada Lovelace</text>
-      <text x="372" y="304" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$37,880</text>
-      <rect x="78" y="314" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="314" width="282" height="6" rx="3" fill="url(#b2)"/>
-      <text x="78" y="336" fill="#8A8A93" font-size="11">72 orders · 12.1% of total</text>
-      <text x="372" y="336" fill="#6D6D75" font-size="11" text-anchor="end">running $77,305</text>
-
-      <!-- 3 -->
-      <rect x="14" y="356" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="392" r="20" fill="url(#b3)"/><text x="46" y="400" text-anchor="middle" font-size="20">🥉</text>
-      <text x="78" y="384" fill="#fff" font-size="16" font-weight="700">Grace Hopper</text>
-      <text x="372" y="384" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$36,540</text>
-      <rect x="78" y="394" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="394" width="272" height="6" rx="3" fill="url(#b3)"/>
-      <text x="78" y="416" fill="#8A8A93" font-size="11">69 orders · 11.7% of total</text>
-      <text x="372" y="416" fill="#6D6D75" font-size="11" text-anchor="end">running $113,845</text>
-
-      <!-- 4 -->
-      <rect x="14" y="436" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="472" r="20" fill="#26262E"/><text x="46" y="478" text-anchor="middle" fill="#B0B0B8" font-size="15" font-weight="700">4</text>
-      <text x="78" y="464" fill="#fff" font-size="16" font-weight="700">Alan Turing</text>
-      <text x="372" y="464" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$34,910</text>
-      <rect x="78" y="474" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="474" width="260" height="6" rx="3" fill="url(#b4)"/>
-      <text x="78" y="496" fill="#8A8A93" font-size="11">66 orders · 11.2% of total</text>
-      <text x="372" y="496" fill="#6D6D75" font-size="11" text-anchor="end">running $148,755</text>
-
-      <!-- 5 -->
-      <rect x="14" y="516" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="552" r="20" fill="#26262E"/><text x="46" y="558" text-anchor="middle" fill="#B0B0B8" font-size="15" font-weight="700">5</text>
-      <text x="78" y="544" fill="#fff" font-size="16" font-weight="700">Margaret Hamilton</text>
-      <text x="372" y="544" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$33,120</text>
-      <rect x="78" y="554" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="554" width="247" height="6" rx="3" fill="url(#b4)"/>
-      <text x="78" y="576" fill="#8A8A93" font-size="11">63 orders · 10.6% of total</text>
-      <text x="372" y="576" fill="#6D6D75" font-size="11" text-anchor="end">running $181,875</text>
-
-      <!-- 6 -->
-      <rect x="14" y="596" width="372" height="72" rx="16" fill="#16161D"/>
-      <circle cx="46" cy="632" r="20" fill="#26262E"/><text x="46" y="638" text-anchor="middle" fill="#B0B0B8" font-size="15" font-weight="700">6</text>
-      <text x="78" y="624" fill="#fff" font-size="16" font-weight="700">Dennis Ritchie</text>
-      <text x="372" y="624" fill="#fff" font-size="16" font-weight="700" text-anchor="end">$31,540</text>
-      <rect x="78" y="634" width="294" height="6" rx="3" fill="#26262E"/>
-      <rect x="78" y="634" width="235" height="6" rx="3" fill="url(#b4)"/>
-      <text x="78" y="656" fill="#8A8A93" font-size="11">60 orders · 10.1% of total</text>
-      <text x="372" y="656" fill="#6D6D75" font-size="11" text-anchor="end">running $213,415</text>
+    <!-- a recipe card renderer via repeated groups -->
+    <!-- step 1 -->
+    <g transform="translate(16,86)">
+      <rect width="368" height="112" rx="16" fill="#16161D"/>
+      <circle cx="30" cy="28" r="14" fill="#0A84FF"/><text x="30" y="33" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">1</text>
+      <text x="54" y="33" fill="#fff" font-size="15" font-weight="700">Count every row</text>
+      <rect x="16" y="46" width="336" height="30" rx="8" fill="#0C0C12" stroke="#20202A"/>
+      <text x="26" y="66" fill="#79C0FF" font-size="11.5" font-family="Menlo, monospace">Sale::objects().count()</text>
+      <text x="16" y="98" fill="#30D158" font-size="14" font-weight="700">→  600 sales</text>
     </g>
+
+    <!-- step 2 -->
+    <g transform="translate(16,210)">
+      <rect width="368" height="112" rx="16" fill="#16161D"/>
+      <circle cx="30" cy="28" r="14" fill="#0A84FF"/><text x="30" y="33" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">2</text>
+      <text x="54" y="33" fill="#fff" font-size="15" font-weight="700">Sum with an aggregate</text>
+      <rect x="16" y="46" width="336" height="30" rx="8" fill="#0C0C12" stroke="#20202A"/>
+      <text x="26" y="66" fill="#79C0FF" font-size="11.5" font-family="Menlo, monospace">Sale::objects().call("sum", "amount")</text>
+      <text x="16" y="98" fill="#30D158" font-size="14" font-weight="700">→  $312,950 total revenue</text>
+    </g>
+
+    <!-- step 4 (filter) -->
+    <g transform="translate(16,334)">
+      <rect width="368" height="112" rx="16" fill="#16161D"/>
+      <circle cx="30" cy="28" r="14" fill="#0A84FF"/><text x="30" y="33" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">4</text>
+      <text x="54" y="33" fill="#fff" font-size="15" font-weight="700">Filter with a typed condition</text>
+      <rect x="16" y="46" width="336" height="30" rx="8" fill="#0C0C12" stroke="#20202A"/>
+      <text x="26" y="66" fill="#79C0FF" font-size="11" font-family="Menlo, monospace">Sale::objects().filter(col().amount &gt; 900).count()</text>
+      <text x="16" y="98" fill="#30D158" font-size="14" font-weight="700">→  62 sales over $900</text>
+    </g>
+
+    <!-- step 7 (window) -->
+    <g transform="translate(16,458)">
+      <rect width="368" height="112" rx="16" fill="#16161D"/>
+      <circle cx="30" cy="28" r="14" fill="#0A84FF"/><text x="30" y="33" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">7</text>
+      <text x="54" y="33" fill="#fff" font-size="14" font-weight="700">Rank with a window function</text>
+      <rect x="16" y="46" width="336" height="30" rx="8" fill="#0C0C12" stroke="#20202A"/>
+      <text x="26" y="66" fill="#79C0FF" font-size="10.5" font-family="Menlo, monospace">qiRawQuery&lt;LeaderRow&gt;("… RANK() OVER (…) …")</text>
+      <text x="16" y="98" fill="#30D158" font-size="14" font-weight="700">→  #1  Ken Thompson — $39,425</text>
+    </g>
+
+    <!-- step 8 (async) -->
+    <g transform="translate(16,582)">
+      <rect width="368" height="120" rx="16" fill="#16161D"/>
+      <circle cx="30" cy="28" r="14" fill="#0A84FF"/><text x="30" y="33" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">8</text>
+      <text x="54" y="33" fill="#fff" font-size="15" font-weight="700">Run a query off the UI thread</text>
+      <rect x="16" y="46" width="336" height="30" rx="8" fill="#0C0C12" stroke="#20202A"/>
+      <text x="26" y="66" fill="#79C0FF" font-size="10" font-family="Menlo, monospace">QiAsync::run([](QiConnection &amp;c){ return …count(); })</text>
+      <rect x="16" y="86" width="92" height="34" rx="17" fill="#0A84FF"/>
+      <text x="62" y="108" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Run</text>
+      <text x="122" y="108" fill="#30D158" font-size="13" font-weight="700">600 sales (on a worker thread)</text>
+    </g>
+
+    <text x="200" y="736" fill="#5A5A62" font-size="11" text-anchor="middle">steps 3, 5, 6 continue below · scroll for more</text>
   </g>
 </svg>

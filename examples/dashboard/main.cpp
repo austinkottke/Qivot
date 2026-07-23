@@ -1,12 +1,12 @@
-/** Analytics dashboard — showcases several later Qivot features in QML:
+/** Query Playground — a step-by-step tour of Qivot queries in QML.
 
-    - qiRawQuery: a CTE + window-function leaderboard (rank + running total),
-      mapped into typed rows.
-    - QiAsync + QiConnectionPool + QiCancelToken: a heavy "Recompute" job runs on
-      a worker thread with a live progress bar and a working Cancel button.
+    Each "recipe" is one small query shown with its code and its live result:
+    count, sum, average, filter, order+limit, a one-to-many relation, a window
+    function via qiRawQuery, and (step 8) the same count run off the UI thread
+    with QiAsync.
 
     Uses a file database (async needs a per-thread connection to a real file).
-    QIVOT_SELFTEST=1 drives refresh + a recompute then quits (headless check).
+    QIVOT_SELFTEST=1 prints every recipe's result then quits (headless check).
  */
 #include "models.h"
 #include "dashboardstore.h"
@@ -62,15 +62,17 @@ int main(int argc, char **argv) {
         DashboardStore *store = root->findChild<DashboardStore *>();
         QTimer::singleShot(200, &app, [store] {
             if (!store) return;
-            qInfo() << "leaderboard rows:" << store->leaderboard().size()
-                    << "grand total:" << store->grandTotal();
-            if (!store->leaderboard().isEmpty())
-                qInfo() << "top:" << store->leaderboard().first().toMap();
-            store->recompute();
+            const QVariantList r = store->recipes();
+            qInfo() << "recipes:" << r.size();
+            for (const QVariant &v : r) {
+                const QVariantMap m = v.toMap();
+                qInfo().noquote() << "  " << m["step"].toString() << m["title"].toString()
+                                  << "->" << m["result"].toString();
+            }
+            store->runAsync();
         });
-        QTimer::singleShot(1200, &app, [store] { if (store) store->cancel(); });
-        QTimer::singleShot(2000, &app, [store] { if (store) qInfo() << "status:" << store->status(); });
-        QTimer::singleShot(2400, &app, &QCoreApplication::quit);
+        QTimer::singleShot(1000, &app, [store] { if (store) qInfo() << "async:" << store->asyncResult(); });
+        QTimer::singleShot(1400, &app, &QCoreApplication::quit);
     }
     return app.exec();
 }

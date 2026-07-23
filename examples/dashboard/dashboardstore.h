@@ -5,67 +5,35 @@
 #include <QVariantList>
 #include <QQmlEngine>          // QML_ELEMENT
 #include <QFutureWatcher>
-#include <QTimer>
-#include <QElapsedTimer>
-#include <QSharedPointer>
-#include <atomic>
-#include <qiasync.h>           // QiCancelToken
 
-/// The controller behind the analytics dashboard.
-/**
-  - `leaderboard` is computed with a window-function query via qiRawQuery.
-  - `recompute()` runs a deliberately heavy job on a worker thread (QiAsync +
-    QiConnectionPool), reporting `progress` live and honouring `cancel()`
-    through a QiCancelToken.
- */
+/// A step-by-step "playground": each recipe is one small query shown with its
+/// code and its live result. The last step runs a query off the UI thread.
 class DashboardStore : public QObject {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(QVariantList leaderboard READ leaderboard NOTIFY leaderboardChanged)
-    Q_PROPERTY(int   grandTotal READ grandTotal NOTIFY leaderboardChanged)
-    Q_PROPERTY(bool  busy       READ busy       NOTIFY busyChanged)
-    Q_PROPERTY(int   progress   READ progress   NOTIFY progressChanged)
-    Q_PROPERTY(QString status   READ status     NOTIFY statusChanged)
+    Q_PROPERTY(QVariantList recipes READ recipes CONSTANT)
+    Q_PROPERTY(QString asyncResult READ asyncResult NOTIFY asyncChanged)
+    Q_PROPERTY(bool    asyncBusy   READ asyncBusy   NOTIFY asyncChanged)
 public:
     explicit DashboardStore(QObject *parent = nullptr);
 
-    QVariantList leaderboard() const { return m_leaderboard; }
-    int grandTotal() const { return m_grandTotal; }
-    bool busy() const { return m_busy; }
-    int progress() const { return m_progress; }
-    QString status() const { return m_status; }
+    QVariantList recipes() const { return m_recipes; }   // [{step, title, code, result}]
+    QString asyncResult() const { return m_asyncResult; }
+    bool    asyncBusy()   const { return m_asyncBusy; }
 
-    /// Recompute the leaderboard (fast, synchronous window-function query).
-    Q_INVOKABLE void refresh();
-
-    /// Run a heavy analytics job on a worker thread — cancellable, with progress.
-    Q_INVOKABLE void recompute();
-
-    /// Ask the running recompute() to stop.
-    Q_INVOKABLE void cancel();
+    /// Step 8 — run a count on a background thread and show the result.
+    Q_INVOKABLE void runAsync();
 
 signals:
-    void leaderboardChanged();
-    void busyChanged();
-    void progressChanged();
-    void statusChanged();
+    void asyncChanged();
 
 private:
-    void onFinished();
+    void buildRecipes();
 
-    QString      m_dbName;
-    QVariantList m_leaderboard;
-    int          m_grandTotal = 0;
-
-    bool    m_busy = false;
-    int     m_progress = 0;
-    QString m_status;
-
-    QiCancelToken                     m_token;
-    QSharedPointer<std::atomic<int>>  m_prog;
-    QFutureWatcher<int>               m_watcher;
-    QTimer                            m_poll;
-    QElapsedTimer                     m_clock;
+    QVariantList m_recipes;
+    QString m_asyncResult = "(tap Run)";
+    bool    m_asyncBusy = false;
+    QFutureWatcher<int> m_watcher;
 };
 
 #endif // DASHBOARDSTORE_H

@@ -93,8 +93,8 @@ step-by-step example:
   a whole list's relations in a fixed number of queries (no N+1).
   → [`examples/prefetch`](examples/prefetch)
 - 🧰 **Connection pool + cancellable async** — `QiConnectionPool` hands each thread
-  its own connection; `QiAsync` uses it, and `QiCancelToken` cancels long jobs.
-  → [`examples/dashboard`](examples/dashboard)
+  its own connection and `QiAsync` uses it (see the [playground](examples/dashboard)'s
+  off-thread step); `QiCancelToken` makes long jobs cooperatively cancellable.
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.

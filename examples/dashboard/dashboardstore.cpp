@@ -1,110 +1,96 @@
 #include "dashboardstore.h"
 #include "models.h"
-#include <QThread>
+#include <QLocale>
 #include <qiquery.h>          // qiRawQuery
+#include <qirelation.h>       // qiHasMany
+#include <qiasync.h>
 
-DashboardStore::DashboardStore(QObject *parent)
-    : QObject(parent), m_dbName("dashboard.db") {
-
-    // Poll the worker's shared progress counter on the GUI thread.
-    m_poll.setInterval(50);
-    connect(&m_poll, &QTimer::timeout, this, [this] {
-        if (m_prog) { m_progress = m_prog->load(); emit progressChanged(); }
-    });
-    connect(&m_watcher, &QFutureWatcherBase::finished, this, &DashboardStore::onFinished);
-
-    refresh();
+static QString money(int v) {
+    return "$" + QLocale(QLocale::English).toString(v);
 }
 
-void DashboardStore::refresh() {
-    // Per-customer totals, ranked, with a running cumulative total — a CTE plus
-    // window functions the query builder can't express, mapped to typed rows.
-    static const char *SQL =
-        "WITH totals AS ("
-        "  SELECT customer AS cid, SUM(amount) AS total, COUNT(*) AS orders"
-        "  FROM sale GROUP BY customer"
-        ") "
-        "SELECT c.name AS name, t.total AS total, t.orders AS orders, "
-        "       RANK() OVER (ORDER BY t.total DESC) AS rnk, "
-        "       SUM(t.total) OVER (ORDER BY t.total DESC "
-        "                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running "
-        "FROM totals t JOIN customer c ON c.id = t.cid "
-        "ORDER BY t.total DESC";
+DashboardStore::DashboardStore(QObject *parent) : QObject(parent) {
+    connect(&m_watcher, &QFutureWatcherBase::finished, this, [this] {
+        m_asyncResult = QString("%1 sales (counted on a worker thread)").arg(m_watcher.result());
+        m_asyncBusy = false;
+        emit asyncChanged();
+    });
+    buildRecipes();
+}
 
-    QiList<LeaderRow> rows = qiRawQuery<LeaderRow>(SQL);
-
-    m_leaderboard.clear();
-    m_grandTotal = 0;
-    for (int i = 0; i < rows.size(); i++) {
-        LeaderRow *r = rows.at(i);
+void DashboardStore::buildRecipes() {
+    auto add = [this](int step, const QString &title, const QString &code, const QString &result) {
         QVariantMap m;
-        m["name"]    = r->name->toString();
-        m["total"]   = r->total->toInt();
-        m["orders"]  = r->orders->toInt();
-        m["rank"]    = r->rnk->toInt();
-        m["running"] = r->running->toInt();
-        m_leaderboard << m;
-        m_grandTotal = qMax(m_grandTotal, r->running->toInt());   // last running == grand total
+        m["step"] = step; m["title"] = title; m["code"] = code; m["result"] = result;
+        m_recipes << m;
+    };
+
+    // 1 — count
+    add(1, "Count every row",
+        "Sale::objects().count()",
+        QString("%1 sales").arg(Sale::objects().count()));
+
+    // 2 — sum (aggregate)
+    add(2, "Sum with an aggregate",
+        "Sale::objects().call(\"sum\", \"amount\")",
+        money(Sale::objects().call("sum", "amount").toInt()) + " total revenue");
+
+    // 3 — average
+    add(3, "Average of a column",
+        "Sale::objects().call(\"avg\", \"amount\")",
+        money(qRound(Sale::objects().call("avg", "amount").toDouble())) + " per sale");
+
+    // 4 — filter with a typed WHERE
+    add(4, "Filter with a typed condition",
+        "Sale::objects().filter(Sale::col().amount > 900).count()",
+        QString("%1 sales over $900")
+            .arg(Sale::objects().filter(Sale::col().amount > 900).count()));
+
+    // 5 — order + limit
+    QiList<Sale> top = Sale::objects().orderBy(Sale::col().amount.desc()).limit(3).all();
+    QStringList tops;
+    for (int i = 0; i < top.size(); i++) tops << money(top.at(i)->amount->toInt());
+    add(5, "Order, then take the top 3",
+        "Sale::objects().orderBy(Sale::col().amount.desc()).limit(3).all()",
+        tops.join(", "));
+
+    // 6 — a relation (one-to-many)
+    Customer c;
+    int cn = 0;
+    QString cname = "—";
+    if (c.load(Customer::col().id == 1)) {
+        cname = c.name->toString();
+        cn = qiHasMany<Sale>(c, "customer").count();
     }
-    // add percent-of-total now that we know the grand total
-    for (int i = 0; i < m_leaderboard.size(); i++) {
-        QVariantMap m = m_leaderboard[i].toMap();
-        m["pct"] = m_grandTotal > 0 ? (m["total"].toInt() * 100.0 / m_grandTotal) : 0.0;
-        m_leaderboard[i] = m;
-    }
-    emit leaderboardChanged();
+    add(6, "A customer's sales (one-to-many)",
+        "qiHasMany<Sale>(customer, \"customer\").count()",
+        QString("%1 made %2 sales").arg(cname).arg(cn));
+
+    // 7 — window function via raw SQL, mapped to typed rows
+    QiList<LeaderRow> ranked = qiRawQuery<LeaderRow>(
+        "WITH t AS (SELECT customer AS cid, SUM(amount) AS total FROM sale GROUP BY customer) "
+        "SELECT c.name AS name, t.total AS total, "
+        "       RANK() OVER (ORDER BY t.total DESC) AS rnk "
+        "FROM t JOIN customer c ON c.id = t.cid ORDER BY t.total DESC LIMIT 1");
+    QString topLine = ranked.size()
+        ? QString("#1  %1 — %2").arg(ranked.at(0)->name->toString(), money(ranked.at(0)->total->toInt()))
+        : "(none)";
+    add(7, "Rank with a window function (raw SQL → typed rows)",
+        "qiRawQuery<LeaderRow>(\"… RANK() OVER (ORDER BY total DESC) …\")",
+        topLine);
+
+    // 8 — async (its own card + button in the UI)
+    add(8, "Run a query off the UI thread",
+        "QiAsync::run([](QiConnection &c){ return Sale::objects(c).count(); })",
+        "");
 }
 
-void DashboardStore::recompute() {
-    if (m_busy) return;
-    m_busy = true;       emit busyChanged();
-    m_progress = 0;      emit progressChanged();
-    m_status = "Recomputing…";  emit statusChanged();
+void DashboardStore::runAsync() {
+    if (m_asyncBusy) return;
+    m_asyncBusy = true; m_asyncResult = "working…"; emit asyncChanged();
 
-    m_token = QiCancelToken();                                   // fresh token
-    m_prog  = QSharedPointer<std::atomic<int>>::create(0);
-    m_clock.restart();
-
-    QiAsync::configure("QSQLITE", m_dbName);
-    auto prog = m_prog;
-
-    QFuture<int> f = QiAsync::runCancelable(m_token,
-        [prog](QiConnection &c, const QiCancelToken &token) -> int {
-        const int steps = 100;
-        for (int i = 0; i < steps; i++) {
-            if (token.isCanceled())
-                return -1;                                       // cooperative cancel
-            // real per-step work on the worker's own connection, then a small
-            // pause so the heavy job is observable.
-            (void) Sale::objects(c).call("sum", "amount");
-            QThread::msleep(25);
-            prog->store((i + 1) * 100 / steps);
-        }
-        return steps;
-    });
-
-    m_watcher.setFuture(f);
-    m_poll.start();
-}
-
-void DashboardStore::cancel() {
-    if (m_busy) {
-        m_token.cancel();
-        m_status = "Cancelling…"; emit statusChanged();
-    }
-}
-
-void DashboardStore::onFinished() {
-    m_poll.stop();
-    const int result = m_watcher.result();
-    m_busy = false; emit busyChanged();
-
-    if (result < 0) {
-        m_status = QString("Cancelled at %1%").arg(m_progress);
-    } else {
-        m_progress = 100; emit progressChanged();
-        m_status = QString("Recomputed on a worker thread in %1 ms").arg(m_clock.elapsed());
-        refresh();   // refresh the leaderboard from the (unchanged) data
-    }
-    emit statusChanged();
+    QiAsync::configure("QSQLITE", "dashboard.db");
+    m_watcher.setFuture( QiAsync::run([](QiConnection &c) {
+        return Sale::objects(c).count();     // runs on a worker thread, own connection
+    }) );
 }
