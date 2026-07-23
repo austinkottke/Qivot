@@ -12,6 +12,7 @@
 #include <qicolumns.h>
 #include <qirelation.h>
 #include <qikeyset.h>
+#include <qiconnectionpool.h>
 #include <qiftsindex.h>
 #include <qitransaction.h>
 #include <qimigrator.h>

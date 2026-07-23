@@ -37,6 +37,9 @@ class QiConnectionPriv : public QSharedData
     QVector<QPair<int, std::function<void(const QString&)>>> changeHooks;
     int nextHookId = 1;
 
+    /// Nesting depth for QiTransaction (0 = none, 1 = outermost BEGIN, >1 = SAVEPOINT)
+    int txnDepth = 0;
+
     QMutex mutex;
 };
 
@@ -252,6 +255,52 @@ bool QiConnection::commit() {
 
 bool QiConnection::rollback() {
     return d->m_sql.rollback();
+}
+
+int QiConnection::beginScope() {
+    const int depth = d->txnDepth + 1;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.transaction();                 // outermost: real BEGIN
+    } else {
+        QSqlQuery q = d->m_sql.query();              // nested: SAVEPOINT
+        ok = q.exec(QStringLiteral("SAVEPOINT qi_sp_%1").arg(depth));
+    }
+    if (!ok)
+        return 0;
+    d->txnDepth = depth;
+    return depth;
+}
+
+bool QiConnection::commitScope(int depth) {
+    if (depth <= 0)
+        return false;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.commit();
+    } else {
+        QSqlQuery q = d->m_sql.query();
+        ok = q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+    }
+    if (d->txnDepth == depth)
+        d->txnDepth = depth - 1;
+    return ok;
+}
+
+bool QiConnection::rollbackScope(int depth) {
+    if (depth <= 0)
+        return false;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.rollback();
+    } else {
+        QSqlQuery q = d->m_sql.query();
+        ok = q.exec(QStringLiteral("ROLLBACK TO qi_sp_%1").arg(depth))
+          && q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+    }
+    if (d->txnDepth == depth)
+        d->txnDepth = depth - 1;
+    return ok;
 }
 
 bool QiConnection::setForeignKeysEnforced(bool enabled) {

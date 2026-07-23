@@ -1,12 +1,73 @@
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDateTime>
 #include <qijsonmapper.h>
 #include <qitransaction.h>
 #include <qifieldref.h>
 #include <qirelation.h>
+#include <qikeyset.h>
+#include <qimigrator.h>
+#include <qiconnectionpool.h>
+#include <qiasync.h>
 #include <qilog.h>
 #include <qilistmodel.h>
 #include "sqlitetests.h"
+
+// ---- models for the later-feature tests ----------------------------------
+
+// Custom field type + converter (QI_DECLARE_CONVERTER).
+struct Rgb { int r = 0, g = 0, b = 0; };
+Q_DECLARE_METATYPE(Rgb)
+static QVariant rgbToStorage(const Rgb &c) {
+    return QStringLiteral("%1,%2,%3").arg(c.r).arg(c.g).arg(c.b);
+}
+static Rgb rgbFromStorage(const QVariant &v) {
+    const QStringList p = v.toString().split(',');
+    return Rgb{ p.value(0).toInt(), p.value(1).toInt(), p.value(2).toInt() };
+}
+QI_DECLARE_CONVERTER(Rgb, rgbToStorage, rgbFromStorage)
+
+class Swatch : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString> swatchName;
+    QiField<Rgb>     color;
+};
+QI_DECLARE_MODEL(Swatch, "swatch", QI_FIELD(swatchName), QI_FIELD_AS(color, "TEXT"));
+
+// Lifecycle hooks + auto timestamps + soft delete.
+static int g_afterSaveCount = 0;
+class Tracked : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString>   trackTitle;
+    QiField<QDateTime> createdAt;
+    QiField<QDateTime> updatedAt;
+    QiField<QDateTime> deletedAt;
+    void afterSave(bool created) override { Q_UNUSED(created); g_afterSaveCount++; }
+    bool beforeRemove() override { return trackTitle->toString() != QLatin1String("locked"); }
+};
+QI_DECLARE_MODEL(Tracked, "tracked",
+                 QI_FIELD(trackTitle), QI_FIELD(createdAt),
+                 QI_FIELD(updatedAt), QI_FIELD(deletedAt));
+
+// Bidirectional many-to-many.
+class LabelM;
+class PostM : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString> postTitle;
+    QI_MANY_TO_MANY(LabelM, labels, "postm_labelm")
+};
+QI_DECLARE_MODEL(PostM, "postm", QI_FIELD(postTitle));
+
+class LabelM : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString> labelName;
+    QI_MANY_TO_MANY(PostM, posts, "postm_labelm")
+};
+QI_DECLARE_MODEL(LabelM, "labelm", QI_FIELD(labelName));
 
 // A model with a meaningful string primary key and NO auto-increment id column.
 class Contact : public QiModel {
@@ -210,11 +271,18 @@ void SqliteTests::initTestCase()
     QVERIFY ( connect.addModel<Ticket>());     // enum field
     QVERIFY ( connect.addModel<Activity>());   // QI_FIELD_AS type overrides
     QVERIFY ( connect.addModel<Doc>());        // structured JSON fields
+    QVERIFY ( connect.addModel<Swatch>());     // custom type converter
+    QVERIFY ( connect.addModel<Tracked>());    // hooks / timestamps / soft delete
+    QVERIFY ( connect.addModel<PostM>());      // many-to-many
+    QVERIFY ( connect.addModel<LabelM>());     // many-to-many
     qiWithoutRowid<Session>();                 // create session WITHOUT ROWID
 
+    // Disable FK enforcement while tearing down so a leftover child row from a
+    // previous run doesn't block dropping its parent table; restore it after.
+    connect.setForeignKeysEnforced(false);
     QVERIFY( connect.dropTables() );
-
     QVERIFY( connect.createTables() ); // recreate table
+    connect.setForeignKeysEnforced(true);
 
     /* Create index */
 
@@ -1602,3 +1670,228 @@ void SqliteTests::lazyScroll() {
     (void) User::objects().filter( User::col().userId.expr("like", "lazy%") ).remove();
 }
 
+
+
+// ======================= later-feature tests ==============================
+
+void SqliteTests::keysetPaging() {
+    for (int i = 0; i < 25; i++) { Ticket t; t.subject = QString("k%1").arg(i); t.priority = 1; QVERIFY(t.save()); }
+    QVERIFY(Ticket::objects().count() >= 25);
+
+    QiKeyset<Ticket> pager("id", 10);
+    QiList<Ticket> p1 = pager.next();
+    QVERIFY(p1.size() == 10);
+    const int firstId = p1.at(0)->id->toInt();
+    const int lastId  = p1.at(9)->id->toInt();
+    QVERIFY(lastId > firstId);                       // ascending
+    QVERIFY(!pager.atEnd());
+
+    QiList<Ticket> p2 = pager.next();
+    QVERIFY(p2.size() == 10);
+    QVERIFY(p2.at(0)->id->toInt() > lastId);          // strictly after the cursor
+
+    // resume from a saved cursor
+    const QVariant cursor = pager.cursor();
+    QiKeyset<Ticket> resumed("id", 10);
+    resumed.seek(cursor);
+    QiList<Ticket> p3 = resumed.next();
+    QVERIFY(p3.size() > 0);
+    QVERIFY(p3.at(0)->id->toInt() > cursor.toInt());
+
+    (void) Ticket::objects().filter( Ticket::col().subject.expr("like", "k%") ).remove();
+}
+
+void SqliteTests::migrator() {
+    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "migtest");
+    db.setDatabaseName(":memory:");
+    QVERIFY(db.open());
+    QiConnection c;
+    QVERIFY(c.open(db, false));
+
+    QiMigrator m(c);
+    m.add(1, "create", [](QiConnection &cc) {
+        return cc.query().exec("CREATE TABLE mig (id INTEGER PRIMARY KEY, a TEXT)");
+    });
+    m.add(2, "add col", [](QiConnection &cc) {
+        return cc.query().exec("ALTER TABLE mig ADD COLUMN b TEXT");
+    });
+
+    QVERIFY(m.currentVersion() == 0);
+    QVERIFY(m.targetVersion() == 2);
+    QVERIFY(m.migrate() == 2);                        // applied both
+    QVERIFY(m.currentVersion() == 2);
+    QVERIFY(m.migrate() == 0);                        // idempotent
+
+    m.add(3, "boom", [](QiConnection &cc) {
+        return cc.query().exec("ALTER TABLE does_not_exist ADD COLUMN x TEXT");
+    });
+    QVERIFY(m.migrate() == -1);                       // failed
+    QVERIFY(m.currentVersion() == 2);                 // rolled back, unchanged
+    QVERIFY(!m.lastError().isEmpty());
+
+    db.close();
+    QSqlDatabase::removeDatabase("migtest");
+}
+
+void SqliteTests::relationsManyToMany() {
+    PostM p; p.postTitle = "hello"; QVERIFY(p.save());
+    LabelM a; a.labelName = "news"; QVERIFY(a.save());
+    LabelM b; b.labelName = "tech"; QVERIFY(b.save());
+    LabelM c; c.labelName = "old";  QVERIFY(c.save());
+
+    QVERIFY(p.labels().add(a));
+    p.labels() << b << c;
+    QVERIFY(p.labels().count() == 3);
+    QVERIFY(p.labels().contains(a));
+    QVERIFY(p.labels().remove(c));
+    QVERIFY(p.labels().count() == 2);
+    QVERIFY(!p.labels().contains(c));
+
+    QiList<LabelM> ls = p.labels().all();
+    QVERIFY(ls.size() == 2);
+
+    // reverse direction
+    QVERIFY(a.posts().count() == 1);
+    QVERIFY(a.posts().contains(p));
+
+    // set() replaces the whole set
+    QiList<LabelM> just; just.append(new LabelM(c));
+    QVERIFY(p.labels().set(just));
+    QVERIFY(p.labels().count() == 1);
+    QVERIFY(p.labels().contains(c));
+}
+
+void SqliteTests::relationsHasManyPrefetch() {
+    Blog b1; b1.blogTitle = "pf1"; QVERIFY(b1.save());
+    Blog b2; b2.blogTitle = "pf2"; QVERIFY(b2.save());
+    for (int i = 0; i < 3; i++) { Comment c; c.body = QString("b1-%1").arg(i); c.blog = b1; QVERIFY(c.save()); }
+    for (int i = 0; i < 2; i++) { Comment c; c.body = QString("b2-%1").arg(i); c.blog = b2; QVERIFY(c.save()); }
+
+    QiList<Blog> blogs; blogs.append(new Blog(b1)); blogs.append(new Blog(b2));
+    QiPrefetch<Comment> pf = qiPrefetchHasMany<Comment>(blogs, "blog");   // ONE query
+    QVERIFY(pf.forKey(b1.id()).size() == 3);
+    QVERIFY(pf.forKey(b2.id()).size() == 2);
+}
+
+void SqliteTests::converterField() {
+    Swatch s; s.swatchName = "sky"; s.color = QVariant::fromValue(Rgb{10, 20, 30}); QVERIFY(s.save());
+
+    Swatch loaded;
+    QVERIFY(loaded.load(Swatch::col().id == s.id()));
+    Rgb got = qvariant_cast<Rgb>(loaded.color());
+    QVERIFY(got.r == 10 && got.g == 20 && got.b == 30);
+
+    // stored form is the TEXT "r,g,b"
+    QSqlQuery q = connect.query();
+    q.exec(QString("SELECT color FROM swatch WHERE id = %1").arg(s.id().toInt()));
+    QVERIFY(q.next());
+    QVERIFY(q.value(0).toString() == "10,20,30");
+}
+
+void SqliteTests::lifecycleHooks() {
+    const int before = g_afterSaveCount;
+    Tracked t; t.trackTitle = "a"; QVERIFY(t.save());
+    QVERIFY(g_afterSaveCount == before + 1);           // afterSave fired
+    t.trackTitle = "b"; QVERIFY(t.save());
+    QVERIFY(g_afterSaveCount == before + 2);
+
+    Tracked locked; locked.trackTitle = "locked"; QVERIFY(locked.save());
+    QVERIFY(!locked.remove());                          // beforeRemove vetoed
+    QVERIFY(Tracked::objects().filter( Tracked::col().trackTitle == "locked" ).count() == 1);
+}
+
+void SqliteTests::autoTimestamps() {
+    Tracked t; t.trackTitle = "ts"; QVERIFY(t.save());
+    QVERIFY(!t.createdAt->isNull());                    // set on insert
+    QVERIFY(!t.updatedAt->isNull());                    // set on save
+    const QDateTime created = t.createdAt->toDateTime();
+
+    t.trackTitle = "ts2"; QVERIFY(t.save());
+    QVERIFY(t.createdAt->toDateTime() == created);      // createdAt unchanged
+    QVERIFY(t.updatedAt->toDateTime() >= created);      // updatedAt refreshed
+}
+
+void SqliteTests::softDelete() {
+    Tracked keep; keep.trackTitle = "keep"; QVERIFY(keep.save());
+    Tracked gone; gone.trackTitle = "gone"; QVERIFY(gone.save());
+
+    const int aliveBefore = qiAlive<Tracked>().count();
+    const int totalBefore = Tracked::objects().count();
+    QVERIFY(gone.softRemove());
+    QVERIFY(qiAlive<Tracked>().count()   == aliveBefore - 1);
+    QVERIFY(qiTrashed<Tracked>().count() >= 1);
+    QVERIFY(Tracked::objects().count()   == totalBefore);   // row still there
+}
+
+void SqliteTests::nestedTransaction() {
+    Ticket seed; seed.subject = "nt-seed"; seed.priority = 1; QVERIFY(seed.save());
+    const int base = Ticket::objects().count();
+
+    {
+        QiTransaction outer;
+        QVERIFY(outer.depth() == 1);
+        Ticket a; a.subject = "nt-outer"; a.priority = 1; QVERIFY(a.save());
+        {
+            QiTransaction inner;                        // SAVEPOINT
+            QVERIFY(inner.depth() == 2);
+            Ticket b; b.subject = "nt-inner"; b.priority = 1; QVERIFY(b.save());
+            QVERIFY(inner.rollback());                  // undo only b
+        }
+        QVERIFY(outer.commit());                        // keep a
+    }
+
+    QVERIFY(Ticket::objects().count() == base + 1);     // a kept, b gone
+    QVERIFY(Ticket::objects().filter( Ticket::col().subject == "nt-outer" ).count() == 1);
+    QVERIFY(Ticket::objects().filter( Ticket::col().subject == "nt-inner" ).count() == 0);
+    (void) Ticket::objects().filter( Ticket::col().subject.expr("like", "nt-%") ).remove();
+}
+
+void SqliteTests::rawTypedQuery() {
+    for (int i = 1; i <= 3; i++) { Ticket t; t.subject = QString("raw%1").arg(i); t.priority = i; QVERIFY(t.save()); }
+
+    // window function + subquery, mapped back into typed Ticket objects
+    QiList<Ticket> rows = qiRawQuery<Ticket>(
+        "SELECT *, row_number() OVER (ORDER BY priority DESC) AS rnk "
+        "FROM ticket WHERE subject LIKE ? ORDER BY priority DESC", { QString("raw%") });
+    QVERIFY(rows.size() == 3);
+    QVERIFY(rows.at(0)->subject->toString() == "raw3");   // highest priority first
+    QVERIFY(rows.at(0)->priority->toInt() == 3);
+
+    // IN (subquery)
+    QiList<Ticket> hi = qiRawQuery<Ticket>(
+        "SELECT * FROM ticket WHERE id IN (SELECT id FROM ticket WHERE priority >= ?)",
+        { 3 });
+    QVERIFY(hi.size() >= 1);
+
+    (void) Ticket::objects().filter( Ticket::col().subject.expr("like", "raw%") ).remove();
+}
+
+void SqliteTests::connectionPool() {
+    Ticket t; t.subject = "pool"; t.priority = 1; QVERIFY(t.save());
+
+    QiConnectionPool pool("QSQLITE", "tests.db");
+    QiConnection c = pool.connection();
+    QVERIFY(c.isOpen());
+    QVERIFY(Ticket::objects(c).count() == Ticket::objects().count());   // sees the same data
+
+    (void) Ticket::objects().filter( Ticket::col().subject == "pool" ).remove();
+}
+
+void SqliteTests::asyncQuery() {
+    Ticket t; t.subject = "async"; t.priority = 1; QVERIFY(t.save());
+    const int expected = Ticket::objects().count();
+
+    QiAsync::configure("QSQLITE", "tests.db");
+    QFuture<int> f = QiAsync::run([](QiConnection &c) {
+        return Ticket::objects(c).count();              // runs on a worker thread
+    });
+    QVERIFY(f.result() == expected);                    // blocks until done
+
+    // cancellation token
+    QiCancelToken token;
+    QVERIFY(!token.isCanceled());
+    token.cancel();
+    QVERIFY(token.isCanceled());
+
+    (void) Ticket::objects().filter( Ticket::col().subject == "async" ).remove();
+}

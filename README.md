@@ -81,7 +81,15 @@ step-by-step example:
   stores any value type in a column. → [`examples/relations`](examples/relations)
 - 🪝 **Lifecycle hooks, timestamps & soft delete** — `clean()` / `afterSave()` /
   `beforeRemove()`, automatic `createdAt` / `updatedAt`, and `softRemove()` with
-  `qiAlive<T>()` / `qiTrashed<T>()`. → [`examples/relations`](examples/relations)
+  `qiAlive<T>()` / `qiTrashed<T>()`.
+- 🧵 **Nested transactions** — `QiTransaction` nests via `SAVEPOINT`, so an inner
+  rollback undoes only its own work while the outer transaction continues.
+- 🧩 **Raw typed queries** — `qiRawQuery<T>("… WITH/OVER/subquery …")` runs any SQL
+  the builder can't express and maps rows back into typed models.
+- 🚀 **Batched eager-loading** — `qiPrefetchHasMany` / `qiPrefetchManyToMany` load
+  a whole list's relations in a fixed number of queries (no N+1).
+- 🧰 **Connection pool** — `QiConnectionPool` hands each thread its own connection;
+  `QiAsync` uses it, and `QiCancelToken` makes long async jobs cancellable. → [`examples/relations`](examples/relations)
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.

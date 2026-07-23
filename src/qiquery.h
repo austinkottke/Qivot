@@ -1,8 +1,13 @@
 #ifndef QiQUERY_H
 #define QiQUERY_H
 
+#include <QSqlQuery>
+#include <QSqlRecord>
+#include <QVariantList>
 #include <qisharedquery.h>
 #include <qilist.h>
+#include <qiconnection.h>
+#include <qimodelmetainfo.h>
 
 ///  QiQuery is a template class for performing database queries and record deletion on specific model
 /**
@@ -133,6 +138,58 @@ public:
 template <typename T>
 QiQuery<T>::QiQuery() : QiSharedQuery() {
     setMetaInfo(qiMetaInfo<T>());
+}
+
+/// Run arbitrary SQL and map each row into a typed `QiList<T>`.
+/**
+  The typed escape hatch for anything the query builder doesn't express — a
+  correlated subquery, a `WITH` CTE, a window function, `UNION`, etc. Write a
+  `SELECT` whose result columns are named like the model's fields; each row is
+  materialized into a `T`. Positional `?` placeholders bind from `binds`.
+
+\code
+    // running total via a window function, still returns typed Order objects:
+    auto rows = qiRawQuery<Order>(
+        "SELECT *, sum(total) OVER (ORDER BY id) AS runningTotal "
+        "FROM orders WHERE total > ?", { 1000 });
+
+    // IN (subquery):
+    auto vip = qiRawQuery<User>(
+        "SELECT * FROM user WHERE id IN (SELECT userId FROM orders GROUP BY userId "
+        "HAVING sum(total) > ?)", { 10000 });
+\endcode
+
+  Columns that don't match a field are ignored; extra computed columns (like
+  `runningTotal` above) are available on the row via the query but not stored on
+  the model unless the model declares a matching field.
+ */
+template <typename T>
+inline QiList<T> qiRawQuery(const QString &sql,
+                            const QVariantList &binds = QVariantList(),
+                            QiConnection connection = QiConnection::defaultConnection()) {
+    QiList<T> result;
+    QiModelMetaInfo *info = qiMetaInfo<T>();
+
+    QSqlQuery q = connection.query();
+    q.prepare(sql);
+    for (const QVariant &b : binds)
+        q.addBindValue(b);
+
+    if (q.exec()) {
+        const QStringList fields = info->fieldNameList();
+        while (q.next()) {
+            QiAbstractModel *model = info->create();
+            const QSqlRecord rec = q.record();
+            for (int i = 0; i < rec.count(); i++) {
+                const QString col = rec.fieldName(i);
+                if (fields.contains(col))
+                    info->setValue(model, col, rec.value(i));
+            }
+            result.append(static_cast<T *>(model));
+        }
+    }
+    connection.setLastQuery(q);
+    return result;
 }
 
 #endif // QiQUERY_H

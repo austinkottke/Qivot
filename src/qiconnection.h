@@ -208,6 +208,19 @@ public:
     /// Roll back the current transaction
     bool rollback();
 
+    // --- Nested transaction scopes (used by QiTransaction) -------------------
+    /// Begin a possibly-nested transaction scope.
+    /**
+      The outermost scope issues a real `BEGIN`; nested scopes issue a
+      `SAVEPOINT`, so transactions compose. Prefer the RAII QiTransaction guard.
+      @return the scope depth (1 = outermost), or 0 on failure.
+     */
+    int beginScope();
+    /// Commit a scope opened with beginScope() (`COMMIT` or `RELEASE`).
+    bool commitScope(int depth);
+    /// Roll back a scope opened with beginScope() (`ROLLBACK` or `ROLLBACK TO`).
+    bool rollbackScope(int depth);
+
     /// Enable or disable SQLite foreign-key enforcement on this connection
     /**
       SQLite ignores FOREIGN KEY constraints unless this is on. Qivot enables it

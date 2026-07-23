@@ -1266,6 +1266,19 @@ public:
     /// Roll back the current transaction
     bool rollback();
 
+    // --- Nested transaction scopes (used by QiTransaction) -------------------
+    /// Begin a possibly-nested transaction scope.
+    /**
+      The outermost scope issues a real `BEGIN`; nested scopes issue a
+      `SAVEPOINT`, so transactions compose. Prefer the RAII QiTransaction guard.
+      @return the scope depth (1 = outermost), or 0 on failure.
+     */
+    int beginScope();
+    /// Commit a scope opened with beginScope() (`COMMIT` or `RELEASE`).
+    bool commitScope(int depth);
+    /// Roll back a scope opened with beginScope() (`ROLLBACK` or `ROLLBACK TO`).
+    bool rollbackScope(int depth);
+
     /// Enable or disable SQLite foreign-key enforcement on this connection
     /**
       SQLite ignores FOREIGN KEY constraints unless this is on. Qivot enables it
@@ -1341,6 +1354,90 @@ private:
 };
 
 #endif // QiCONNECTION_H
+
+// ---- src/qiconnectionpool.h --------------------------------------
+#ifndef QiCONNECTIONPOOL_H
+#define QiCONNECTIONPOOL_H
+
+#include <QString>
+#include <QThread>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QSqlDatabase>
+
+/// A pool of database connections — one per thread.
+/**
+  SQLite requires a separate connection per thread. QiConnectionPool opens (and
+  caches) one connection per calling thread to the same database file, so each
+  worker thread gets an isolated, reusable QiConnection to the same data. It's
+  what QiAsync uses under the hood; you can also use it directly for your own
+  worker threads.
+
+  Requires a **file-based** database (a `:memory:` database is private to each
+  connection).
+
+\code
+    QiConnectionPool pool("QSQLITE", "app.db");
+    // on any thread:
+    QiConnection c = pool.connection();
+    auto rows = User::objects(c).all();
+\endcode
+ */
+class QiConnectionPool {
+public:
+    explicit QiConnectionPool(const QString &driver = QStringLiteral("QSQLITE"),
+                              const QString &database = QString())
+        : m_driver(driver), m_database(database) {}
+
+    /// (Re)configure which database the pool's connections open.
+    void configure(const QString &driver, const QString &database) {
+        QMutexLocker lock(&m_mutex);
+        m_driver = driver;
+        m_database = database;
+    }
+
+    /// A QiConnection for the current thread (opened and cached on first use).
+    QiConnection connection() {
+        QString driver, database;
+        {
+            QMutexLocker lock(&m_mutex);
+            driver = m_driver;
+            database = m_database;
+        }
+        const QString name = connectionName();
+
+        QSqlDatabase db;
+        {
+            // QSqlDatabase's registry isn't safe to mutate from many threads.
+            QMutexLocker lock(&m_mutex);
+            if (QSqlDatabase::contains(name)) {
+                db = QSqlDatabase::database(name);
+            } else {
+                db = QSqlDatabase::addDatabase(driver, name);
+                db.setDatabaseName(database);
+                db.open();
+            }
+        }
+
+        QiConnection conn;
+        (void)conn.open(db, false);   // isolated worker connection, never the default
+        return conn;
+    }
+
+private:
+    // Unique per (pool instance, thread) so distinct pools never collide.
+    QString connectionName() const {
+        return QStringLiteral("qivot_pool_%1_%2")
+            .arg(reinterpret_cast<quintptr>(this), 0, 16)
+            .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()), 0, 16);
+    }
+
+    QString m_driver;
+    QString m_database;
+    QMutex  m_mutex;
+};
+
+#endif // QiCONNECTIONPOOL_H
 
 // ---- src/qiwhere.h -----------------------------------------------
 #ifndef QiWHERE_H
@@ -2408,6 +2505,9 @@ inline QDebug operator<< (QDebug d, const QiList<T>& rhs ){
 #ifndef QiQUERY_H
 #define QiQUERY_H
 
+#include <QSqlQuery>
+#include <QSqlRecord>
+#include <QVariantList>
 
 ///  QiQuery is a template class for performing database queries and record deletion on specific model
 /**
@@ -2538,6 +2638,58 @@ public:
 template <typename T>
 QiQuery<T>::QiQuery() : QiSharedQuery() {
     setMetaInfo(qiMetaInfo<T>());
+}
+
+/// Run arbitrary SQL and map each row into a typed `QiList<T>`.
+/**
+  The typed escape hatch for anything the query builder doesn't express — a
+  correlated subquery, a `WITH` CTE, a window function, `UNION`, etc. Write a
+  `SELECT` whose result columns are named like the model's fields; each row is
+  materialized into a `T`. Positional `?` placeholders bind from `binds`.
+
+\code
+    // running total via a window function, still returns typed Order objects:
+    auto rows = qiRawQuery<Order>(
+        "SELECT *, sum(total) OVER (ORDER BY id) AS runningTotal "
+        "FROM orders WHERE total > ?", { 1000 });
+
+    // IN (subquery):
+    auto vip = qiRawQuery<User>(
+        "SELECT * FROM user WHERE id IN (SELECT userId FROM orders GROUP BY userId "
+        "HAVING sum(total) > ?)", { 10000 });
+\endcode
+
+  Columns that don't match a field are ignored; extra computed columns (like
+  `runningTotal` above) are available on the row via the query but not stored on
+  the model unless the model declares a matching field.
+ */
+template <typename T>
+inline QiList<T> qiRawQuery(const QString &sql,
+                            const QVariantList &binds = QVariantList(),
+                            QiConnection connection = QiConnection::defaultConnection()) {
+    QiList<T> result;
+    QiModelMetaInfo *info = qiMetaInfo<T>();
+
+    QSqlQuery q = connection.query();
+    q.prepare(sql);
+    for (const QVariant &b : binds)
+        q.addBindValue(b);
+
+    if (q.exec()) {
+        const QStringList fields = info->fieldNameList();
+        while (q.next()) {
+            QiAbstractModel *model = info->create();
+            const QSqlRecord rec = q.record();
+            for (int i = 0; i < rec.count(); i++) {
+                const QString col = rec.fieldName(i);
+                if (fields.contains(col))
+                    info->setValue(model, col, rec.value(i));
+            }
+            result.append(static_cast<T *>(model));
+        }
+    }
+    connection.setLastQuery(q);
+    return result;
 }
 
 #endif // QiQUERY_H
@@ -4011,6 +4163,9 @@ private:
 #include <QSqlQuery>
 #include <QVariant>
 #include <QSet>
+#include <QHash>
+#include <QMultiMap>
+#include <QPair>
 #include <QMutex>
 #include <QMutexLocker>
 
@@ -4148,6 +4303,104 @@ inline QiList<Target> qiManyToMany(Source &source, const QString &joinTable,
     QString tpk = tinfo->primaryKeyName();
     if (tpk.isEmpty()) tpk = QStringLiteral("id");
     return QiQuery<Target>().filter( QiWhere(tpk).in(ids) ).all();
+}
+
+
+// --- Batched eager-loading (avoid N+1) --------------------------------------
+//
+// Calling a relation accessor in a loop runs one query per parent. These
+// prefetch helpers load every related row for a whole list of parents in a
+// fixed number of queries, then group them in memory.
+
+/// The result of a prefetch: the fetched rows (owned) plus an index from each
+/// owner key to its related rows (non-owning pointers into `rows`).
+template <typename Target>
+struct QiPrefetch {
+    QiList<Target> rows;                        ///< all fetched rows (owns them)
+    QMultiMap<QString, Target *> index;         ///< ownerKey.toString() -> rows
+
+    /// The related rows for one owner key.
+    QList<Target *> forKey(const QVariant &ownerKey) const {
+        return index.values(ownerKey.toString());
+    }
+    int count() const { return rows.size(); }
+};
+
+/// One-to-many prefetch: load the children of every parent in ONE query.
+/**
+\code
+    QiList<User> users = User::objects().all();
+    QiPrefetch<Post> posts = qiPrefetchHasMany<Post>(users, "author");
+    for (int i = 0; i < users.size(); i++)
+        QList<Post*> theirs = posts.forKey(users.at(i)->id());   // no extra query
+\endcode
+ */
+template <typename Child, typename Parent>
+inline QiPrefetch<Child> qiPrefetchHasMany(QiList<Parent> parents, const QString &fkField) {
+    QiPrefetch<Child> out;
+    QList<QVariant> keys;
+    for (int i = 0; i < parents.size(); i++)
+        if (parents.at(i)) keys << qiKeyOf(*parents.at(i));
+    if (keys.isEmpty())
+        return out;
+
+    out.rows = QiQuery<Child>().filter( QiWhere(fkField).in(keys) ).all();   // one query
+    QiModelMetaInfo *info = qiMetaInfo<Child>();
+    for (int i = 0; i < out.rows.size(); i++) {
+        Child *c = out.rows.at(i);
+        if (c) out.index.insert(info->value(c, fkField).toString(), c);
+    }
+    return out;
+}
+
+/// Many-to-many prefetch: resolve the links for a whole list of owners in TWO
+/// queries (the join table, then the targets), instead of two per owner.
+template <typename Target, typename Owner>
+inline QiPrefetch<Target> qiPrefetchManyToMany(QiList<Owner> owners, const QString &joinTable,
+                                               const QString &ownerColumn, const QString &targetColumn,
+                                               QiConnection conn = QiConnection::defaultConnection()) {
+    QiPrefetch<Target> out;
+    QList<QVariant> ownerKeys;
+    for (int i = 0; i < owners.size(); i++)
+        if (owners.at(i)) ownerKeys << qiKeyOf(*owners.at(i));
+    if (ownerKeys.isEmpty())
+        return out;
+
+    // 1) every link for these owners
+    QStringList ph;
+    for (int i = 0; i < ownerKeys.size(); i++) ph << QStringLiteral("?");
+    QSqlQuery jq = conn.query();
+    jq.prepare(QStringLiteral("SELECT %1, %2 FROM %3 WHERE %1 IN (%4)")
+                   .arg(ownerColumn, targetColumn, joinTable, ph.join(QStringLiteral(","))));
+    for (const QVariant &k : ownerKeys) jq.addBindValue(k);
+
+    QList<QPair<QString, QVariant>> pairs;   // ownerKeyStr -> targetKey
+    QList<QVariant> targetKeys;
+    if (jq.exec()) {
+        while (jq.next()) {
+            pairs.append(qMakePair(jq.value(0).toString(), jq.value(1)));
+            targetKeys << jq.value(1);
+        }
+    }
+    if (targetKeys.isEmpty())
+        return out;
+
+    // 2) every target
+    QiModelMetaInfo *tinfo = qiMetaInfo<Target>();
+    QString tpk = tinfo->primaryKeyName();
+    if (tpk.isEmpty()) tpk = QStringLiteral("id");
+    out.rows = QiQuery<Target>(conn).filter( QiWhere(tpk).in(targetKeys) ).all();
+
+    QHash<QString, Target *> byKey;
+    for (int i = 0; i < out.rows.size(); i++) {
+        Target *t = out.rows.at(i);
+        if (t) byKey.insert(tinfo->value(t, tpk).toString(), t);
+    }
+    for (const QPair<QString, QVariant> &p : pairs) {
+        Target *t = byKey.value(p.second.toString(), nullptr);
+        if (t) out.index.insert(p.first, t);
+    }
+    return out;
 }
 
 
@@ -4692,38 +4945,54 @@ private:
                                     //         return / throw before this)
 \endcode
 
+  **Nesting.** QiTransactions nest safely: the outermost issues a real `BEGIN`
+  and each inner one a `SAVEPOINT`, so an inner rollback undoes only its own work
+  while the outer transaction continues.
+
+\code
+    QiTransaction outer;
+    a.save();
+    {
+        QiTransaction inner;        // SAVEPOINT
+        b.save();
+        inner.rollback();           // undoes only b (ROLLBACK TO savepoint)
+    }
+    outer.commit();                 // commits a
+\endcode
+
   @remarks It is non-copyable.
  */
 class QiTransaction {
 public:
-    /// Begin a transaction on the given connection (default: the default connection)
+    /// Begin a (possibly nested) transaction on the given connection.
     explicit QiTransaction(QiConnection connection = QiConnection::defaultConnection())
         : m_connection(connection) , m_committed(false) {
-        m_active = m_connection.transaction();
+        m_depth = m_connection.beginScope();   // 0 on failure, else the nesting depth
+        m_active = (m_depth > 0);
     }
 
     /// Roll back the transaction if it was neither committed nor rolled back
     ~QiTransaction() {
         if (m_active && !m_committed)
-            m_connection.rollback();
+            m_connection.rollbackScope(m_depth);
     }
 
-    /// Commit the transaction
+    /// Commit the transaction (`COMMIT`, or `RELEASE` for a nested one).
     /**
       @return TRUE if the commit succeeded.
      */
     bool commit() {
         if (!m_active || m_committed)
             return false;
-        m_committed = m_connection.commit();
+        m_committed = m_connection.commitScope(m_depth);
         return m_committed;
     }
 
-    /// Roll back the transaction explicitly
+    /// Roll back explicitly (`ROLLBACK`, or `ROLLBACK TO` for a nested one).
     bool rollback() {
         if (!m_active || m_committed)
             return false;
-        bool res = m_connection.rollback();
+        bool res = m_connection.rollbackScope(m_depth);
         m_committed = true; // prevent the destructor from rolling back again
         return res;
     }
@@ -4733,11 +5002,15 @@ public:
         return m_active && !m_committed;
     }
 
+    /// The nesting depth (1 = outermost). 0 if the transaction failed to begin.
+    int depth() const { return m_depth; }
+
 private:
     QiTransaction(const QiTransaction &) = delete;
     QiTransaction &operator=(const QiTransaction &) = delete;
 
     QiConnection m_connection;
+    int  m_depth = 0;
     bool m_active;
     bool m_committed;
 };
@@ -5041,6 +5314,9 @@ class QiConnectionPriv : public QSharedData
     QVector<QPair<int, std::function<void(const QString&)>>> changeHooks;
     int nextHookId = 1;
 
+    /// Nesting depth for QiTransaction (0 = none, 1 = outermost BEGIN, >1 = SAVEPOINT)
+    int txnDepth = 0;
+
     QMutex mutex;
 };
 
@@ -5256,6 +5532,52 @@ bool QiConnection::commit() {
 
 bool QiConnection::rollback() {
     return d->m_sql.rollback();
+}
+
+int QiConnection::beginScope() {
+    const int depth = d->txnDepth + 1;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.transaction();                 // outermost: real BEGIN
+    } else {
+        QSqlQuery q = d->m_sql.query();              // nested: SAVEPOINT
+        ok = q.exec(QStringLiteral("SAVEPOINT qi_sp_%1").arg(depth));
+    }
+    if (!ok)
+        return 0;
+    d->txnDepth = depth;
+    return depth;
+}
+
+bool QiConnection::commitScope(int depth) {
+    if (depth <= 0)
+        return false;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.commit();
+    } else {
+        QSqlQuery q = d->m_sql.query();
+        ok = q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+    }
+    if (d->txnDepth == depth)
+        d->txnDepth = depth - 1;
+    return ok;
+}
+
+bool QiConnection::rollbackScope(int depth) {
+    if (depth <= 0)
+        return false;
+    bool ok;
+    if (depth == 1) {
+        ok = d->m_sql.rollback();
+    } else {
+        QSqlQuery q = d->m_sql.query();
+        ok = q.exec(QStringLiteral("ROLLBACK TO qi_sp_%1").arg(depth))
+          && q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+    }
+    if (d->txnDepth == depth)
+        d->txnDepth = depth - 1;
+    return ok;
 }
 
 bool QiConnection::setForeignKeysEnforced(bool enabled) {

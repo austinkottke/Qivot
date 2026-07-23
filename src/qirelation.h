@@ -4,6 +4,9 @@
 #include <QSqlQuery>
 #include <QVariant>
 #include <QSet>
+#include <QHash>
+#include <QMultiMap>
+#include <QPair>
 #include <QMutex>
 #include <QMutexLocker>
 #include <qiquery.h>
@@ -144,6 +147,104 @@ inline QiList<Target> qiManyToMany(Source &source, const QString &joinTable,
     QString tpk = tinfo->primaryKeyName();
     if (tpk.isEmpty()) tpk = QStringLiteral("id");
     return QiQuery<Target>().filter( QiWhere(tpk).in(ids) ).all();
+}
+
+
+// --- Batched eager-loading (avoid N+1) --------------------------------------
+//
+// Calling a relation accessor in a loop runs one query per parent. These
+// prefetch helpers load every related row for a whole list of parents in a
+// fixed number of queries, then group them in memory.
+
+/// The result of a prefetch: the fetched rows (owned) plus an index from each
+/// owner key to its related rows (non-owning pointers into `rows`).
+template <typename Target>
+struct QiPrefetch {
+    QiList<Target> rows;                        ///< all fetched rows (owns them)
+    QMultiMap<QString, Target *> index;         ///< ownerKey.toString() -> rows
+
+    /// The related rows for one owner key.
+    QList<Target *> forKey(const QVariant &ownerKey) const {
+        return index.values(ownerKey.toString());
+    }
+    int count() const { return rows.size(); }
+};
+
+/// One-to-many prefetch: load the children of every parent in ONE query.
+/**
+\code
+    QiList<User> users = User::objects().all();
+    QiPrefetch<Post> posts = qiPrefetchHasMany<Post>(users, "author");
+    for (int i = 0; i < users.size(); i++)
+        QList<Post*> theirs = posts.forKey(users.at(i)->id());   // no extra query
+\endcode
+ */
+template <typename Child, typename Parent>
+inline QiPrefetch<Child> qiPrefetchHasMany(QiList<Parent> parents, const QString &fkField) {
+    QiPrefetch<Child> out;
+    QList<QVariant> keys;
+    for (int i = 0; i < parents.size(); i++)
+        if (parents.at(i)) keys << qiKeyOf(*parents.at(i));
+    if (keys.isEmpty())
+        return out;
+
+    out.rows = QiQuery<Child>().filter( QiWhere(fkField).in(keys) ).all();   // one query
+    QiModelMetaInfo *info = qiMetaInfo<Child>();
+    for (int i = 0; i < out.rows.size(); i++) {
+        Child *c = out.rows.at(i);
+        if (c) out.index.insert(info->value(c, fkField).toString(), c);
+    }
+    return out;
+}
+
+/// Many-to-many prefetch: resolve the links for a whole list of owners in TWO
+/// queries (the join table, then the targets), instead of two per owner.
+template <typename Target, typename Owner>
+inline QiPrefetch<Target> qiPrefetchManyToMany(QiList<Owner> owners, const QString &joinTable,
+                                               const QString &ownerColumn, const QString &targetColumn,
+                                               QiConnection conn = QiConnection::defaultConnection()) {
+    QiPrefetch<Target> out;
+    QList<QVariant> ownerKeys;
+    for (int i = 0; i < owners.size(); i++)
+        if (owners.at(i)) ownerKeys << qiKeyOf(*owners.at(i));
+    if (ownerKeys.isEmpty())
+        return out;
+
+    // 1) every link for these owners
+    QStringList ph;
+    for (int i = 0; i < ownerKeys.size(); i++) ph << QStringLiteral("?");
+    QSqlQuery jq = conn.query();
+    jq.prepare(QStringLiteral("SELECT %1, %2 FROM %3 WHERE %1 IN (%4)")
+                   .arg(ownerColumn, targetColumn, joinTable, ph.join(QStringLiteral(","))));
+    for (const QVariant &k : ownerKeys) jq.addBindValue(k);
+
+    QList<QPair<QString, QVariant>> pairs;   // ownerKeyStr -> targetKey
+    QList<QVariant> targetKeys;
+    if (jq.exec()) {
+        while (jq.next()) {
+            pairs.append(qMakePair(jq.value(0).toString(), jq.value(1)));
+            targetKeys << jq.value(1);
+        }
+    }
+    if (targetKeys.isEmpty())
+        return out;
+
+    // 2) every target
+    QiModelMetaInfo *tinfo = qiMetaInfo<Target>();
+    QString tpk = tinfo->primaryKeyName();
+    if (tpk.isEmpty()) tpk = QStringLiteral("id");
+    out.rows = QiQuery<Target>(conn).filter( QiWhere(tpk).in(targetKeys) ).all();
+
+    QHash<QString, Target *> byKey;
+    for (int i = 0; i < out.rows.size(); i++) {
+        Target *t = out.rows.at(i);
+        if (t) byKey.insert(tinfo->value(t, tpk).toString(), t);
+    }
+    for (const QPair<QString, QVariant> &p : pairs) {
+        Target *t = byKey.value(p.second.toString(), nullptr);
+        if (t) out.index.insert(p.first, t);
+    }
+    return out;
 }
 
 

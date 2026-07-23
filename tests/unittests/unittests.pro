@@ -6,6 +6,7 @@
 
 QT       += core
 QT       += testlib
+QT       += concurrent
 QT       -= gui
 
 TARGET = unittests

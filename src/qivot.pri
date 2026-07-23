@@ -35,6 +35,7 @@ QIVOT_HEADERS += \
     $$PWD/qicolumns.h \
     $$PWD/qirelation.h \
     $$PWD/qikeyset.h \
+    $$PWD/qiconnectionpool.h \
     $$PWD/qiftsindex.h \
     $$PWD/qitransaction.h \
     $$PWD/qimigrator.h \

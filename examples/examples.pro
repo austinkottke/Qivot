@@ -19,6 +19,9 @@ SUBDIRS += \
     keyset \
     asyncquery \
     manytomany \
+    dashboard \
+    prefetch \
+    savepoints \
     jsonnested \
     jsonhttp \
     qmlmodel \

@@ -154,6 +154,32 @@ private Q_SLOTS:
     /// Test lazy paging model for infinite scroll (QiLazyListModel)
     void lazyScroll();
 
+    // --- features added later -------------------------------------------
+    /// Keyset (cursor) pagination — QiKeyset forward paging + resume
+    void keysetPaging();
+    /// Versioned schema migrations — QiMigrator ordering / idempotency / rollback
+    void migrator();
+    /// Declarative many-to-many — QI_MANY_TO_MANY / QiRelationSet, both directions
+    void relationsManyToMany();
+    /// One-to-many accessor + batched prefetch (N+1 avoidance)
+    void relationsHasManyPrefetch();
+    /// Custom field type converter — QI_DECLARE_CONVERTER round-trip
+    void converterField();
+    /// Lifecycle hooks — afterSave / beforeRemove
+    void lifecycleHooks();
+    /// Auto timestamps — createdAt / updatedAt
+    void autoTimestamps();
+    /// Soft delete — softRemove + qiAlive / qiTrashed
+    void softDelete();
+    /// Nested transactions via SAVEPOINT (QiTransaction nesting)
+    void nestedTransaction();
+    /// Raw typed query — qiRawQuery maps subquery/window SQL to models
+    void rawTypedQuery();
+    /// Per-thread connection pool (QiConnectionPool)
+    void connectionPool();
+    /// Async query + cancellation token (QiAsync)
+    void asyncQuery();
+
 private:
     QiConnection connect;
     QSqlDatabase db;
