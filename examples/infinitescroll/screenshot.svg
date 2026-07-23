@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="820" viewBox="0 0 430 820" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="c1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF6CAB"/><stop offset="1" stop-color="#7366FF"/></linearGradient>
+    <linearGradient id="c2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#42E695"/><stop offset="1" stop-color="#3BB2B8"/></linearGradient>
+    <linearGradient id="c3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FDBB2D"/><stop offset="1" stop-color="#22C1C3"/></linearGradient>
+    <linearGradient id="c4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FC466B"/><stop offset="1" stop-color="#3F5EFB"/></linearGradient>
+  </defs>
+
+  <rect width="430" height="820" fill="#08080B"/>
+
+  <!-- cards -->
+  <g>
+    <rect x="16" y="118" width="398" height="208" rx="24" fill="url(#c1)"/>
+    <circle cx="330" cy="170" r="52" fill="#FFFFFF" opacity="0.14"/>
+    <rect x="32" y="134" width="86" height="22" rx="11" fill="#FFFFFF" opacity="0.30"/>
+    <text x="50" y="149" fill="#fff" font-size="12" font-weight="700">Abstract</text>
+    <text x="390" y="150" fill="#fff" font-size="13" font-weight="700" text-anchor="end" opacity="0.9">#1</text>
+    <text x="34" y="292" fill="#fff" font-size="30" font-weight="700">Cosmic Drift</text>
+    <rect x="34" y="304" width="96" height="26" rx="13" fill="#FFFFFF" opacity="0.20"/>
+    <text x="48" y="322" fill="#fff" font-size="13" font-weight="700">✦  4,823</text>
+
+    <rect x="16" y="342" width="398" height="208" rx="24" fill="url(#c2)"/>
+    <circle cx="90" cy="500" r="60" fill="#FFFFFF" opacity="0.12"/>
+    <rect x="32" y="358" width="82" height="22" rx="11" fill="#FFFFFF" opacity="0.30"/>
+    <text x="50" y="373" fill="#fff" font-size="12" font-weight="700">Gradient</text>
+    <text x="390" y="374" fill="#fff" font-size="13" font-weight="700" text-anchor="end" opacity="0.9">#2</text>
+    <text x="34" y="516" fill="#fff" font-size="30" font-weight="700">Neon Bloom</text>
+    <rect x="34" y="528" width="96" height="26" rx="13" fill="#FFFFFF" opacity="0.20"/>
+    <text x="48" y="546" fill="#fff" font-size="13" font-weight="700">✦  1,207</text>
+
+    <rect x="16" y="566" width="398" height="208" rx="24" fill="url(#c4)"/>
+    <circle cx="340" cy="620" r="48" fill="#FFFFFF" opacity="0.14"/>
+    <rect x="32" y="582" width="76" height="22" rx="11" fill="#FFFFFF" opacity="0.30"/>
+    <text x="50" y="597" fill="#fff" font-size="12" font-weight="700">Nebula</text>
+    <text x="390" y="598" fill="#fff" font-size="13" font-weight="700" text-anchor="end" opacity="0.9">#3</text>
+    <text x="34" y="740" fill="#fff" font-size="30" font-weight="700">Velvet Pulse</text>
+    <rect x="34" y="752" width="96" height="26" rx="13" fill="#FFFFFF" opacity="0.20"/>
+    <text x="48" y="770" fill="#fff" font-size="13" font-weight="700">✦  8,051</text>
+  </g>
+
+  <!-- glass header -->
+  <rect x="0" y="0" width="430" height="104" fill="#0A0A0F" opacity="0.9"/>
+  <line x1="0" y1="104" x2="430" y2="104" stroke="#FFFFFF" stroke-opacity="0.10"/>
+  <text x="18" y="70" fill="#fff" font-size="32" font-weight="700">Discover</text>
+  <text x="18" y="90" fill="#8A8A93" font-size="13">Infinite feed · streamed from SQLite, 24 at a time</text>
+  <rect x="300" y="60" width="114" height="30" rx="15" fill="#FFFFFF" opacity="0.11"/>
+  <text x="357" y="80" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">◆  72 loaded</text>
+
+  <!-- toast -->
+  <rect x="163" y="116" width="104" height="34" rx="17" fill="#202028" stroke="#FFFFFF" stroke-opacity="0.13"/>
+  <text x="215" y="138" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">＋24 loaded</text>
+</svg>

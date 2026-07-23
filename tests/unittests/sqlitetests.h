@@ -151,6 +151,9 @@ private Q_SLOTS:
     /// Test reactive change notifications (QiListModel live auto-refresh)
     void reactive();
 
+    /// Test lazy paging model for infinite scroll (QiLazyListModel)
+    void lazyScroll();
+
 private:
     QiConnection connect;
     QSqlDatabase db;

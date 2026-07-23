@@ -9,6 +9,12 @@
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
 </p>
 
+<p align="center">
+  <img src="docs/contacts-hero.png" alt="Qivot Contacts example — an iOS-style address book over 10,000 records" width="460">
+  <br>
+  <em><a href="examples/contacts">Contacts example</a> — an iOS-style address book over 10,000 live records: sticky A–Z sections, drag-to-jump index, and reactive search, all backed by SQLite through Qivot.</em>
+</p>
+
 Qivot is a modern **C++17 ORM for Qt and SQLite**. Declare your models as plain
 C++/Qt classes — no SQL, no `QObject` — then query, join, and full-text search
 them through a typed C++ API. And where a plain ORM stops, Qivot keeps going: it
@@ -42,6 +48,8 @@ HTTP on a worker thread**, writing the results into your database.
   a query result to a `ListView` with `QiListModel`.
 - ⚡ **[Reactive queries](#reactive-queries-live-models)** — a live `QiListModel`
   re-runs itself on any change, so bound views update automatically. No reload.
+- ♾️ **[Infinite scroll](#infinite-scroll-lazy-paging)** — `QiLazyListModel` pages
+  the DB in as a `ListView` scrolls, so huge tables load lazily, not all at once.
 - 🎯 **Modern & portable** — Qt **5.15 and 6** from one codebase, C++17,
   `[[nodiscard]]` on the operations that matter.
 - 📦 **[Header-only option](#install)** — drop in a single generated
@@ -142,8 +150,12 @@ Every snippet assumes an open connection. Runnable programs live in
 that shows string & composite keys, `CHECK`, enums, cascading foreign keys,
 has-many relations, bulk update and column migrations end to end;
 [`jsonnested`](examples/jsonnested), which round-trips a nested JSON document
-through a graph of related models; [`reactive`](examples/reactive), a Qt Quick
-to-do list whose view updates itself via live models; and
+through a graph of related models; [`contacts`](examples/contacts), a polished **iOS-style Contacts** app —
+alphabetical sticky sections, an A–Z scrubber, live search, avatar initials, and
+reactive add, all backed by SQLite; [`reactive`](examples/reactive), a Qt Quick
+to-do list whose view updates itself via live models;
+[`infinitescroll`](examples/infinitescroll), a 1,000-row list that pages in as you
+scroll; and
 [`jsonhttp`](examples/jsonhttp), which imports a REST API into SQLite on a worker
 thread (with a tiny local server so it runs offline).
 
@@ -1523,6 +1535,48 @@ int id = connection.addChangeHook([](const QString &table) {
 
 The runnable [`examples/reactive`](examples/reactive) app is a to-do list whose
 view never calls reload — tick "auto-add" and watch rows appear on their own.
+
+### Infinite scroll (lazy paging)
+
+`QiLazyListModel` loads records a page at a time via `canFetchMore()` /
+`fetchMore()`, so a `ListView` pulls the next `LIMIT`/`OFFSET` page as the user
+scrolls — never loading the whole table up front:
+
+```c++
+auto *model = new QiLazyListModel(this);
+model->setQuery( Item::objects().orderBy(Item::col().id.asc()), 50 );  // 50 rows / page
+model->reset();                                                        // load the first page
+```
+
+```qml
+// QML — the ListView fetches the next page automatically as you approach the end:
+ListView {
+    model: itemModel                       // a QiLazyListModel
+    delegate: ItemDelegate { text: name }
+    footer: BusyIndicator { running: !itemModel.atEnd }   // spinner until the last page
+}
+```
+
+`count` (rows loaded) and `atEnd` are properties you can bind to. Use a stable
+`orderBy` so paging stays consistent. The runnable
+[`examples/infinitescroll`](examples/infinitescroll) app scrolls a 1,000-row
+table 40 at a time.
+
+### Putting it together: an iOS-style Contacts app
+
+[`examples/contacts`](examples/contacts) is the showcase — a native-feeling
+Contacts screen built entirely on the pieces above:
+
+- a **reactive** `QiListModel` sorted by last name, so a new contact drops into
+  the right place the instant it's saved;
+- QML `ListView` **sticky A–Z sections** (`ViewSection.FirstCharacter` on the
+  `lastName` role);
+- an **A–Z scrubber** on the right that jumps via `store.indexForLetter(...)`
+  (drag it like on iOS);
+- **live search** that re-queries as you type;
+- colored **avatar initials**, an add dialog, and iOS-style styling.
+
+It's ~200 lines of QML over a ~60-line store — the ORM does the rest.
 
 ## Compatibility & requirements
 

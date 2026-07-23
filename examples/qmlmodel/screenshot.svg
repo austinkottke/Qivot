@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="560" viewBox="0 0 460 560" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <rect width="460" height="560" fill="#F2F2F2"/>
+
+  <!-- toolbar -->
+  <rect x="0" y="0" width="460" height="48" fill="#FAFAFA"/>
+  <line x1="0" y1="48" x2="460" y2="48" stroke="#D6D6DB"/>
+  <text x="14" y="31" fill="#111" font-size="19" font-weight="700">📚  Posts</text>
+  <text x="446" y="31" fill="#777" font-size="13" text-anchor="end">loaded 4</text>
+
+  <!-- add form -->
+  <rect x="12" y="62" width="238" height="34" rx="6" fill="#fff" stroke="#C9C9CE"/>
+  <text x="24" y="84" fill="#9A9AA0" font-size="14">New post title…</text>
+  <rect x="258" y="62" width="110" height="34" rx="6" fill="#fff" stroke="#C9C9CE"/>
+  <text x="270" y="84" fill="#9A9AA0" font-size="14">author</text>
+  <rect x="376" y="62" width="72" height="34" rx="6" fill="#007AFF"/>
+  <text x="412" y="84" fill="#fff" font-size="14" font-weight="600" text-anchor="middle">Add</text>
+
+  <!-- search -->
+  <rect x="12" y="106" width="436" height="34" rx="6" fill="#fff" stroke="#C9C9CE"/>
+  <text x="24" y="128" fill="#9A9AA0" font-size="14">🔍  Search title / author…</text>
+
+  <!-- post cards -->
+  <g>
+    <rect x="12" y="152" width="436" height="66" rx="8" fill="#fff" stroke="#D6D6DB"/>
+    <text x="26" y="180" fill="#111" font-size="15" font-weight="700">Announcing Qivot 1.0</text>
+    <text x="26" y="200" fill="#8A8A90" font-size="11">#101  ·  by Ada</text>
+    <text x="428" y="192" fill="#B0B0B5" font-size="16" text-anchor="end">🗑</text>
+
+    <rect x="12" y="226" width="436" height="66" rx="8" fill="#fff" stroke="#D6D6DB"/>
+    <text x="26" y="254" fill="#111" font-size="15" font-weight="700">Windowed vs lazy paging</text>
+    <text x="26" y="274" fill="#8A8A90" font-size="11">#102  ·  by Bob</text>
+    <text x="428" y="266" fill="#B0B0B5" font-size="16" text-anchor="end">🗑</text>
+
+    <rect x="12" y="300" width="436" height="66" rx="8" fill="#fff" stroke="#D6D6DB"/>
+    <text x="26" y="328" fill="#111" font-size="15" font-weight="700">Reactive models in 10 lines</text>
+    <text x="26" y="348" fill="#8A8A90" font-size="11">#103  ·  by Ada</text>
+    <text x="428" y="340" fill="#B0B0B5" font-size="16" text-anchor="end">🗑</text>
+
+    <rect x="12" y="374" width="436" height="66" rx="8" fill="#fff" stroke="#D6D6DB"/>
+    <text x="26" y="402" fill="#111" font-size="15" font-weight="700">Full-text search with FTS5</text>
+    <text x="26" y="422" fill="#8A8A90" font-size="11">#104  ·  by Chen</text>
+    <text x="428" y="414" fill="#B0B0B5" font-size="16" text-anchor="end">🗑</text>
+  </g>
+</svg>

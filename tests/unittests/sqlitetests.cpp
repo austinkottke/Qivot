@@ -1560,3 +1560,45 @@ void SqliteTests::reactive() {
     QVERIFY(model.count() == before);
 }
 
+void SqliteTests::lazyScroll() {
+    // Seed 25 rows.
+    QiList<User> seed;
+    QiListWriter writer(&seed);
+    for (int i = 0; i < 25; i++)
+        writer << QString("lazy%1").arg(i, 3, 10, QChar('0')) << "L" << "12345678" << writer.next();
+    QVERIFY(seed.save());
+
+    QiLazyListModel model;
+    model.setQuery(
+        User::objects().filter( User::col().userId.expr("like", "lazy%") )
+                       .orderBy( User::col().userId.asc() ),
+        10);                                   // 10 rows per page
+    model.reset();
+
+    QVERIFY(model.count() == 10);              // first page loaded eagerly
+    QVERIFY(!model.atEnd());
+    QVERIFY(model.canFetchMore(QModelIndex()));
+
+    model.fetchMore(QModelIndex());
+    QVERIFY(model.count() == 20);              // page 2
+
+    model.fetchMore(QModelIndex());
+    QVERIFY(model.count() == 25);              // page 3 (short) -> end
+    QVERIFY(model.atEnd());
+    QVERIFY(!model.canFetchMore(QModelIndex()));
+
+    model.fetchMore(QModelIndex());            // no-op past the end
+    QVERIFY(model.count() == 25);
+
+    // data() maps correctly across pages, in order.
+    int uidRole = -1;
+    const QHash<int, QByteArray> roles = model.roleNames();
+    for (auto it = roles.begin(); it != roles.end(); ++it)
+        if (it.value() == "userId") uidRole = it.key();
+    QVERIFY(uidRole != -1);
+    QVERIFY(model.data(model.index(0, 0),  uidRole).toString() == "lazy000");
+    QVERIFY(model.data(model.index(24, 0), uidRole).toString() == "lazy024");
+
+    (void) User::objects().filter( User::col().userId.expr("like", "lazy%") ).remove();
+}
+

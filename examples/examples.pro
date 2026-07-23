@@ -18,4 +18,6 @@ SUBDIRS += \
     jsonhttp \
     qmlmodel \
     reactive \
+    infinitescroll \
+    contacts \
     index
