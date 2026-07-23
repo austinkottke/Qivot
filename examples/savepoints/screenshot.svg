@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="760" viewBox="0 0 400 760" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <rect width="400" height="760" rx="22" fill="#0B0B10"/>
+  <clipPath id="cl"><rect width="400" height="760" rx="22"/></clipPath>
+  <g clip-path="url(#cl)">
+    <text x="20" y="46" fill="#fff" font-size="26" font-weight="700">Savepoint Sandbox</text>
+    <text x="20" y="66" fill="#8A8A93" font-size="12">Roll a scope back to undo just its edits</text>
+
+    <!-- depth strip -->
+    <rect x="16" y="84" width="368" height="66" rx="16" fill="#161622" stroke="#5E5CE6"/>
+    <text x="32" y="123" fill="#C8C8CE" font-size="14">Open scopes:</text>
+    <rect x="132" y="104" width="34" height="26" rx="7" fill="#2A2A38"/><text x="149" y="121" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">TX</text>
+    <rect x="174" y="104" width="34" height="26" rx="7" fill="#5E5CE6"/><text x="191" y="121" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">SP2</text>
+
+    <!-- scope controls -->
+    <rect x="40" y="162" width="116" height="42" rx="21" fill="#5E5CE6"/>
+    <text x="98" y="188" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Begin scope</text>
+    <rect x="162" y="162" width="106" height="42" rx="21" fill="#3A2030" stroke="#FF375F"/>
+    <text x="215" y="188" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Roll back</text>
+    <rect x="274" y="162" width="86" height="42" rx="21" fill="#12241A" stroke="#30D158"/>
+    <text x="317" y="188" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Commit</text>
+
+    <!-- add row -->
+    <rect x="16" y="218" width="368" height="44" rx="10" fill="#16161D"/>
+    <text x="28" y="245" fill="#9A9AA0" font-size="14">Add an item…</text>
+    <rect x="314" y="224" width="64" height="32" rx="8" fill="#0A84FF"/>
+    <text x="346" y="245" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Add</text>
+
+    <!-- items -->
+    <g>
+      <rect x="16" y="274" width="368" height="48" rx="10" fill="#16161D"/>
+      <text x="30" y="303" fill="#fff" font-size="15">Committed row</text>
+      <text x="366" y="304" fill="#8A8A93" font-size="14" text-anchor="end">✕</text>
+
+      <rect x="16" y="328" width="368" height="48" rx="10" fill="#16161D"/>
+      <text x="30" y="357" fill="#fff" font-size="15">outer A</text>
+      <rect x="286" y="338" width="60" height="20" rx="10" fill="#161622"/><text x="316" y="352" fill="#8E8BFF" font-size="9" font-weight="700" text-anchor="middle">in TX</text>
+      <text x="366" y="358" fill="#8A8A93" font-size="14" text-anchor="end">✕</text>
+
+      <rect x="16" y="382" width="368" height="48" rx="10" fill="#16161D"/>
+      <text x="30" y="411" fill="#fff" font-size="15">inner B</text>
+      <rect x="286" y="392" width="60" height="20" rx="10" fill="#221626"/><text x="316" y="406" fill="#C77DFF" font-size="9" font-weight="700" text-anchor="middle">in SP2</text>
+      <text x="366" y="412" fill="#8A8A93" font-size="14" text-anchor="end">✕</text>
+    </g>
+
+    <!-- explanation -->
+    <rect x="16" y="452" width="368" height="150" rx="14" fill="#101018"/>
+    <text x="30" y="482" fill="#C8C8CE" font-size="13" font-weight="700">Try it</text>
+    <text x="30" y="508" fill="#8A8A93" font-size="12">1.  Begin scope · add “outer A”</text>
+    <text x="30" y="530" fill="#8A8A93" font-size="12">2.  Begin scope · add “inner B”   →  depth SP2</text>
+    <text x="30" y="552" fill="#FF6482" font-size="12">3.  Roll back   →  “inner B” vanishes, “A” stays</text>
+    <text x="30" y="574" fill="#5CE08A" font-size="12">4.  Commit   →  “outer A” is kept</text>
+    <text x="30" y="596" fill="#6D6D75" font-size="11">first scope = BEGIN · nested = SAVEPOINT</text>
+  </g>
+</svg>

@@ -4,6 +4,10 @@ Open nested transaction "scopes", edit rows inside them, then roll a scope back
 to undo just its edits — while outer scopes keep theirs. The first scope is a
 real `BEGIN`; deeper ones are `SAVEPOINT`s, so transactions compose.
 
+<img src="screenshot.svg" alt="Nested-scope depth strip, scope controls and item list" width="300">
+
+*(stylized mockup — run it to add items and roll scopes back live)*
+
 > **Run it**
 > ```sh
 > cd examples/savepoints

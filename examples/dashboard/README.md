@@ -9,6 +9,10 @@ one app:
   runs on a background thread with its own pooled connection, shows a live
   progress bar, and can be **cancelled** mid-flight.
 
+<img src="screenshot.svg" alt="Leaderboard with rank medals, revenue bars and running totals" width="300">
+
+*(stylized mockup — run it for the live leaderboard + async progress)*
+
 > **Run it**
 > ```sh
 > cd examples/dashboard

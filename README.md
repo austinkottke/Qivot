@@ -63,7 +63,8 @@ step-by-step example:
 
 - ⚙️ **Async queries** — run any query on a worker thread and get a `QFuture`
   back, so the UI never blocks. `QiAsync::run([](QiConnection &c){ … })` opens an
-  isolated per-thread connection for you. → [`examples/asyncquery`](examples/asyncquery)
+  isolated per-thread connection for you. → [`examples/asyncquery`](examples/asyncquery),
+  [`examples/dashboard`](examples/dashboard)
 - 🪜 **Keyset (cursor) pagination** — `QiKeyset<T>` seeks past the last key
   (`WHERE id > :cursor`) instead of `OFFSET`, so deep paging stays fast; cursors
   are resumable. → [`examples/keyset`](examples/keyset)
@@ -81,15 +82,19 @@ step-by-step example:
   stores any value type in a column. → [`examples/relations`](examples/relations)
 - 🪝 **Lifecycle hooks, timestamps & soft delete** — `clean()` / `afterSave()` /
   `beforeRemove()`, automatic `createdAt` / `updatedAt`, and `softRemove()` with
-  `qiAlive<T>()` / `qiTrashed<T>()`.
+  `qiAlive<T>()` / `qiTrashed<T>()`. → [`examples/relations`](examples/relations)
 - 🧵 **Nested transactions** — `QiTransaction` nests via `SAVEPOINT`, so an inner
   rollback undoes only its own work while the outer transaction continues.
+  → [`examples/savepoints`](examples/savepoints)
 - 🧩 **Raw typed queries** — `qiRawQuery<T>("… WITH/OVER/subquery …")` runs any SQL
-  the builder can't express and maps rows back into typed models.
+  the builder can't express (CTEs, window functions) and maps rows back into typed
+  models. → [`examples/dashboard`](examples/dashboard)
 - 🚀 **Batched eager-loading** — `qiPrefetchHasMany` / `qiPrefetchManyToMany` load
   a whole list's relations in a fixed number of queries (no N+1).
-- 🧰 **Connection pool** — `QiConnectionPool` hands each thread its own connection;
-  `QiAsync` uses it, and `QiCancelToken` makes long async jobs cancellable. → [`examples/relations`](examples/relations)
+  → [`examples/prefetch`](examples/prefetch)
+- 🧰 **Connection pool + cancellable async** — `QiConnectionPool` hands each thread
+  its own connection; `QiAsync` uses it, and `QiCancelToken` cancels long jobs.
+  → [`examples/dashboard`](examples/dashboard)
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.
@@ -752,6 +757,10 @@ QiList<User> users = QiJsonMapper::map<User>(array);
 users.save();                       // one prepared statement, one transaction
 ```
 
+**Transactions nest.** Open another `QiTransaction` inside an active one and it
+uses a `SAVEPOINT`, so an inner `rollback()` undoes only its own work while the
+outer transaction continues — see the [savepoints example](examples/savepoints).
+
 ### Foreign keys
 
 `QiForeignKey<T>` links a row to another model's row. Assign a loaded model to
@@ -762,6 +771,14 @@ fields.
 > when it opens a connection, so a `QiForeignKey` referencing a non-existent row
 > is rejected. Toggle it with `connection.setForeignKeysEnforced(false)` if you
 > need the legacy (unchecked) behaviour.
+
+**Relations, both ways.** Declare the reverse of a foreign key with
+`QI_HAS_MANY(Book, books, "author")` → `author.books()` (a composable query), and
+a **many-to-many** with `QI_MANY_TO_MANY(Tag, tags, "photo_tag")` on each side →
+`photo.tags().add(tag)` / `.all()` / `.remove()` / `.contains()`, the join table
+created for you. Load a whole list's relations without N+1 using
+`qiPrefetchHasMany`. See [`relations`](examples/relations), [`manytomany`](examples/manytomany),
+and [`prefetch`](examples/prefetch).
 
 ```c++
 class FriendShip : public QiModel {
@@ -1644,10 +1661,14 @@ Modernization:
 
 ## Limitations
 
-- Not every SQL statement/option is implemented — most can be added on request.
+- SQLite only (FTS5, `WITHOUT ROWID`, savepoints and the SQL dialect assume it).
+- The typed query builder doesn't cover every construct (correlated subqueries,
+  CTEs, window functions) — use [`qiRawQuery<T>`](examples/dashboard) for those; it
+  still returns typed models.
 - No `CREATE TRIGGER` in the public API (triggers are used internally for FTS sync).
-- Multi-database access is designed for but untested. For multithreading, use one
-  `QiConnection` per thread (`open(db, false)`); a general helper is still in progress.
+- Multithreading uses one connection per thread — [`QiConnectionPool`](examples/dashboard)
+  (and `QiAsync`) handle this for you; a `:memory:` database can't be shared across
+  threads, so async needs a file-based database.
 - `save()` uses `REPLACE`, so updating a row that is referenced by a foreign key is
   rejected under FK enforcement — use [`upsert()`](#updating-and-deleting)
   (non-destructive) or `connection.setForeignKeysEnforced(false)`.

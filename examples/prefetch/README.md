@@ -4,6 +4,10 @@ Load a one-to-many relation for a whole list without firing one query per parent
 Two buttons load the same **authors + their books** two ways, and a live counter
 shows the **real** number of SQL statements each ran.
 
+<img src="screenshot.svg" alt="Query-count card (2 queries, green) with authors and their books" width="300">
+
+*(stylized mockup — the card flips to a red “31” on the N+1 path)*
+
 > **Run it**
 > ```sh
 > cd examples/prefetch
