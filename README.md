@@ -56,6 +56,34 @@ HTTP on a worker thread**, writing the results into your database.
   [`dist/qivot.hpp`](dist/qivot.hpp); no library to build. (Or use qmake / CMake
   as a static lib.)
 
+## 🆕 What's new
+
+Recent additions that take Qivot from "capable" to "scales" — each with a
+step-by-step example:
+
+- ⚙️ **Async queries** — run any query on a worker thread and get a `QFuture`
+  back, so the UI never blocks. `QiAsync::run([](QiConnection &c){ … })` opens an
+  isolated per-thread connection for you. → [`examples/asyncquery`](examples/asyncquery)
+- 🪜 **Keyset (cursor) pagination** — `QiKeyset<T>` seeks past the last key
+  (`WHERE id > :cursor`) instead of `OFFSET`, so deep paging stays fast; cursors
+  are resumable. → [`examples/keyset`](examples/keyset)
+- 🪟 **Windowed list model** — `QiWindowedListModel` counts once, then fetches only
+  the pages you scroll to (and evicts old ones) — a 10k-row list on a tiny memory
+  footprint, with a working A–Z jump. → [`examples/contacts`](examples/contacts)
+- 🧱 **Versioned migrations** — `QiMigrator` tracks the schema version in
+  `PRAGMA user_version` and runs pending migrations in order, transactionally and
+  idempotently. → [`examples/migrations`](examples/migrations)
+- 🔗 **Many-to-many** — `qiAttach` / `qiDetach` / `qiManyToMany` over a join table.
+  → [`examples/relations`](examples/relations)
+- 🎛️ **Custom type converters** — `QI_DECLARE_CONVERTER(Type, toStorage, fromStorage)`
+  stores any value type in a column. → [`examples/relations`](examples/relations)
+- 🪝 **Lifecycle hooks, timestamps & soft delete** — `clean()` / `afterSave()` /
+  `beforeRemove()`, automatic `createdAt` / `updatedAt`, and `softRemove()` with
+  `qiAlive<T>()` / `qiTrashed<T>()`. → [`examples/relations`](examples/relations)
+
+See the full, runnable set — most as tutorials — in
+**[`examples/`](examples/README.md)**.
+
 ## 🚀 At a glance
 
 ```c++

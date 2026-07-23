@@ -113,6 +113,32 @@ public:
      */
     [[nodiscard]] bool remove();
 
+    /// Soft-delete: stamp the record's `deletedAt` column with the current time
+    /// and save it, instead of DELETEing the row.
+    /**
+      Requires the model to declare a `deletedAt` field (QiField<QDateTime>).
+      The row stays in the table; query live vs. trashed rows with qiAlive<T>()
+      / qiTrashed<T>() (see qirelation.h). Returns false (with lastError set) if
+      the model has no `deletedAt` field.
+     */
+    [[nodiscard]] bool softRemove();
+
+    // --- Lifecycle hooks ---------------------------------------------------
+    // Override these to run logic around persistence. clean() (above) is the
+    // pre-save validation hook; these fire around successful operations.
+
+    /// Called after a successful save()/upsert(). `created` is true for an insert.
+    virtual void afterSave(bool created) { Q_UNUSED(created); }
+
+    /// Called before remove(); return false to veto the deletion.
+    virtual bool beforeRemove() { return true; }
+
+    /// Called after a successful remove().
+    virtual void afterRemove() {}
+
+    /// Called after a successful load() populated this record.
+    virtual void afterLoad() {}
+
     /// Model fields validation
     /**
         This method should be used to provide custom model validation, and to modify attributes on your model if desired.

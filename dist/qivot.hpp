@@ -1724,6 +1724,51 @@ public:
     }
 };
 
+/// Store an arbitrary C++ value type in a column via a pair of conversion functions.
+/**
+  Teaches QiField how to persist a custom type `TYPE`. Provide two free/static
+  functions (by name — not inline lambdas, so the macro stays comma-safe):
+
+    - `TO_STORAGE_FN(const TYPE&) -> QVariant`   a value SQLite can store
+                                                 (int / double / QString / ...)
+    - `FROM_STORAGE_FN(const QVariant&) -> TYPE` rebuild the value when loading
+
+  `TYPE` must be registered with `Q_DECLARE_METATYPE(TYPE)`, and the column's SQL
+  type should be set with `QI_FIELD_AS(field, "TEXT")` (or INTEGER/REAL/…).
+
+\code
+    struct GeoPoint { double lat, lng; };
+    Q_DECLARE_METATYPE(GeoPoint)
+
+    static QVariant geoToStorage(const GeoPoint &p) {
+        return QStringLiteral("%1,%2").arg(p.lat).arg(p.lng);
+    }
+    static GeoPoint geoFromStorage(const QVariant &v) {
+        const QStringList s = v.toString().split(',');
+        return GeoPoint{ s.value(0).toDouble(), s.value(1).toDouble() };
+    }
+    QI_DECLARE_CONVERTER(GeoPoint, geoToStorage, geoFromStorage)
+
+    // in the model:  QI_FIELD_AS(location, "TEXT")
+\endcode
+
+  Place the macro (and the two functions) before any model that uses
+  `QiField<TYPE>`.
+ */
+#define QI_DECLARE_CONVERTER(TYPE, TO_STORAGE_FN, FROM_STORAGE_FN)          \
+    template <> inline bool QiField<TYPE>::set(QVariant value) {            \
+        if (value.isValid() && !value.isNull()                             \
+                && value.userType() != qMetaTypeId<TYPE>())                \
+            value = QVariant::fromValue<TYPE>( FROM_STORAGE_FN(value) );    \
+        return QiBaseField::set(value);                                     \
+    }                                                                       \
+    template <> inline QVariant QiField<TYPE>::get(bool convert) const {    \
+        QVariant _v = QiBaseField::get(convert);                           \
+        if (convert && _v.userType() == qMetaTypeId<TYPE>())               \
+            return QVariant( TO_STORAGE_FN( _v.value<TYPE>() ) );          \
+        return _v;                                                          \
+    }
+
 #endif // QiFIELD_H
 
 // ---- src/qifieldref.h --------------------------------------------
@@ -2790,6 +2835,32 @@ public:
      */
     [[nodiscard]] bool remove();
 
+    /// Soft-delete: stamp the record's `deletedAt` column with the current time
+    /// and save it, instead of DELETEing the row.
+    /**
+      Requires the model to declare a `deletedAt` field (QiField<QDateTime>).
+      The row stays in the table; query live vs. trashed rows with qiAlive<T>()
+      / qiTrashed<T>() (see qirelation.h). Returns false (with lastError set) if
+      the model has no `deletedAt` field.
+     */
+    [[nodiscard]] bool softRemove();
+
+    // --- Lifecycle hooks ---------------------------------------------------
+    // Override these to run logic around persistence. clean() (above) is the
+    // pre-save validation hook; these fire around successful operations.
+
+    /// Called after a successful save()/upsert(). `created` is true for an insert.
+    virtual void afterSave(bool created) { Q_UNUSED(created); }
+
+    /// Called before remove(); return false to veto the deletion.
+    virtual bool beforeRemove() { return true; }
+
+    /// Called after a successful remove().
+    virtual void afterRemove() {}
+
+    /// Called after a successful load() populated this record.
+    virtual void afterLoad() {}
+
     /// Model fields validation
     /**
         This method should be used to provide custom model validation, and to modify attributes on your model if desired.
@@ -3250,6 +3321,100 @@ public:
 
 #endif // QiJSONMAPPER_H
 
+// ---- src/qikeyset.h ----------------------------------------------
+#ifndef QiKEYSET_H
+#define QiKEYSET_H
+
+#include <QString>
+#include <QVariant>
+
+/// Keyset (a.k.a. cursor / "seek") pagination.
+/**
+  Pages through an ordered result by remembering the last row's key and asking
+  for rows *after* it — `WHERE key > :cursor ORDER BY key LIMIT n` — instead of
+  `LIMIT n OFFSET n*page`. Each page is a single index seek, so it stays fast no
+  matter how deep you scroll; `OFFSET` re-scans every skipped row and gets slower
+  the further you go.
+
+  The key column must be unique and match the sort order — typically the primary
+  key. Pass an optional base filter to page through a subset.
+
+\code
+    QiKeyset<Event> pager("id", 100);          // key column, page size
+    while (!pager.atEnd()) {
+        QiList<Event> page = pager.next();
+        for (int i = 0; i < page.size(); i++) { ... }
+    }
+
+    // Save pager.cursor() and later resume exactly where you left off:
+    pager.seek(savedCursor);
+\endcode
+ */
+template <typename T>
+class QiKeyset {
+public:
+    /// @param keyField    unique column to seek on (e.g. "id")
+    /// @param pageSize    rows per page
+    /// @param ascending   sort/seek direction
+    /// @param baseFilter  optional condition ANDed into every page
+    explicit QiKeyset(const QString &keyField, int pageSize = 50,
+                      bool ascending = true, QiWhere baseFilter = QiWhere())
+        : m_key(keyField), m_size(pageSize > 0 ? pageSize : 50),
+          m_asc(ascending), m_base(baseFilter) {}
+
+    /// Fetch the next page (empty once exhausted).
+    QiList<T> next() {
+        if (m_atEnd)
+            return QiList<T>();
+
+        QiWhere cond = m_base;
+        if (m_hasCursor) {
+            QiWhere seek = m_asc ? (QiWhere(m_key) > m_cursor)
+                                 : (QiWhere(m_key) < m_cursor);
+            cond = m_base.isNull() ? seek : (m_base && seek);
+        }
+
+        QiQuery<T> q;
+        if (!cond.isNull())
+            q = q.filter(cond);
+        q = q.orderBy(m_key + (m_asc ? QStringLiteral(" asc") : QStringLiteral(" desc")))
+             .limit(m_size);
+
+        QiList<T> page = q.all();
+        if (page.size() < m_size)
+            m_atEnd = true;
+        if (page.size() > 0) {
+            QiModelMetaInfo *info = qiMetaInfo<T>();
+            m_cursor = info->value(page.at(page.size() - 1), m_key);
+            m_hasCursor = true;
+        }
+        return page;
+    }
+
+    /// True once a short/empty page proved there's nothing more.
+    bool atEnd() const { return m_atEnd; }
+
+    /// The last key seen — a compact, stable cursor you can persist and resume.
+    QVariant cursor() const { return m_cursor; }
+
+    /// Resume paging from a saved cursor (the next page starts after `key`).
+    void seek(const QVariant &key) { m_cursor = key; m_hasCursor = true; m_atEnd = false; }
+
+    /// Start over from the beginning.
+    void reset() { m_cursor = QVariant(); m_hasCursor = false; m_atEnd = false; }
+
+private:
+    QString  m_key;
+    int      m_size;
+    bool     m_asc;
+    QiWhere  m_base;
+    QVariant m_cursor;
+    bool     m_hasCursor = false;
+    bool     m_atEnd = false;
+};
+
+#endif // QiKEYSET_H
+
 // ---- src/qistream.h ----------------------------------------------
 /**
     @author Ben Lau
@@ -3708,6 +3873,77 @@ inline QiLogStream qiLog(int category = QiLog::General,
 
 #endif // QiLOG_H
 
+// ---- src/qimigrator.h --------------------------------------------
+#ifndef QiMIGRATOR_H
+#define QiMIGRATOR_H
+
+#include <QVector>
+#include <QString>
+#include <functional>
+
+/// Versioned schema migrations, tracked by SQLite's `PRAGMA user_version`.
+/**
+  Register migrations keyed by an increasing version number, then call
+  migrate(): every migration whose version is greater than the database's
+  current `user_version` runs in order, each inside its own transaction, and
+  `user_version` is advanced to match. Re-running is a no-op — already-applied
+  migrations are skipped — so migrate() is safe to call on every startup.
+
+  Each step is a callable `bool(QiConnection&)`; return false (or let a Qivot
+  call fail) to abort — the step's transaction is rolled back and the version is
+  left unchanged.
+
+\code
+    QiMigrator m(conn);
+    m.add(1, "create tables", [](QiConnection &c){
+        return c.query().exec("CREATE TABLE note (id INTEGER PRIMARY KEY, title TEXT)");
+    });
+    m.add(2, "add body", [](QiConnection &c){
+        return c.query().exec("ALTER TABLE note ADD COLUMN body TEXT");
+    });
+
+    int applied = m.migrate();          // -> number of migrations run this time
+    if (applied < 0) qWarning() << m.lastError();
+\endcode
+ */
+class QiMigrator {
+public:
+    /// A single migration: mutate the schema, return true on success.
+    using Step = std::function<bool(QiConnection &)>;
+
+    explicit QiMigrator(QiConnection connection = QiConnection::defaultConnection());
+
+    /// Register a migration to `version` (must be > 0). add() order is irrelevant;
+    /// migrations always run in ascending version order.
+    void add(int version, const QString &name, Step step);
+
+    /// The database's current schema version (`PRAGMA user_version`; 0 if fresh).
+    int currentVersion() const;
+
+    /// The highest registered migration version.
+    int targetVersion() const;
+
+    /// Run every pending migration in order.
+    /**
+      @return the number of migrations applied this call (0 if already
+              up to date), or -1 on failure (see lastError()).
+     */
+    int migrate();
+
+    /// Human-readable reason migrate() returned -1 (empty on success).
+    QString lastError() const;
+
+private:
+    struct Entry { int version; QString name; Step step; };
+    void setUserVersion(int version);
+
+    mutable QiConnection m_conn;   // query() is non-const; currentVersion() is logically const
+    QVector<Entry> m_steps;
+    QString        m_error;
+};
+
+#endif // QiMIGRATOR_H
+
 // ---- src/qiqueryrules.h ------------------------------------------
 #ifndef QiQUERYRULES_H
 #define QiQUERYRULES_H
@@ -3772,6 +4008,8 @@ private:
 #ifndef QiRELATION_H
 #define QiRELATION_H
 
+#include <QSqlQuery>
+#include <QVariant>
 
 /** @file qirelation.h
     @brief Reverse ("has many") relations.
@@ -3801,15 +4039,103 @@ private:
 \endcode
  */
 
+/// The primary-key value of a model instance (the built-in `id`, or a declared
+/// primary key for a QI_DECLARE_MODEL_NOID model).
+template <typename T>
+inline QVariant qiKeyOf(T &model) {
+    QiModelMetaInfo *info = qiMetaInfo<T>();
+    QString pk = info->primaryKeyName();
+    return (pk.isEmpty() || pk == QLatin1String("id"))
+           ? model.id()
+           : info->value(&model, pk);
+}
+
 /// A query for every `Child` whose `foreignKeyField` references `parent`.
 template <typename Child, typename Parent>
 inline QiQuery<Child> qiHasMany(Parent &parent, const QString &foreignKeyField) {
-    QiModelMetaInfo *pinfo = qiMetaInfo<Parent>();
-    QString pk = pinfo->primaryKeyName();
-    QVariant key = (pk.isEmpty() || pk == QLatin1String("id"))
-                   ? parent.id()
-                   : pinfo->value(&parent, pk);
-    return QiQuery<Child>().filter( QiWhere(foreignKeyField) == key );
+    return QiQuery<Child>().filter( QiWhere(foreignKeyField) == qiKeyOf(parent) );
+}
+
+
+// --- Many-to-many via a join table -----------------------------------------
+//
+// A join table has two columns, one referencing each side (e.g. photo_tag with
+// photoId, tagId). These helpers link, unlink, and fetch across it.
+
+/// Link `source` and `target` through a join table (INSERT OR IGNORE — safe to
+/// repeat). `sourceColumn`/`targetColumn` are the join table's key columns.
+template <typename Source, typename Target>
+inline bool qiAttach(Source &source, Target &target, const QString &joinTable,
+                     const QString &sourceColumn, const QString &targetColumn) {
+    QiConnection conn = source.connection();
+    QSqlQuery q = conn.query();
+    q.prepare(QStringLiteral("INSERT OR IGNORE INTO %1 (%2, %3) VALUES (?, ?)")
+                  .arg(joinTable, sourceColumn, targetColumn));
+    q.addBindValue(qiKeyOf(source));
+    q.addBindValue(qiKeyOf(target));
+    const bool ok = q.exec();
+    if (ok) conn.notifyChanged(joinTable);
+    return ok;
+}
+
+/// Remove the link between `source` and `target` from the join table.
+template <typename Source, typename Target>
+inline bool qiDetach(Source &source, Target &target, const QString &joinTable,
+                     const QString &sourceColumn, const QString &targetColumn) {
+    QiConnection conn = source.connection();
+    QSqlQuery q = conn.query();
+    q.prepare(QStringLiteral("DELETE FROM %1 WHERE %2 = ? AND %3 = ?")
+                  .arg(joinTable, sourceColumn, targetColumn));
+    q.addBindValue(qiKeyOf(source));
+    q.addBindValue(qiKeyOf(target));
+    const bool ok = q.exec();
+    if (ok) conn.notifyChanged(joinTable);
+    return ok;
+}
+
+/// Every `Target` linked to `source` through the join table.
+/**
+\code
+    QiList<Tag> tags = qiManyToMany<Tag>(photo, "photo_tag", "photoId", "tagId");
+\endcode
+  Resolves in two steps: read the target keys from the join table, then load
+  those targets with one IN query.
+ */
+template <typename Target, typename Source>
+inline QiList<Target> qiManyToMany(Source &source, const QString &joinTable,
+                                   const QString &sourceColumn, const QString &targetColumn) {
+    QiConnection conn = source.connection();
+    QSqlQuery q = conn.query();
+    q.prepare(QStringLiteral("SELECT %1 FROM %2 WHERE %3 = ?")
+                  .arg(targetColumn, joinTable, sourceColumn));
+    q.addBindValue(qiKeyOf(source));
+
+    QList<QVariant> ids;
+    if (q.exec())
+        while (q.next()) ids << q.value(0);
+    if (ids.isEmpty())
+        return QiList<Target>();
+
+    QiModelMetaInfo *tinfo = qiMetaInfo<Target>();
+    QString tpk = tinfo->primaryKeyName();
+    if (tpk.isEmpty()) tpk = QStringLiteral("id");
+    return QiQuery<Target>().filter( QiWhere(tpk).in(ids) ).all();
+}
+
+
+// --- Soft-delete scopes ----------------------------------------------------
+// For models with a `deletedAt` column (see QiModel::softRemove()).
+
+/// Query for rows that are NOT soft-deleted (`deletedAt IS NULL`).
+template <typename T>
+inline QiQuery<T> qiAlive() {
+    return QiQuery<T>().filter( QiWhere(QStringLiteral("deletedAt")).is(QVariant()) );
+}
+
+/// Query for rows that ARE soft-deleted (`deletedAt IS NOT NULL`).
+template <typename T>
+inline QiQuery<T> qiTrashed() {
+    return QiQuery<T>().filter( QiWhere(QStringLiteral("deletedAt")).isNot(QVariant()) );
 }
 
 #endif // QiRELATION_H
@@ -5577,6 +5903,89 @@ void QiLog::logQuery(const QSqlQuery &query, qint64 elapsedNs) {
     write(Sql, level, msg);
 }
 
+// ---- src/qimigrator.cpp ------------------------------------------
+#include <algorithm>
+#include <QSqlQuery>
+#include <QSqlError>
+
+QiMigrator::QiMigrator(QiConnection connection)
+    : m_conn(connection) {
+}
+
+void QiMigrator::add(int version, const QString &name, Step step) {
+    m_steps.append({ version, name, std::move(step) });
+}
+
+int QiMigrator::currentVersion() const {
+    QSqlQuery q = m_conn.query();
+    if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next())
+        return q.value(0).toInt();
+    return 0;
+}
+
+int QiMigrator::targetVersion() const {
+    int t = 0;
+    for (const Entry &e : m_steps)
+        t = qMax(t, e.version);
+    return t;
+}
+
+void QiMigrator::setUserVersion(int version) {
+    QSqlQuery q = m_conn.query();
+    // PRAGMA doesn't take a bound parameter; the value is our own int.
+    q.exec(QStringLiteral("PRAGMA user_version = %1").arg(version));
+}
+
+int QiMigrator::migrate() {
+    m_error.clear();
+
+    QVector<Entry> ordered = m_steps;
+    std::sort(ordered.begin(), ordered.end(),
+              [](const Entry &a, const Entry &b) { return a.version < b.version; });
+
+    const int from = currentVersion();
+    int applied = 0;
+
+    for (const Entry &e : ordered) {
+        if (e.version <= from)
+            continue;                       // already applied
+
+        if (!m_conn.transaction()) {
+            m_error = QStringLiteral("could not begin a transaction");
+            return -1;
+        }
+
+        const bool ok = e.step ? e.step(m_conn) : true;
+        if (!ok) {
+            m_conn.rollback();
+            QString reason = m_conn.lastError().text().trimmed();
+            if (reason.isEmpty())
+                reason = QStringLiteral("the migration step returned false");
+            m_error = QStringLiteral("migration %1 (%2) failed: %3")
+                          .arg(e.version).arg(e.name, reason);
+            QiLog::write(QiLog::Sql, QiLog::Error, m_error);
+            return -1;
+        }
+
+        setUserVersion(e.version);          // transactional in SQLite
+        if (!m_conn.commit()) {
+            m_error = QStringLiteral("migration %1 (%2): commit failed")
+                          .arg(e.version).arg(e.name);
+            return -1;
+        }
+
+        QiLog::write(QiLog::Sql, QiLog::Info,
+                     QStringLiteral("migrated to v%1 (%2)").arg(e.version).arg(e.name));
+        applied++;
+    }
+
+    return applied;
+}
+
+QString QiMigrator::lastError() const {
+    return m_error;
+}
+
 // ---- src/qimodel.cpp ---------------------------------------------
 #include <QtCore>
 #include <QMetaObject>
@@ -5586,6 +5995,20 @@ void QiLog::logQuery(const QSqlQuery &query, qint64 elapsedNs) {
 
 //#define TABLE_NAME "Model without QI_MODEL"
 #define TABLE_NAME ""
+
+// Auto-touch conventional timestamp columns if the model declares them:
+//   updatedAt  — set on every save
+//   createdAt  — set once, on insert, when still null
+static void qiTouchTimestamps(QiModelMetaInfo *info, QiAbstractModel *self, bool created) {
+    const QStringList fields = info->fieldNameList();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    if (fields.contains(QStringLiteral("updatedAt")))
+        info->setValue(self, QStringLiteral("updatedAt"), now);
+    if (created && fields.contains(QStringLiteral("createdAt"))) {
+        if (info->value(self, QStringLiteral("createdAt")).isNull())
+            info->setValue(self, QStringLiteral("createdAt"), now);
+    }
+}
 
 
 QiModel::QiModel() : m_connection ( QiConnection::defaultConnection()){
@@ -5640,6 +6063,9 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
     QiModelMetaInfo *info = metaInfo();
     Q_ASSERT(info);
 
+    const bool created = forceInsert || id->isNull();
+    qiTouchTimestamps(info, this, created);
+
     QStringList fields = info->fieldNameList();
     QStringList nonNullFields;
     if (forceAllField) {
@@ -5676,8 +6102,10 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+        afterSave(created);
+    }
 
     return res;
 }
@@ -5691,6 +6119,9 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     }
     QiModelMetaInfo *info = metaInfo();
     Q_ASSERT(info);
+
+    const bool created = id->isNull();
+    qiTouchTimestamps(info, this, created);
 
     QStringList fields = info->fieldNameList();
     QStringList writeFields;
@@ -5714,8 +6145,10 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(tableName());   // reactive
+        afterSave(created);
+    }
 
     return res;
 }
@@ -5730,6 +6163,8 @@ bool QiModel::load(QiWhere where){
     if (query.exec()){
         if (query.next()){
             res = query.recordTo(this);
+            if (res)
+                afterLoad();
         } else {
             m_error = QiError(QiError::NotFound, QStringLiteral("no matching record"));
         }
@@ -5747,6 +6182,14 @@ bool QiModel::load(QiWhere where){
 
 bool QiModel::remove() {
     m_error.clear();
+
+    if (!beforeRemove()) {
+        if (!m_error.isValid())
+            m_error = QiError(QiError::ValidationError,
+                              QStringLiteral("beforeRemove() vetoed the deletion"));
+        return false;
+    }
+
     QiModelMetaInfo *info = metaInfo();
 
     // Delete by the built-in "id" column when the schema has one; otherwise
@@ -5792,10 +6235,24 @@ bool QiModel::remove() {
 
     m_connection.setLastQuery( query.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(info->name());   // reactive
+        afterRemove();
+    }
 
     return res;
+}
+
+bool QiModel::softRemove() {
+    m_error.clear();
+    QiModelMetaInfo *info = metaInfo();
+    if (!info->fieldNameList().contains(QStringLiteral("deletedAt"))) {
+        setError(QiError(QiError::ValidationError,
+                         QStringLiteral("softRemove() requires a 'deletedAt' field")));
+        return false;
+    }
+    info->setValue(this, QStringLiteral("deletedAt"), QDateTime::currentDateTimeUtc());
+    return save();   // writes the tombstone (and touches updatedAt)
 }
 
 bool QiModel::clean(){
@@ -7132,7 +7589,9 @@ QiSqlStatement::QiSqlStatement()
 }
 
 QString QiSqlStatement::dropTable(QiModelMetaInfo *info) {
-    QString sql = QString("drop table %1;").arg(info->name());
+    // IF EXISTS makes dropTable()/dropTables() idempotent: dropping a table that
+    // isn't there is a no-op success, not an error.
+    QString sql = QString("drop table if exists %1;").arg(info->name());
     return sql;
 }
 

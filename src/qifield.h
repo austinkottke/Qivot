@@ -118,4 +118,49 @@ public:
     }
 };
 
+/// Store an arbitrary C++ value type in a column via a pair of conversion functions.
+/**
+  Teaches QiField how to persist a custom type `TYPE`. Provide two free/static
+  functions (by name — not inline lambdas, so the macro stays comma-safe):
+
+    - `TO_STORAGE_FN(const TYPE&) -> QVariant`   a value SQLite can store
+                                                 (int / double / QString / ...)
+    - `FROM_STORAGE_FN(const QVariant&) -> TYPE` rebuild the value when loading
+
+  `TYPE` must be registered with `Q_DECLARE_METATYPE(TYPE)`, and the column's SQL
+  type should be set with `QI_FIELD_AS(field, "TEXT")` (or INTEGER/REAL/…).
+
+\code
+    struct GeoPoint { double lat, lng; };
+    Q_DECLARE_METATYPE(GeoPoint)
+
+    static QVariant geoToStorage(const GeoPoint &p) {
+        return QStringLiteral("%1,%2").arg(p.lat).arg(p.lng);
+    }
+    static GeoPoint geoFromStorage(const QVariant &v) {
+        const QStringList s = v.toString().split(',');
+        return GeoPoint{ s.value(0).toDouble(), s.value(1).toDouble() };
+    }
+    QI_DECLARE_CONVERTER(GeoPoint, geoToStorage, geoFromStorage)
+
+    // in the model:  QI_FIELD_AS(location, "TEXT")
+\endcode
+
+  Place the macro (and the two functions) before any model that uses
+  `QiField<TYPE>`.
+ */
+#define QI_DECLARE_CONVERTER(TYPE, TO_STORAGE_FN, FROM_STORAGE_FN)          \
+    template <> inline bool QiField<TYPE>::set(QVariant value) {            \
+        if (value.isValid() && !value.isNull()                             \
+                && value.userType() != qMetaTypeId<TYPE>())                \
+            value = QVariant::fromValue<TYPE>( FROM_STORAGE_FN(value) );    \
+        return QiBaseField::set(value);                                     \
+    }                                                                       \
+    template <> inline QVariant QiField<TYPE>::get(bool convert) const {    \
+        QVariant _v = QiBaseField::get(convert);                           \
+        if (convert && _v.userType() == qMetaTypeId<TYPE>())               \
+            return QVariant( TO_STORAGE_FN( _v.value<TYPE>() ) );          \
+        return _v;                                                          \
+    }
+
 #endif // QiFIELD_H

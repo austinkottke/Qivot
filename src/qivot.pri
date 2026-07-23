@@ -34,8 +34,10 @@ QIVOT_HEADERS += \
     $$PWD/qifieldref.h \
     $$PWD/qicolumns.h \
     $$PWD/qirelation.h \
+    $$PWD/qikeyset.h \
     $$PWD/qiftsindex.h \
     $$PWD/qitransaction.h \
+    $$PWD/qimigrator.h \
     $$PWD/qigadget.h \
     $$PWD/qilistmodel.h \
     $$PWD/qijsonmapper.h \
@@ -70,4 +72,5 @@ SOURCES += \
     $$PWD/qistream.cpp \
     $$PWD/qilistwriter.cpp \
     $$PWD/qijsonmapper.cpp \
+    $$PWD/qimigrator.cpp \
     $$PWD/qilistmodel.cpp

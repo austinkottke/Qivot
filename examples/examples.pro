@@ -14,6 +14,10 @@ SUBDIRS += \
     tutorial4 \
     tutorial5 \
     schema \
+    migrations \
+    relations \
+    keyset \
+    asyncquery \
     jsonnested \
     jsonhttp \
     qmlmodel \

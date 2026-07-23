@@ -9,7 +9,9 @@ QiSqlStatement::QiSqlStatement()
 }
 
 QString QiSqlStatement::dropTable(QiModelMetaInfo *info) {
-    QString sql = QString("drop table %1;").arg(info->name());
+    // IF EXISTS makes dropTable()/dropTables() idempotent: dropping a table that
+    // isn't there is a no-op success, not an error.
+    QString sql = QString("drop table if exists %1;").arg(info->name());
     return sql;
 }
 

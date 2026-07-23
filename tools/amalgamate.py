@@ -25,7 +25,9 @@ OUT_DIR = os.path.normpath(os.path.join(HERE, "..", "dist"))
 OUT = os.path.join(OUT_DIR, "qivot.hpp")
 
 # Q_OBJECT (moc) units and the umbrella header are excluded from the amalgamation.
-EXCLUDE_HEADERS = {"qilistmodel.h", "qijsonrequest.h", "qivot.h"}
+# qiasync.h is also excluded: it depends on QtConcurrent, which the lean
+# header-only core must not force on every consumer (use the compiled build).
+EXCLUDE_HEADERS = {"qilistmodel.h", "qijsonrequest.h", "qivot.h", "qiasync.h"}
 EXCLUDE_CPP = {"qilistmodel.cpp", "qijsonrequest.cpp"}
 
 INTERNAL_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]qi[a-zA-Z0-9_]+\.h[>"]\s*$')

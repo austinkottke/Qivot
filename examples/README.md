@@ -44,6 +44,10 @@ quits — handy for headless/offscreen CI (`QT_QPA_PLATFORM=offscreen`).
 | Example | What it shows |
 |---|---|
 | [`schema`](schema) | 📖 **Tutorial** — the expressive schema layer in one program: string primary keys (no auto id), `WITHOUT ROWID`, composite keys, `CHECK` constraints, FK referential actions, enum fields, and rename/drop-column migrations. → [walkthrough](schema/README.md) |
+| [`migrations`](migrations) | 📖 **Tutorial** — versioned schema migrations with `QiMigrator`, tracked by `PRAGMA user_version`: ordered, transactional, idempotent, with rollback on failure. → [walkthrough](migrations/README.md) |
+| [`relations`](relations) | 📖 **Tutorial** — many-to-many join tables (`qiAttach`/`qiManyToMany`), custom type converters (`QI_DECLARE_CONVERTER`), lifecycle hooks (`clean()`/`afterSave()`), auto `createdAt`/`updatedAt`, and soft delete (`softRemove` + `qiAlive`/`qiTrashed`). → [walkthrough](relations/README.md) |
+| [`keyset`](keyset) | 📖 **Tutorial** — keyset / cursor pagination with `QiKeyset`: seek past the last key (`WHERE id > :cursor`) instead of `OFFSET`, so deep paging stays O(log n). Resumable cursors, descending + filtered paging. → [walkthrough](keyset/README.md) |
+| [`asyncquery`](asyncquery) | 📖 **Tutorial** — run queries off the UI thread with `QiAsync`, returning a `QFuture` (per-thread connection, `QT += concurrent`). The main thread keeps ticking while a 200k-row fetch runs on a worker. → [walkthrough](asyncquery/README.md) |
 | [`jsonhttp`](jsonhttp) | `QiJsonMapper` (synchronous JSON ↔ model, QtCore only) plus `QiJsonRequest` (fetch JSON over HTTP on a worker thread and map it). Runs offline against a tiny embedded server. |
 | [`jsonnested`](jsonnested) | 📖 **Tutorial** — deserializing a nested JSON document (an order embedding its customer and line items) into a graph of related models by composing the mapper. → [walkthrough](jsonnested/README.md) |
 

@@ -12,6 +12,20 @@
 //#define TABLE_NAME "Model without QI_MODEL"
 #define TABLE_NAME ""
 
+// Auto-touch conventional timestamp columns if the model declares them:
+//   updatedAt  — set on every save
+//   createdAt  — set once, on insert, when still null
+static void qiTouchTimestamps(QiModelMetaInfo *info, QiAbstractModel *self, bool created) {
+    const QStringList fields = info->fieldNameList();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    if (fields.contains(QStringLiteral("updatedAt")))
+        info->setValue(self, QStringLiteral("updatedAt"), now);
+    if (created && fields.contains(QStringLiteral("createdAt"))) {
+        if (info->value(self, QStringLiteral("createdAt")).isNull())
+            info->setValue(self, QStringLiteral("createdAt"), now);
+    }
+}
+
 
 QiModel::QiModel() : m_connection ( QiConnection::defaultConnection()){
 
@@ -65,6 +79,9 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
     QiModelMetaInfo *info = metaInfo();
     Q_ASSERT(info);
 
+    const bool created = forceInsert || id->isNull();
+    qiTouchTimestamps(info, this, created);
+
     QStringList fields = info->fieldNameList();
     QStringList nonNullFields;
     if (forceAllField) {
@@ -101,8 +118,10 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+        afterSave(created);
+    }
 
     return res;
 }
@@ -116,6 +135,9 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     }
     QiModelMetaInfo *info = metaInfo();
     Q_ASSERT(info);
+
+    const bool created = id->isNull();
+    qiTouchTimestamps(info, this, created);
 
     QStringList fields = info->fieldNameList();
     QStringList writeFields;
@@ -139,8 +161,10 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
 
     m_connection.setLastQuery(sql.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(tableName());   // reactive
+        afterSave(created);
+    }
 
     return res;
 }
@@ -155,6 +179,8 @@ bool QiModel::load(QiWhere where){
     if (query.exec()){
         if (query.next()){
             res = query.recordTo(this);
+            if (res)
+                afterLoad();
         } else {
             m_error = QiError(QiError::NotFound, QStringLiteral("no matching record"));
         }
@@ -172,6 +198,14 @@ bool QiModel::load(QiWhere where){
 
 bool QiModel::remove() {
     m_error.clear();
+
+    if (!beforeRemove()) {
+        if (!m_error.isValid())
+            m_error = QiError(QiError::ValidationError,
+                              QStringLiteral("beforeRemove() vetoed the deletion"));
+        return false;
+    }
+
     QiModelMetaInfo *info = metaInfo();
 
     // Delete by the built-in "id" column when the schema has one; otherwise
@@ -217,10 +251,24 @@ bool QiModel::remove() {
 
     m_connection.setLastQuery( query.lastQuery());
 
-    if (res)
+    if (res) {
         m_connection.notifyChanged(info->name());   // reactive
+        afterRemove();
+    }
 
     return res;
+}
+
+bool QiModel::softRemove() {
+    m_error.clear();
+    QiModelMetaInfo *info = metaInfo();
+    if (!info->fieldNameList().contains(QStringLiteral("deletedAt"))) {
+        setError(QiError(QiError::ValidationError,
+                         QStringLiteral("softRemove() requires a 'deletedAt' field")));
+        return false;
+    }
+    info->setValue(this, QStringLiteral("deletedAt"), QDateTime::currentDateTimeUtc());
+    return save();   // writes the tombstone (and touches updatedAt)
 }
 
 bool QiModel::clean(){
