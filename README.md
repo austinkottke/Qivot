@@ -73,8 +73,10 @@ step-by-step example:
 - 🧱 **Versioned migrations** — `QiMigrator` tracks the schema version in
   `PRAGMA user_version` and runs pending migrations in order, transactionally and
   idempotently. → [`examples/migrations`](examples/migrations)
-- 🔗 **Many-to-many** — `qiAttach` / `qiDetach` / `qiManyToMany` over a join table.
-  → [`examples/relations`](examples/relations)
+- 🔗 **Relations** — **one-to-many** with `QI_HAS_MANY(Song, songs, "artist")`
+  → `artist.songs()`; **many-to-many** with `QI_MANY_TO_MANY(Tag, tags, "photo_tag")`
+  → `photo.tags().add(tag)` / `.all()` / `.remove()` / `.contains()`, join table
+  auto-created. → [`examples/relations`](examples/relations), [`examples/manytomany`](examples/manytomany)
 - 🎛️ **Custom type converters** — `QI_DECLARE_CONVERTER(Type, toStorage, fromStorage)`
   stores any value type in a column. → [`examples/relations`](examples/relations)
 - 🪝 **Lifecycle hooks, timestamps & soft delete** — `clean()` / `afterSave()` /

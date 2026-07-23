@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="500" viewBox="0 0 680 500" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="cvA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7F00FF"/><stop offset="1" stop-color="#E100FF"/></linearGradient>
+    <linearGradient id="cvB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#43C6AC"/><stop offset="1" stop-color="#191654"/></linearGradient>
+    <linearGradient id="cvC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F857A6"/><stop offset="1" stop-color="#FF5858"/></linearGradient>
+    <linearGradient id="cvD" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB75E"/><stop offset="1" stop-color="#ED8F03"/></linearGradient>
+  </defs>
+  <rect width="680" height="500" fill="#191920"/>
+
+  <!-- ============ LEFT: Songs list ============ -->
+  <g transform="translate(20,20)">
+    <rect width="310" height="460" rx="24" fill="#0C0C10" stroke="#26262E"/>
+    <clipPath id="cl"><rect width="310" height="460" rx="24"/></clipPath>
+    <g clip-path="url(#cl)">
+      <!-- header -->
+      <text x="18" y="42" fill="#fff" font-size="22" font-weight="700">🎵  Library</text>
+      <text x="18" y="62" fill="#8A8A93" font-size="11">Songs × Playlists</text>
+      <!-- tabs -->
+      <text x="60" y="92" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">Songs</text>
+      <rect x="30" y="100" width="60" height="2" fill="#0A84FF"/>
+      <text x="210" y="92" fill="#8A8A93" font-size="14" font-weight="700" text-anchor="middle">Playlists</text>
+      <line x1="0" y1="108" x2="310" y2="108" stroke="#1E1E24"/>
+
+      <!-- song 1 -->
+      <rect x="16" y="120" width="46" height="46" rx="10" fill="url(#cvA)"/>
+      <text x="39" y="150" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">N</text>
+      <text x="74" y="136" fill="#fff" font-size="15" font-weight="700">Nightcall</text>
+      <text x="74" y="153" fill="#8A8A93" font-size="12">Kavinsky</text>
+      <rect x="74" y="160" width="52" height="20" rx="10" fill="none" stroke="#34C759" stroke-width="1.5"/>
+      <text x="100" y="174" fill="#34C759" font-size="10" font-weight="700" text-anchor="middle">Chill</text>
+      <rect x="132" y="160" width="66" height="20" rx="10" fill="none" stroke="#FF9F0A" stroke-width="1.5"/>
+      <text x="165" y="174" fill="#FF9F0A" font-size="10" font-weight="700" text-anchor="middle">Roadtrip</text>
+
+      <!-- song 2 -->
+      <rect x="16" y="196" width="46" height="46" rx="10" fill="url(#cvB)"/>
+      <text x="39" y="226" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">M</text>
+      <text x="74" y="212" fill="#fff" font-size="15" font-weight="700">Midnight City</text>
+      <text x="74" y="229" fill="#8A8A93" font-size="12">M83</text>
+      <rect x="74" y="236" width="52" height="20" rx="10" fill="none" stroke="#34C759" stroke-width="1.5"/>
+      <text x="100" y="250" fill="#34C759" font-size="10" font-weight="700" text-anchor="middle">Chill</text>
+      <rect x="132" y="236" width="48" height="20" rx="10" fill="none" stroke="#BF5AF2" stroke-width="1.5"/>
+      <text x="156" y="250" fill="#BF5AF2" font-size="10" font-weight="700" text-anchor="middle">Party</text>
+      <rect x="186" y="236" width="66" height="20" rx="10" fill="none" stroke="#FF9F0A" stroke-width="1.5"/>
+      <text x="219" y="250" fill="#FF9F0A" font-size="10" font-weight="700" text-anchor="middle">Roadtrip</text>
+
+      <!-- song 3 -->
+      <rect x="16" y="272" width="46" height="46" rx="10" fill="url(#cvC)"/>
+      <text x="39" y="302" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">R</text>
+      <text x="74" y="288" fill="#fff" font-size="15" font-weight="700">Redbone</text>
+      <text x="74" y="305" fill="#8A8A93" font-size="12">Childish Gambino</text>
+      <rect x="74" y="312" width="52" height="20" rx="10" fill="none" stroke="#34C759" stroke-width="1.5"/>
+      <text x="100" y="326" fill="#34C759" font-size="10" font-weight="700" text-anchor="middle">Chill</text>
+
+      <!-- song 4 -->
+      <rect x="16" y="348" width="46" height="46" rx="10" fill="url(#cvD)"/>
+      <text x="39" y="378" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">B</text>
+      <text x="74" y="364" fill="#fff" font-size="15" font-weight="700">Blinding Lights</text>
+      <text x="74" y="381" fill="#8A8A93" font-size="12">The Weeknd</text>
+      <rect x="74" y="388" width="66" height="20" rx="10" fill="none" stroke="#FF375F" stroke-width="1.5"/>
+      <text x="107" y="402" fill="#FF375F" font-size="10" font-weight="700" text-anchor="middle">Workout</text>
+      <rect x="146" y="388" width="48" height="20" rx="10" fill="none" stroke="#BF5AF2" stroke-width="1.5"/>
+      <text x="170" y="402" fill="#BF5AF2" font-size="10" font-weight="700" text-anchor="middle">Party</text>
+
+      <!-- FAB -->
+      <circle cx="266" cy="418" r="26" fill="#0A84FF"/>
+      <text x="266" y="427" fill="#fff" font-size="24" font-weight="500" text-anchor="middle">＋</text>
+    </g>
+  </g>
+
+  <!-- ============ RIGHT: Song editor (toggle playlists) ============ -->
+  <g transform="translate(350,20)">
+    <rect width="310" height="460" rx="24" fill="#0C0C10" stroke="#26262E"/>
+    <clipPath id="cr"><rect width="310" height="460" rx="24"/></clipPath>
+    <g clip-path="url(#cr)">
+      <!-- dimmed list behind -->
+      <rect width="310" height="200" fill="#0C0C10" opacity="0.5"/>
+      <text x="18" y="40" fill="#5A5A62" font-size="15" font-weight="700">Nightcall</text>
+      <text x="18" y="58" fill="#3A3A42" font-size="12">Kavinsky</text>
+
+      <!-- editor sheet -->
+      <rect x="0" y="150" width="310" height="310" rx="22" fill="#161620"/>
+      <rect x="135" y="164" width="40" height="4" rx="2" fill="#3A3A44"/>
+      <text x="18" y="196" fill="#fff" font-size="19" font-weight="700">Nightcall</text>
+      <text x="18" y="216" fill="#8A8A93" font-size="12">Tap a playlist to add or remove</text>
+
+      <!-- chips: filled = member, outline = not -->
+      <rect x="18" y="234" width="92" height="38" rx="19" fill="#34C759"/>
+      <text x="64" y="258" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">✓ Chill</text>
+      <rect x="120" y="234" width="112" height="38" rx="19" fill="#FF9F0A"/>
+      <text x="176" y="258" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">✓ Roadtrip</text>
+
+      <rect x="18" y="284" width="104" height="38" rx="19" fill="none" stroke="#FF375F" stroke-width="1.5"/>
+      <text x="70" y="308" fill="#FF375F" font-size="13" font-weight="700" text-anchor="middle">Workout</text>
+      <rect x="132" y="284" width="84" height="38" rx="19" fill="none" stroke="#0A84FF" stroke-width="1.5"/>
+      <text x="174" y="308" fill="#0A84FF" font-size="13" font-weight="700" text-anchor="middle">Focus</text>
+
+      <rect x="18" y="334" width="84" height="38" rx="19" fill="none" stroke="#BF5AF2" stroke-width="1.5"/>
+      <text x="60" y="358" fill="#BF5AF2" font-size="13" font-weight="700" text-anchor="middle">Party</text>
+    </g>
+  </g>
+</svg>

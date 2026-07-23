@@ -86,38 +86,47 @@ And `clean()` rejects an invalid record, with the reason on `lastError()`:
   refused: title must not be empty
 ```
 
-## Step 3 — Many-to-many through a join table
+## Step 3 — Many-to-many, declared once
 
-Declare a join model with a composite key, then link/unlink/fetch with the
-relation helpers.
+Declare the relation on the model with `QI_MANY_TO_MANY`. No join model, no
+repeated table/column names — the `photo_tag` join table (columns `photoId` /
+`tagId` by convention) is created automatically on first use.
 
 ```cpp
-class PhotoTag : public QiModel {
+class Photo : public QiModel {
     QI_MODEL
 public:
-    QiField<int> photoId;
-    QiField<int> tagId;
+    QiField<QString> title;
+    // ...
+    QI_MANY_TO_MANY(Tag, tags, "photo_tag")     // adds a photo.tags() accessor
 };
-QI_DECLARE_MODEL_NOID(PhotoTag, "photo_tag",
-                      QI_FIELD(photoId, QiPrimary | QiNotNull),
-                      QI_FIELD(tagId,   QiPrimary | QiNotNull));
 ```
 
-```cpp
-qiAttach(photo, nature,  "photo_tag", "photoId", "tagId");   // link
-qiAttach(photo, evening, "photo_tag", "photoId", "tagId");
-qiAttach(photo, city,    "photo_tag", "photoId", "tagId");
-qiDetach(photo, city,    "photo_tag", "photoId", "tagId");   // unlink
+Then work with it as a typed collection bound to the row:
 
-QiList<Tag> tags = qiManyToMany<Tag>(photo, "photo_tag", "photoId", "tagId");
+```cpp
+photo.tags().add(nature);
+photo.tags().add(evening);
+photo.tags() << city;                 // sugar for add()
+photo.tags().remove(city);            // changed our mind
+
+QiList<Tag> tags = photo.tags().all();
+photo.tags().count();                 // 2
+photo.tags().contains(nature);        // true
+photo.tags().contains(city);          // false
+// also: photo.tags().clear(), photo.tags().set(otherTags)
 ```
 
 ```text
   tags on photo: nature, evening
+  count: 2  contains(nature): true  contains(city): false
 ```
 
-`qiManyToMany` reads the linked keys from the join table, then loads the targets
-with a single `IN` query.
+`add`/`remove` are single `INSERT OR IGNORE` / `DELETE` statements; `all()` reads
+the linked keys and loads the targets with one `IN` query. Use
+`QI_MANY_TO_MANY_AS(Tag, tags, "photo_tag", "photoId", "tagId")` to name the join
+columns explicitly. (The lower-level `qiAttach` / `qiDetach` / `qiManyToMany`
+free functions are still available if you'd rather manage the join table yourself.)
 
 ## Step 4 — Soft delete
 
@@ -144,7 +153,7 @@ Photo::objects().count();      // everything — the row is still there
 
 | File | Role |
 |---|---|
-| `main.cpp` | `GeoPoint` converter, the `Photo` / `Tag` / `PhotoTag` models, and a tour of all five features. |
+| `main.cpp` | `GeoPoint` converter, the `Photo` / `Tag` models (with a `QI_MANY_TO_MANY` relation), and a tour of all five features. |
 
 ## See also
 

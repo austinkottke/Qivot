@@ -28,6 +28,13 @@ QI_DECLARE_CONVERTER(GeoPoint, geoToStorage, geoFromStorage)
 
 // --- Models ----------------------------------------------------------------
 
+class Tag : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString> name;
+};
+QI_DECLARE_MODEL(Tag, "tag", QI_FIELD(name, QiNotNull | QiUnique));
+
 class Photo : public QiModel {
     QI_MODEL
 public:
@@ -36,6 +43,10 @@ public:
     QiField<QDateTime> createdAt;   // auto-set on insert  (#7)
     QiField<QDateTime> updatedAt;   // auto-set on every save (#7)
     QiField<QDateTime> deletedAt;   // soft-delete tombstone (#7)
+
+    // #4 declarative many-to-many — the "photo_tag" join table (photoId/tagId)
+    // is created automatically; no join model to declare.
+    QI_MANY_TO_MANY(Tag, tags, "photo_tag")
 
     // #6 validation hook
     bool clean() override {
@@ -58,24 +69,6 @@ QI_DECLARE_MODEL(Photo, "photo",
                  QI_FIELD(updatedAt),
                  QI_FIELD(deletedAt));
 
-class Tag : public QiModel {
-    QI_MODEL
-public:
-    QiField<QString> name;
-};
-QI_DECLARE_MODEL(Tag, "tag", QI_FIELD(name, QiNotNull | QiUnique));
-
-// The join table for the Photo <-> Tag many-to-many relation.
-class PhotoTag : public QiModel {
-    QI_MODEL
-public:
-    QiField<int> photoId;
-    QiField<int> tagId;
-};
-QI_DECLARE_MODEL_NOID(PhotoTag, "photo_tag",
-                      QI_FIELD(photoId, QiPrimary | QiNotNull),
-                      QI_FIELD(tagId,   QiPrimary | QiNotNull));
-
 static void banner(const QString &t) { qInfo().noquote() << "\n==== " << t << " ===="; }
 
 int main(int argc, char *argv[]) {
@@ -88,8 +81,7 @@ int main(int argc, char *argv[]) {
     if (!conn.open(db)) return 1;
     conn.addModel<Photo>();
     conn.addModel<Tag>();
-    conn.addModel<PhotoTag>();
-    if (!conn.createTables()) return 1;
+    if (!conn.createTables()) return 1;   // the photo_tag join table auto-creates on first use
 
     // --- #5 custom type + #7 auto timestamps + #6 afterSave hook -----------
     banner("Save a photo (custom GeoPoint, auto timestamps, hook)");
@@ -113,21 +105,24 @@ int main(int argc, char *argv[]) {
     if (!bad.save())
         qInfo().noquote() << "  refused:" << bad.lastError().text();
 
-    // --- #4 many-to-many ---------------------------------------------------
+    // --- #4 many-to-many (declarative collection) --------------------------
     banner("Tag the photo (many-to-many)");
     Tag nature;  nature.name  = "nature";  nature.save();
     Tag evening; evening.name = "evening"; evening.save();
     Tag city;    city.name    = "city";    city.save();
 
-    qiAttach(p, nature,  "photo_tag", "photoId", "tagId");
-    qiAttach(p, evening, "photo_tag", "photoId", "tagId");
-    qiAttach(p, city,    "photo_tag", "photoId", "tagId");
-    qiDetach(p, city,    "photo_tag", "photoId", "tagId");   // changed our mind
+    p.tags().add(nature);
+    p.tags().add(evening);
+    p.tags() << city;                 // sugar for add()
+    p.tags().remove(city);            // changed our mind
 
-    QiList<Tag> tags = qiManyToMany<Tag>(p, "photo_tag", "photoId", "tagId");
+    QiList<Tag> tags = p.tags().all();
     QStringList names;
     for (int i = 0; i < tags.size(); i++) names << tags.at(i)->name->toString();
     qInfo().noquote() << "  tags on photo:" << names.join(", ");
+    qInfo().noquote() << "  count:" << p.tags().count()
+                      << " contains(nature):" << p.tags().contains(nature)
+                      << " contains(city):" << p.tags().contains(city);
 
     // --- #7 soft delete ----------------------------------------------------
     banner("Soft delete");

@@ -18,6 +18,7 @@ SUBDIRS += \
     relations \
     keyset \
     asyncquery \
+    manytomany \
     jsonnested \
     jsonhttp \
     qmlmodel \
