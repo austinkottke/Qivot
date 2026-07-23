@@ -12,9 +12,9 @@ Browse songs (each showing its artist and playlist chips), tap a song to toggle
 its playlists, tap a playlist to toggle its songs, open the **Artists** tab to
 see each artist's songs — and add new ones. Everything updates live.
 
-<img src="screenshot.svg" alt="Music library — songs with playlist chips, and playlists" width="640">
+<img src="screenshot.png" alt="Music library — real album art, playlist chips, and the Songs / Playlists / Artists tabs" width="420">
 
-*(stylized mockup — the running app shows real album art fetched from iTunes and live toggling)*
+*(the running app — album covers are fetched live from the iTunes Search API)*
 
 > **Run it**
 > ```sh
@@ -149,7 +149,7 @@ Image { source: model.artworkUrl; fillMode: Image.PreserveAspectCrop
         asynchronous: true; visible: status === Image.Ready }
 ```
 
-Nothing copyrighted is stored in the repo — the art is streamed from Apple's CDN
+No cover files are bundled as app assets — the art is streamed from Apple's CDN
 at runtime, the way a real music app does it. Needs `QT += network` and, of
 course, an internet connection (offline just shows the gradient fallback).
 
