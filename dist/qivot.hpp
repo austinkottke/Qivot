@@ -147,8 +147,9 @@ public:
     /// Constructs a null QiClause
     QiClause();
 
-    /// Constructs a copy of other
-    QiClause(const QiClause& other);
+    // Copy/move are compiler-generated (rule of zero): the only state is
+    // m_flags. A hand-written copy ctor here would suppress the move ctor and
+    // trigger -Wdeprecated-copy under Qt 6's QList.
 
     /// Constructs a QiClause and set the clause type
     QiClause(QiClause::Type type);
@@ -1531,8 +1532,9 @@ public:
      */
     QiWhere(QString field);
 
-    /// Construct a QiWhere object which is a copy of other.
-    QiWhere(const QiWhere &other);
+    // Copy/move are compiler-generated (rule of zero): the state is four value
+    // members. A hand-written copy ctor would suppress the move ctor and trigger
+    // -Wdeprecated-copy under Qt 6's QList.
 
     /// Returns true if the object is null; otherwise returns false.
     /** QiWhere is null if no any operend is assigned.
@@ -2652,6 +2654,13 @@ public:
 
     /// Copy and convert from a QiSharedQuery instance
     QiQuery(const QiSharedQuery &rhs) : QiSharedQuery(rhs) {
+        setMetaInfo(qiMetaInfo<T>());
+    }
+
+    /// Copy from other QiQuery instance
+    /** Declared explicitly (matching operator= below) so the implicit copy ctor
+        isn't used — that pairing triggers -Wdeprecated-copy-with-user-provided-copy. */
+    QiQuery(const QiQuery &rhs) : QiSharedQuery(rhs) {
         setMetaInfo(qiMetaInfo<T>());
     }
 
@@ -5343,10 +5352,6 @@ QVariant QiBaseField::operator() () const {
 
 QiClause::QiClause(){
 
-}
-
-QiClause::QiClause(const QiClause& other){
-    m_flags = other.m_flags;
 }
 
 QiClause::QiClause(Type type) {
@@ -8630,13 +8635,6 @@ QiWhere::QiWhere(QString field,QString op, QVariant right)
     m_left = QiWhere(field);
 
     m_isNull = false;
-}
-
-QiWhere::QiWhere(const QiWhere &other){
-    m_left = other.m_left;
-    m_right = other.m_right;
-    m_op = other.m_op;
-    m_isNull = other.m_isNull;
 }
 
 QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){

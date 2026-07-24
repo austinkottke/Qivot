@@ -97,8 +97,9 @@ public:
     /// Constructs a null QiClause
     QiClause();
 
-    /// Constructs a copy of other
-    QiClause(const QiClause& other);
+    // Copy/move are compiler-generated (rule of zero): the only state is
+    // m_flags. A hand-written copy ctor here would suppress the move ctor and
+    // trigger -Wdeprecated-copy under Qt 6's QList.
 
     /// Constructs a QiClause and set the clause type
     QiClause(QiClause::Type type);

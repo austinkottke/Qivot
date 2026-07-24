@@ -10,10 +10,6 @@ QiClause::QiClause(){
 
 }
 
-QiClause::QiClause(const QiClause& other){
-    m_flags = other.m_flags;
-}
-
 QiClause::QiClause(Type type) {
     m_flags[type] = true;
 }

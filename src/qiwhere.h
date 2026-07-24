@@ -89,8 +89,9 @@ public:
      */
     QiWhere(QString field);
 
-    /// Construct a QiWhere object which is a copy of other.
-    QiWhere(const QiWhere &other);
+    // Copy/move are compiler-generated (rule of zero): the state is four value
+    // members. A hand-written copy ctor would suppress the move ctor and trigger
+    // -Wdeprecated-copy under Qt 6's QList.
 
     /// Returns true if the object is null; otherwise returns false.
     /** QiWhere is null if no any operend is assigned.

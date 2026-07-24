@@ -31,6 +31,13 @@ public:
     }
 
     /// Copy from other QiQuery instance
+    /** Declared explicitly (matching operator= below) so the implicit copy ctor
+        isn't used — that pairing triggers -Wdeprecated-copy-with-user-provided-copy. */
+    QiQuery(const QiQuery &rhs) : QiSharedQuery(rhs) {
+        setMetaInfo(qiMetaInfo<T>());
+    }
+
+    /// Copy from other QiQuery instance
     QiQuery& operator=(const QiQuery &rhs ) {
         QiSharedQuery::operator =(rhs);
         setMetaInfo(qiMetaInfo<T>());

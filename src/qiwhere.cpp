@@ -59,13 +59,6 @@ QiWhere::QiWhere(QString field,QString op, QVariant right)
     m_isNull = false;
 }
 
-QiWhere::QiWhere(const QiWhere &other){
-    m_left = other.m_left;
-    m_right = other.m_right;
-    m_op = other.m_op;
-    m_isNull = other.m_isNull;
-}
-
 QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){
     QRegularExpression rx("^\\s*[a-zA-Z0-9]+");
     QRegularExpressionMatch match = rx.match(fieldAndOp);
