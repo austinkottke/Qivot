@@ -28,5 +28,6 @@ SUBDIRS += \
     reactive \
     infinitescroll \
     fluxo \
+    lexica \
     contacts \
     index

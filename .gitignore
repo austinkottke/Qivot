@@ -24,8 +24,9 @@ examples/**/*.db
 *.db-wal
 *.db-shm
 
-# Built example binary (sits next to its sources)
+# Built example binaries (sit next to their sources)
 examples/fluxo/fluxo
+examples/lexica/lexica
 
 # macOS
 .DS_Store

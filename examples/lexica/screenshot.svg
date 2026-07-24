@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" font-family="-apple-system, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <clipPath id="win"><rect width="960" height="720" rx="16"/></clipPath>
+  </defs>
+  <g clip-path="url(#win)">
+    <rect width="960" height="720" fill="#0B0D13"/>
+
+    <!-- header -->
+    <text x="40" y="70" fill="#ffffff" font-size="30" font-weight="700">Lexica</text>
+    <text x="40" y="96" fill="#7E8291" font-size="14">Full-text search over 80,000 entries — ranked, as you type.</text>
+
+    <!-- search box -->
+    <rect x="40" y="118" width="880" height="56" rx="14" fill="#151824" stroke="#7CE0FF" stroke-width="2"/>
+    <text x="58" y="154" fill="#6B7080" font-size="26">⌕</text>
+    <text x="92" y="154" fill="#ffffff" font-size="18">cosmic ocean</text>
+    <rect x="211" y="134" width="2" height="24" fill="#7CE0FF"/>
+    <text x="902" y="153" fill="#6B7080" font-size="18" text-anchor="end">✕</text>
+
+    <!-- stats -->
+    <text x="40" y="204" fill="#7E8291" font-size="13" font-family="Menlo, Consolas, monospace">2,500 matches  ·  showing top 200  ·  4.70 ms</text>
+
+    <!-- results -->
+    <g>
+      <!-- row 1 -->
+      <text x="54" y="256" font-size="17" font-weight="700"><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#F0F1F6"> </tspan><tspan fill="#7CE0FF">ocean</tspan></text>
+      <text x="54" y="278" font-size="13"><tspan fill="#9498A6">The </tspan><tspan fill="#7CE0FF">cosmic ocean</tspan><tspan fill="#9498A6"> drifts through the frozen harbor, where gravity burns and nothing is still.</tspan></text>
+      <rect x="812" y="242" width="108" height="22" rx="11" fill="#1B2030" stroke="#2A3042"/>
+      <text x="866" y="257" fill="#8FA0C4" font-size="11" font-weight="700" text-anchor="middle">Field Notes</text>
+      <line x1="40" y1="296" x2="920" y2="296" stroke="#161923"/>
+
+      <!-- row 2 -->
+      <text x="54" y="340" font-size="17" font-weight="700"><tspan fill="#F0F1F6">The </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#F0F1F6"> of memory</tspan></text>
+      <text x="54" y="362" font-size="13"><tspan fill="#9498A6">The luminous </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#9498A6"> remembers through the </tspan><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#9498A6"> temple, where memory sings and nothing is still.</tspan></text>
+      <rect x="838" y="326" width="82" height="22" rx="11" fill="#1B2030" stroke="#2A3042"/>
+      <text x="879" y="341" fill="#8FA0C4" font-size="11" font-weight="700" text-anchor="middle">Dreams</text>
+      <line x1="40" y1="380" x2="920" y2="380" stroke="#161923"/>
+
+      <!-- row 3 -->
+      <text x="54" y="424" font-size="17" font-weight="700"><tspan fill="#7CE0FF">Ocean</tspan><tspan fill="#F0F1F6"> &amp; Willow</tspan></text>
+      <text x="54" y="446" font-size="13"><tspan fill="#9498A6">The </tspan><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#9498A6"> willow ignites through the pale </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#9498A6">, where silence rises and nothing is still.</tspan></text>
+      <rect x="828" y="410" width="92" height="22" rx="11" fill="#1B2030" stroke="#2A3042"/>
+      <text x="874" y="425" fill="#8FA0C4" font-size="11" font-weight="700" text-anchor="middle">Voyages</text>
+      <line x1="40" y1="464" x2="920" y2="464" stroke="#161923"/>
+
+      <!-- row 4 -->
+      <text x="54" y="508" font-size="17" font-weight="700"><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#F0F1F6"> harbor</tspan></text>
+      <text x="54" y="530" font-size="13"><tspan fill="#9498A6">The </tspan><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#9498A6"> harbor gathers through the crimson </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#9498A6">, where distance echoes and nothing is still.</tspan></text>
+      <rect x="836" y="494" width="84" height="22" rx="11" fill="#1B2030" stroke="#2A3042"/>
+      <text x="878" y="509" fill="#8FA0C4" font-size="11" font-weight="700" text-anchor="middle">Almanac</text>
+      <line x1="40" y1="548" x2="920" y2="548" stroke="#161923"/>
+
+      <!-- row 5 -->
+      <text x="54" y="592" font-size="17" font-weight="700"><tspan fill="#F0F1F6">The </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#F0F1F6"> of silence</tspan></text>
+      <text x="54" y="614" font-size="13"><tspan fill="#9498A6">The </tspan><tspan fill="#7CE0FF">cosmic</tspan><tspan fill="#9498A6"> beacon dissolves through the velvet </tspan><tspan fill="#7CE0FF">ocean</tspan><tspan fill="#9498A6">, where entropy waits and nothing is still.</tspan></text>
+      <rect x="826" y="578" width="94" height="22" rx="11" fill="#1B2030" stroke="#2A3042"/>
+      <text x="873" y="593" fill="#8FA0C4" font-size="11" font-weight="700" text-anchor="middle">Fragments</text>
+    </g>
+
+    <!-- scrollbar hint -->
+    <rect x="948" y="230" width="4" height="120" rx="2" fill="#40FFFFFF"/>
+  </g>
+</svg>
