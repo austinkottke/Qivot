@@ -10,45 +10,97 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unix:
-    name: ${{ matrix.os }}
+  # GCC/Clang via the official Qt installer (aqt): Qt 5.15 and Qt 6, x86_64 and
+  # native arm64 (macos-latest is Apple Silicon; Qt 6's macOS build is universal).
+  aqt:
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        # macos-15-intel: x86_64 runner (macos-13 was retired Dec 2025). Qt 5.15.2's
-        # macOS build is Intel-only, so we need an Intel runner, not the arm64
-        # macos-15/macos-latest images (those would run Qt under Rosetta).
-        os: [ubuntu-22.04, macos-15-intel]
+        include:
+          - name: linux · gcc · Qt 5.15
+            os: ubuntu-22.04
+            qt: '5.15.2'
+            arch: gcc_64
+            examples: true
+          - name: linux · gcc · Qt 6.5
+            os: ubuntu-22.04
+            qt: '6.5.3'
+            arch: gcc_64
+            examples: false
+          # macos-15-intel: x86_64 runner (macos-13 was retired Dec 2025). Qt 5.15's
+          # macOS build is Intel-only, so it needs an Intel runner.
+          - name: macos · clang · Qt 5.15 (x86_64)
+            os: macos-15-intel
+            qt: '5.15.2'
+            arch: clang_64
+            examples: true
+          # macos-latest is Apple Silicon; Qt 6 ships a universal build, so this runs
+          # natively on arm64.
+          - name: macos · clang · Qt 6.5 (arm64)
+            os: macos-latest
+            qt: '6.5.3'
+            arch: clang_64
+            examples: false
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt 5.15
+      - name: Install Qt ${{ matrix.qt }}
         uses: jurplel/install-qt-action@v4
         with:
-          version: '5.15.2'
+          version: ${{ matrix.qt }}
+          arch: ${{ matrix.arch }}
           cache: true
 
+      # Compiles the whole library (all of src/) and runs CoreTests + SqliteTests.
+      # A non-zero exit fails the job.
       - name: Build & run unit tests
         working-directory: tests/unittests
         run: |
           qmake
           make -j"$(getconf _NPROCESSORS_ONLN)"
-          ./unittests    # CoreTests + SqliteTests; non-zero exit fails the job
+          ./unittests
 
+      # The examples are QtQuick/QML apps; build them on the Qt 5 jobs (whose default
+      # install carries QtDeclarative). Qt 6 / arm64 coverage is the library + tests above.
       - name: Build all examples
+        if: matrix.examples
         working-directory: examples
         run: |
           qmake
           make -j"$(getconf _NPROCESSORS_ONLN)"
 
       - name: Header-only build (dist/qivot.hpp) is up to date
+        if: matrix.qt == '5.15.2' && runner.os == 'Linux'
         run: |
           python3 tools/amalgamate.py
           git diff --exit-code -- dist/qivot.hpp \
             || (echo "::error::dist/qivot.hpp is stale — run 'python3 tools/amalgamate.py' and commit." && exit 1)
+
+  # Native arm64 Linux, using the distro's Qt 6 (qmake6). Library + unit tests only —
+  # keeps the dependency set to qtbase + the SQLite driver; examples are covered above.
+  linux-arm64:
+    name: linux-arm64 · gcc · Qt 6 (distro)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qmake6 qt6-base-dev libqt6sql6-sqlite
+
+      - name: Build & run unit tests
+        working-directory: tests/unittests
+        run: |
+          qmake6
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+          ./unittests
 
   windows:
     name: windows-latest (msvc)

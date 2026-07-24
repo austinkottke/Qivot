@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Qt-5.15%20%7C%206-41CD52?logo=qt&logoColor=white" alt="Qt 5.15 or 6">
   <img src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
-  <img src="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 <p align="center">
@@ -1663,8 +1663,8 @@ Modernization:
 ## Limitations
 
 - SQLite only (FTS5, `WITHOUT ROWID`, savepoints and the SQL dialect assume it).
-- Builds with **GCC, Clang, and MSVC** — Linux, macOS, and Windows (MSVC) are all
-  in CI.
+- Builds with **GCC, Clang, and MSVC** across **Qt 5.15 and Qt 6**, on **x86_64 and
+  arm64** (Apple Silicon + arm64 Linux) — all in CI.
 - The typed query builder doesn't cover every construct (correlated subqueries,
   CTEs, window functions) — use [`qiRawQuery<T>`](examples/dashboard) for those; it
   still returns typed models.
