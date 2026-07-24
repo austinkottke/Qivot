@@ -29,5 +29,6 @@ SUBDIRS += \
     infinitescroll \
     fluxo \
     lexica \
+    clinic \
     contacts \
     index

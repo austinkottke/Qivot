@@ -27,6 +27,7 @@ examples/**/*.db
 # Built example binaries (sit next to their sources)
 examples/fluxo/fluxo
 examples/lexica/lexica
+examples/clinic/clinic
 
 # macOS
 .DS_Store

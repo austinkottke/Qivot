@@ -11,6 +11,12 @@
 </p>
 
 <p align="center">
+  <a href="examples/clinic"><img src="docs/clinic-demo.gif" alt="Qivot Clinic — an EHR scheduler and patient chart built on Qivot" width="820"></a>
+  <br>
+  <em><a href="examples/clinic">Qivot Clinic</a> — a basic EHR: a live patient chart and a day-calendar scheduler with conflict-checked booking, over seven related tables.&nbsp; <a href="docs/clinic-demo.mp4">▶ full-quality video</a></em>
+</p>
+
+<p align="center">
   <img src="docs/contacts-hero.png" alt="Qivot Contacts example — an iOS-style address book over 10,000 records" width="460">
   <br>
   <em><a href="examples/contacts">Contacts example</a> — an iOS-style address book over 10,000 live records: sticky A–Z sections, drag-to-jump index, and reactive search, all backed by SQLite through Qivot.</em>
@@ -107,6 +113,14 @@ step-by-step example:
   (~100k writes/sec), keeps the table bounded with retention pruning, and replays
   any past frame by reading it back — the whole write path, in something worth
   watching. → [`examples/fluxo`](examples/fluxo)
+- 🔎 **Instant full-text search demo** — [`examples/lexica`](examples/lexica) searches
+  80,000 entries as you type, ranked and highlighted, in a few milliseconds (FTS5). →
+  [`examples/lexica`](examples/lexica)
+- 🏥 **A basic EHR** — [`examples/clinic`](examples/clinic) is a three-view EHR over
+  seven related tables: an **analytics dashboard** (aggregate `groupBy` queries), a
+  patient **chart**, and a day-calendar **scheduler** with conflict-checked booking (a
+  transaction that refuses to double-book). Plus **FTS5 note search** and add
+  patient/note/vitals — with slick QML transitions. → [`examples/clinic`](examples/clinic)
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.
