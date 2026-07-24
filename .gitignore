@@ -14,5 +14,18 @@ Makefile*
 *.pro.user*
 .qmake.stash
 
+# qmake QML type-registration output
+*.qmltypes
+*_metatypes.json
+*_qmltyperegistrations.cpp
+
+# SQLite databases written by examples at runtime (keeps tests/…/tests.db tracked)
+examples/**/*.db
+*.db-wal
+*.db-shm
+
+# Built example binary (sits next to its sources)
+examples/fluxo/fluxo
+
 # macOS
 .DS_Store

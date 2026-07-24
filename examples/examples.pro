@@ -27,5 +27,6 @@ SUBDIRS += \
     qmlmodel \
     reactive \
     infinitescroll \
+    fluxo \
     contacts \
     index

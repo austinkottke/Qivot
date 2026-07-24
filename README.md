@@ -16,6 +16,12 @@
   <em><a href="examples/contacts">Contacts example</a> — an iOS-style address book over 10,000 live records: sticky A–Z sections, drag-to-jump index, and reactive search, all backed by SQLite through Qivot.</em>
 </p>
 
+<p align="center">
+  <img src="examples/fluxo/hero.png" alt="Fluxo — a flow-field particle recorder; every particle every frame is written to SQLite" width="680">
+  <br>
+  <em><a href="examples/fluxo">Fluxo example</a> — a flow-field particle recorder that batch-writes <strong>every particle, every frame</strong> to SQLite (~100k row-writes/sec on WAL), then lets you drag a timeline to <strong>replay any past moment straight from the database</strong>. The image above was rendered by the app itself.</em>
+</p>
+
 Qivot is a modern **C++17 ORM for Qt and SQLite**. Declare your models as plain
 C++/Qt classes — no SQL, no `QObject` — then query, join, and full-text search
 them through a typed C++ API. And where a plain ORM stops, Qivot keeps going: it
@@ -96,6 +102,11 @@ step-by-step example:
 - 🧰 **Connection pool + cancellable async** — `QiConnectionPool` hands each thread
   its own connection and `QiAsync` uses it (see the [playground](examples/dashboard)'s
   off-thread step); `QiCancelToken` makes long jobs cooperatively cancellable.
+- 🎆 **Write firehose + time-travel demo** — [`examples/fluxo`](examples/fluxo) is a
+  flow-field particle recorder that batch-writes thousands of rows per frame on WAL
+  (~100k writes/sec), keeps the table bounded with retention pruning, and replays
+  any past frame by reading it back — the whole write path, in something worth
+  watching. → [`examples/fluxo`](examples/fluxo)
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.

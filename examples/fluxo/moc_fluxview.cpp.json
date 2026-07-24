@@ -1,0 +1,222 @@
+{
+    "classes": [
+        {
+            "classInfos": [
+                {
+                    "name": "QML.Element",
+                    "value": "auto"
+                }
+            ],
+            "className": "FluxView",
+            "methods": [
+                {
+                    "access": "public",
+                    "name": "live",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "clear",
+                    "returnType": "void"
+                }
+            ],
+            "object": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "running",
+                    "notify": "runningChanged",
+                    "read": "running",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "bool",
+                    "user": false,
+                    "write": "setRunning"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "particleCount",
+                    "notify": "particleCountChanged",
+                    "read": "particleCount",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "setParticleCount"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "replaying",
+                    "notify": "replayingChanged",
+                    "read": "replaying",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "bool",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "rowsWritten",
+                    "notify": "statsChanged",
+                    "read": "rowsWritten",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "qlonglong",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "writesPerSec",
+                    "notify": "statsChanged",
+                    "read": "writesPerSec",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "liveRows",
+                    "notify": "statsChanged",
+                    "read": "liveRows",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "qlonglong",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "dbSizeMB",
+                    "notify": "statsChanged",
+                    "read": "dbSizeMB",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "batchMs",
+                    "notify": "statsChanged",
+                    "read": "batchMs",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "headFrame",
+                    "notify": "frameRangeChanged",
+                    "read": "headFrame",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "minFrame",
+                    "notify": "frameRangeChanged",
+                    "read": "minFrame",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "scrubFrame",
+                    "notify": "scrubFrameChanged",
+                    "read": "scrubFrame",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "setScrubFrame"
+                }
+            ],
+            "qualifiedClassName": "FluxView",
+            "signals": [
+                {
+                    "access": "public",
+                    "name": "runningChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "particleCountChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "replayingChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "statsChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "frameRangeChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "scrubFrameChanged",
+                    "returnType": "void"
+                }
+            ],
+            "slots": [
+                {
+                    "access": "private",
+                    "name": "tick",
+                    "returnType": "void"
+                }
+            ],
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QQuickPaintedItem"
+                }
+            ]
+        }
+    ],
+    "inputFile": "fluxview.h",
+    "outputRevision": 67
+}
