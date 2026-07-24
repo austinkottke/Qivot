@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  unix:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -45,3 +45,38 @@ jobs:
           python3 tools/amalgamate.py
           git diff --exit-code -- dist/qivot.hpp \
             || (echo "::error::dist/qivot.hpp is stale — run 'python3 tools/amalgamate.py' and commit." && exit 1)
+
+  windows:
+    name: windows-latest (msvc)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 5.15
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          arch: win64_msvc2019_64
+          cache: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build & run unit tests
+        working-directory: tests/unittests
+        shell: pwsh
+        run: |
+          qmake; if ($LASTEXITCODE) { exit 1 }
+          nmake; if ($LASTEXITCODE) { exit 1 }
+          $exe = Get-ChildItem -Recurse -Filter unittests.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error 'unittests.exe not found'; exit 1 }
+          & $exe.FullName
+          exit $LASTEXITCODE
+
+      - name: Build all examples
+        working-directory: examples
+        shell: pwsh
+        run: |
+          qmake; if ($LASTEXITCODE) { exit 1 }
+          nmake; if ($LASTEXITCODE) { exit 1 }

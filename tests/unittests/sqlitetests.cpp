@@ -1488,8 +1488,7 @@ void SqliteTests::hasMany() {
 }
 
 void SqliteTests::alterColumn() {
-    QVERIFY(connect.renameColumn<Migrate>("oldName", "newName"));
-    QVERIFY(connect.dropColumn<Migrate>("dropMe"));
+    QVERIFY(connect.renameColumn<Migrate>("oldName", "newName"));   // SQLite >= 3.25
 
     QSqlQuery q = connect.query();
     QVERIFY(q.exec("PRAGMA table_info(migrate)"));
@@ -1498,8 +1497,30 @@ void SqliteTests::alterColumn() {
         cols << q.value(1).toString();
     QVERIFY(cols.contains("newName"));
     QVERIFY(!cols.contains("oldName"));
-    QVERIFY(!cols.contains("dropMe"));
     QVERIFY(cols.contains("keep"));
+
+    // DROP COLUMN needs SQLite >= 3.35; Qt's bundled SQLite may be older.
+    bool supportsDrop = false;
+    {
+        QSqlQuery vq(db);
+        if (vq.exec("SELECT sqlite_version()") && vq.next()) {
+            const QStringList parts = vq.value(0).toString().split(".");
+            const int major = parts.value(0).toInt();
+            const int minor = parts.value(1).toInt();
+            supportsDrop = (major > 3) || (major == 3 && minor >= 35);
+        }
+    }
+    if (supportsDrop) {
+        QVERIFY(connect.dropColumn<Migrate>("dropMe"));
+        QSqlQuery q2 = connect.query();
+        QVERIFY(q2.exec("PRAGMA table_info(migrate)"));
+        QStringList cols2;
+        while (q2.next())
+            cols2 << q2.value(1).toString();
+        QVERIFY(!cols2.contains("dropMe"));
+    } else {
+        qDebug() << "Skipping DROP COLUMN test (SQLite < 3.35)";
+    }
 }
 
 void SqliteTests::enumField() {
@@ -1699,6 +1720,9 @@ void SqliteTests::keysetPaging() {
 }
 
 void SqliteTests::migrator() {
+    // Scope the connection + migrator so every handle to "migtest" is released
+    // before removeDatabase() (otherwise Qt warns it's still in use).
+    {
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "migtest");
     db.setDatabaseName(":memory:");
     QVERIFY(db.open());
@@ -1725,8 +1749,8 @@ void SqliteTests::migrator() {
     QVERIFY(m.migrate() == -1);                       // failed
     QVERIFY(m.currentVersion() == 2);                 // rolled back, unchanged
     QVERIFY(!m.lastError().isEmpty());
+    }   // db / c / m released here
 
-    db.close();
     QSqlDatabase::removeDatabase("migtest");
 }
 

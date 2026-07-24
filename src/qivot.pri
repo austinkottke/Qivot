@@ -4,7 +4,7 @@ QT += sql
 
 CONFIG += c++17
 
-QMAKE_CXXFLAGS += -Wno-invalid-offsetof
+!msvc: QMAKE_CXXFLAGS += -Wno-invalid-offsetof
 
 QIVOT_HEADERS += \
     $$PWD/qierror.h \

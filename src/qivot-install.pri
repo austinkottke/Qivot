@@ -6,6 +6,6 @@ QT += sql
 
 CONFIG += c++17
 
-QMAKE_CXXFLAGS += -Wno-invalid-offsetof
+!msvc: QMAKE_CXXFLAGS += -Wno-invalid-offsetof
 
 LIBS += -L$$PWD/../../lib/qivot -lqivot
