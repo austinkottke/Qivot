@@ -19,7 +19,7 @@
 <p align="center">
   <img src="examples/fluxo/hero.png" alt="Fluxo — a flow-field particle recorder; every particle every frame is written to SQLite" width="680">
   <br>
-  <em><a href="examples/fluxo">Fluxo example</a> — a flow-field particle recorder that batch-writes <strong>every particle, every frame</strong> to SQLite (~100k row-writes/sec on WAL), then lets you drag a timeline to <strong>replay any past moment straight from the database</strong>. The image above was rendered by the app itself.</em>
+  <em><a href="examples/fluxo">Fluxo example</a> — a flow-field particle recorder that batch-writes <strong>every particle, every frame</strong> to SQLite. Above: the live app sustaining <strong>113,286 writes/sec</strong> (2.9M rows recorded) on WAL, and never dropping a frame. Drag the timeline to <strong>replay any past moment straight from the database</strong>.</em>
 </p>
 
 Qivot is a modern **C++17 ORM for Qt and SQLite**. Declare your models as plain
