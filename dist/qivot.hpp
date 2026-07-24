@@ -1707,6 +1707,9 @@ private:
 
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QMap>
+#include <QStringList>
 
 /// Database field
 /**
@@ -1790,23 +1793,145 @@ public:
 
 };
 
-template <>
-bool QiField<QStringList>::set(QVariant value);
+// The built-in structured-field specializations below are defined `inline` in
+// the header (not out-of-line in a .cpp) on purpose. get()/set() are virtual,
+// and MSVC does not reliably emit an out-of-line explicit specialization of a
+// virtual member unless the enclosing class template is instantiated in that
+// same translation unit — which it isn't. Defining them inline gives every TU
+// (and every compiler) the definition, matching the QI_DECLARE_CONVERTER pattern.
+
+namespace QiFieldDetail {
+
+/// Escape & and " so list items survive being joined with the separator.
+inline QString escapeStringListItem(QString value) {
+    QString result;
+    QMap<char, QString> map;
+    map['&'] = "&amp;";
+    map['"'] = "&quot;";
+
+    result.reserve(value.size() * 1.1);
+    int n = value.size();
+    for (int i = 0; i < n; i++) {
+        QChar c = value.at(i);
+        char l = c.toLatin1();
+        if (map.contains(l)) {
+            result += map[l];
+        } else {
+            result += c;
+        }
+    }
+    result.squeeze();
+    return result;
+}
+
+inline QString unescapeStringListItem(QString value) {
+    QMap<QString, char> map;
+    map["&amp;"] = '&';
+    map["&quot;"] = '"';
+
+    QString result;
+    result.reserve(value.size());
+
+    int n = value.size();
+    for (int i = 0; i < n; i++) {
+        QChar q = value.at(i);
+
+        if (q == '&') {
+            bool found = false;
+            QMap<QString, char>::const_iterator iter = map.constBegin();
+            while (iter != map.end()) {
+                QString key = iter.key();
+                int len = key.size();
+
+                QStringView ref = QStringView(value).mid(i, len);
+                if (ref == QStringView(key)) {
+                    q = iter.value();
+                    i += len - 1;
+                    found = true;
+                    break;
+                }
+                iter++;
+            }
+
+            if (!found) {
+                qWarning() << QString("Invalid escaped string : %1").arg(value);
+            }
+        }
+
+        result += q;
+    }
+
+    result.squeeze();
+    return result;
+}
+
+/// Separator for QStringList storage.
+inline const char *stringListSeparator() { return " & "; }
+
+} // namespace QiFieldDetail
 
 template <>
-QVariant QiField<QStringList>::get(bool convert) const;
+inline bool QiField<QStringList>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString) {
+        QString str = value.toString();
+        QStringList list = str.split(QiFieldDetail::stringListSeparator());
+        QStringList result;
+        foreach (str, list) {
+            result << QiFieldDetail::unescapeStringListItem(str);
+        }
+        value = result;
+    }
+    return QiBaseField::set(value);
+}
+
+template <>
+inline QVariant QiField<QStringList>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+
+    if (convert && val.userType() == QMetaType::QStringList) {
+        QStringList list = val.toStringList();
+        QStringList result;
+        QString str;
+        foreach (str, list) {
+            result << QiFieldDetail::escapeStringListItem(str);
+        }
+        val = result.join(QiFieldDetail::stringListSeparator());
+    }
+
+    return val;
+}
 
 // Structured JSON fields: hold a nested QJsonObject / QJsonArray in memory,
 // serialize to a JSON string only when persisted (convert = true).
 template <>
-bool QiField<QJsonObject>::set(QVariant value);
-template <>
-QVariant QiField<QJsonObject>::get(bool convert) const;
+inline bool QiField<QJsonObject>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString)
+        value = QJsonDocument::fromJson(value.toString().toUtf8()).object();
+    return QiBaseField::set(value);
+}
 
 template <>
-bool QiField<QJsonArray>::set(QVariant value);
+inline QVariant QiField<QJsonObject>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+    if (convert && val.userType() == QMetaType::QJsonObject)
+        return QString::fromUtf8(QJsonDocument(val.toJsonObject()).toJson(QJsonDocument::Compact));
+    return val;
+}
+
 template <>
-QVariant QiField<QJsonArray>::get(bool convert) const;
+inline bool QiField<QJsonArray>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString)
+        value = QJsonDocument::fromJson(value.toString().toUtf8()).array();
+    return QiBaseField::set(value);
+}
+
+template <>
+inline QVariant QiField<QJsonArray>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+    if (convert && val.userType() == QMetaType::QJsonArray)
+        return QString::fromUtf8(QJsonDocument(val.toJsonArray()).toJson(QJsonDocument::Compact));
+    return val;
+}
 
 /// Primary key field
 
@@ -5847,155 +5972,10 @@ QString QiExpressionPriv::bind(QVariant v){
 
 // ---- src/qifield.cpp ---------------------------------------------
 #include <QtCore>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 
-/// Separator for StringList storage
-#define SEP " & "
-
-/// Replace & and " by HTML entities.
-
-static QString escape(QString value) {
-    QString result;
-    QMap<char , QString> map;
-    map['&'] = "&amp;";
-    map['"'] = "&quot;";
-
-    result.reserve(value.size() * 1.1);
-    int n = value.size();
-    for (int i = 0 ; i < n;i++) {
-        QChar c = value.at(i);
-        char l = c.toLatin1();
-        if (map.contains(l)) {
-            result += map[l];
-        } else {
-            result += c;
-        }
-    }
-    result.squeeze();
-    return result;
-}
-
-static QString unescape(QString value) {
-    QMap<QString,char> map;
-    map["&amp;"] = '&';
-    map["&quot;"] = '"';
-
-    QString result;
-    result.reserve(value.size());
-
-    int n = value.size();
-
-    for (int i = 0 ; i<n;i++){
-        QChar q = value.at(i) ;
-
-        if (q == '&') {
-            bool found = false;
-            QMap<QString, char>::const_iterator iter = map.constBegin();
-            while (iter!= map.end()) {
-                QString key = iter.key();
-                int len = key.size();
-
-                QStringView ref = QStringView(value).mid(i,len);
-                if (ref == QStringView(key)) {
-                    q = iter.value();
-                    i+=len-1;
-                    found = true;
-                    break;
-                }
-                iter++;
-            }
-
-            if (!found) {
-                qWarning() << QString("Invalid escaped string : %1").arg(value);
-            }
-        }
-
-        result += q;
-    }
-
-    result.squeeze();
-    return result;
-}
-
-template <>
-bool QiField<QStringList>::set(QVariant value){
-    QString str;
-
-    if (value.userType() == QMetaType::QString) {
-        str = value.toString();
-        QStringList list = str.split(SEP);
-        QStringList result;
-
-        foreach (str,list) {
-            result << unescape(str);
-        }
-
-        value = result;
-    }
-
-//    qDebug() << __func__ << str;
-    return QiBaseField::set(value);;
-}
-
-template <>
-QVariant QiField<QStringList>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-
-    if (convert && val.userType() == QMetaType::QStringList ) {
-        QStringList list = val.toStringList();
-        QStringList result;
-        QString str;
-
-        foreach (str,list) {
-            result << escape(str);
-        }
-
-        str = result.join(SEP);
-        val = str;
-    }
-//    qDebug() << __func__ << str << list;
-
-    return val;
-}
-
-
-// --- Structured JSON fields ------------------------------------------------
-// In memory the field holds a QJsonObject/QJsonArray so you can read and mutate
-// the nested structure; get(convert=true) serializes it to a compact JSON string
-// for the TEXT column, and set() parses that string back on load.
-
-template <>
-bool QiField<QJsonObject>::set(QVariant value) {
-    if (value.userType() == QMetaType::QString)
-        value = QJsonDocument::fromJson(value.toString().toUtf8()).object();
-    return QiBaseField::set(value);
-}
-
-template <>
-QVariant QiField<QJsonObject>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-    if (convert && val.userType() == QMetaType::QJsonObject)
-        return QString::fromUtf8(QJsonDocument(val.toJsonObject()).toJson(QJsonDocument::Compact));
-    return val;
-}
-
-template <>
-bool QiField<QJsonArray>::set(QVariant value) {
-    if (value.userType() == QMetaType::QString)
-        value = QJsonDocument::fromJson(value.toString().toUtf8()).array();
-    return QiBaseField::set(value);
-}
-
-template <>
-QVariant QiField<QJsonArray>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-    if (convert && val.userType() == QMetaType::QJsonArray)
-        return QString::fromUtf8(QJsonDocument(val.toJsonArray()).toJson(QJsonDocument::Compact));
-    return val;
-}
-
+// The QiField<QStringList/QJsonObject/QJsonArray> specializations now live inline
+// in qifield.h (see the comment there) so MSVC emits them in every translation
+// unit. Only QiPrimaryKey remains a normal out-of-line definition here.
 
 QiPrimaryKey::QiPrimaryKey(){
 }
