@@ -17,7 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-13]
+        # macos-15-intel: x86_64 runner (macos-13 was retired Dec 2025). Qt 5.15.2's
+        # macOS build is Intel-only, so we need an Intel runner, not the arm64
+        # macos-15/macos-latest images (those would run Qt under Rosetta).
+        os: [ubuntu-22.04, macos-15-intel]
 
     steps:
       - uses: actions/checkout@v4
