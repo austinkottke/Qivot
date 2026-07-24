@@ -1663,6 +1663,8 @@ Modernization:
 ## Limitations
 
 - SQLite only (FTS5, `WITHOUT ROWID`, savepoints and the SQL dialect assume it).
+- Builds with **GCC, Clang, and MSVC** — Linux, macOS, and Windows (MSVC) are all
+  in CI.
 - The typed query builder doesn't cover every construct (correlated subqueries,
   CTEs, window functions) — use [`qiRawQuery<T>`](examples/dashboard) for those; it
   still returns typed models.

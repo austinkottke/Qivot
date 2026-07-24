@@ -1906,7 +1906,11 @@ void SqliteTests::asyncQuery() {
     QFuture<int> f = QiAsync::run([](QiConnection &c) {
         return Ticket::objects(c).count();              // runs on a worker thread
     });
-    QVERIFY(f.result() == expected);                    // blocks until done
+    // Bounded wait: if a worker never gets scheduled (thread-pool starvation on a
+    // constrained CI runner), fail with a message instead of hanging f.result() forever.
+    for (int waited = 0; !f.isFinished() && waited < 10000; waited += 10) QThread::msleep(10);
+    QVERIFY2(f.isFinished(), "async worker never completed within 10s");
+    QVERIFY(f.result() == expected);
 
     // cancellation token
     QiCancelToken token;
@@ -1989,5 +1993,8 @@ void SqliteTests::asyncCancel() {
     QThread::msleep(60);      // let the worker get into the loop
     token.cancel();
 
+    // Bounded wait so a starved/never-scheduled worker fails cleanly instead of hanging CI.
+    for (int waited = 0; !f.isFinished() && waited < 10000; waited += 10) QThread::msleep(10);
+    QVERIFY2(f.isFinished(), "cancelable worker never completed within 10s");
     QVERIFY(f.result() == -1);   // the job noticed the cancel and returned early
 }

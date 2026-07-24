@@ -13,6 +13,7 @@ jobs:
   unix:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -49,11 +50,12 @@ jobs:
   windows:
     name: windows-latest (msvc)
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt 5.15
+      - name: Install Qt 5.15 (MSVC)
         uses: jurplel/install-qt-action@v4
         with:
           version: '5.15.2'

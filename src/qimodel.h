@@ -237,7 +237,7 @@ public:
   @see QiUnique
   @see QiDefault
  */
-#define QI_FIELD(field , CLAUSE...) ( field , ##CLAUSE )
+#define QI_FIELD(field, ...) ( field , ##__VA_ARGS__ )
 
 /// Declare a field with an explicit SQL column type, overriding the type Qivot
 /// would infer from the C++ type.
@@ -253,8 +253,8 @@ public:
     QI_FIELD_AS(ticketNo,  "STRING", QiNotNull)       // custom type + clause
   \endcode
  */
-#define QI_FIELD_AS(field , sqltype , CLAUSE...) \
-    ( field , qiMergeSqlType(QiSqlType(sqltype) , ##CLAUSE) )
+#define QI_FIELD_AS(field, sqltype, ...) \
+    ( field , qiMergeSqlType(QiSqlType(sqltype) , ##__VA_ARGS__) )
 
 /**
   See tests/modes/model1.h
