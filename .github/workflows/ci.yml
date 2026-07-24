@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-13]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 5.15
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          cache: true
+
+      - name: Build & run unit tests
+        working-directory: tests/unittests
+        run: |
+          qmake
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+          ./unittests    # CoreTests + SqliteTests; non-zero exit fails the job
+
+      - name: Build all examples
+        working-directory: examples
+        run: |
+          qmake
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Header-only build (dist/qivot.hpp) is up to date
+        run: |
+          python3 tools/amalgamate.py
+          git diff --exit-code -- dist/qivot.hpp \
+            || (echo "::error::dist/qivot.hpp is stale — run 'python3 tools/amalgamate.py' and commit." && exit 1)

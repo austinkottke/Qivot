@@ -1,6 +1,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QThread>
 #include <qijsonmapper.h>
 #include <qitransaction.h>
 #include <qifieldref.h>
@@ -697,13 +698,9 @@ void SqliteTests::datetime() {
     User user2;
     QVERIFY(user2.load(QiWhere("userId=","tester")));
 
-#if (QT_VERSION > QT_VERSION_CHECK(5, 0, 2))
-    // The timezone checking do not exists in Qt 5.0.2
-    QEXPECT_FAIL("","Sqlite driver do not save the time zone of QDateTime type",Continue);
-#endif
-
-    QVERIFY(user2.lastLoginTime == datetime);
-
+    // The SQLite driver stores a QDateTime without its time zone, so compare at
+    // second precision via a formatted string rather than exact `==` equality
+    // (which is driver/version dependent).
     QString format("yyyy-MM-ddThh:mm:ss");
     QVERIFY(user2.lastLoginTime.get().toDateTime().toString(format) == datetime.toString(format));
 
@@ -1894,4 +1891,79 @@ void SqliteTests::asyncQuery() {
     QVERIFY(token.isCanceled());
 
     (void) Ticket::objects().filter( Ticket::col().subject == "async" ).remove();
+}
+
+
+// ---- more later-feature tests --------------------------------------------
+
+void SqliteTests::windowedModel() {
+    for (int i = 0; i < 150; i++) {
+        Ticket t; t.subject = QString("w%1").arg(i, 3, 10, QChar('0')); t.priority = 1; QVERIFY(t.save());
+    }
+
+    QiWindowedListModel model;
+    model.setQuery<Ticket>(
+        Ticket::objects().filter( Ticket::col().subject.expr("like", "w%") ).orderBy("subject asc"), 50);
+    model.refresh();
+
+    // Full count is known up front (one count(*)), even though only a page loaded.
+    QVERIFY(model.count() == 150);
+    QVERIFY(model.rowCount() == 150);
+
+    // valueAt() fetches the page holding a row on demand — first, last, middle.
+    QVERIFY(model.valueAt(0,   "subject").toString() == "w000");
+    QVERIFY(model.valueAt(149, "subject").toString() == "w149");
+    QVERIFY(model.valueAt(75,  "subject").toString() == "w075");
+
+    // data() maps through the roles the same way a QML ListView would read it.
+    int subjRole = -1;
+    const QHash<int, QByteArray> roles = model.roleNames();
+    for (auto it = roles.begin(); it != roles.end(); ++it)
+        if (it.value() == "subject") subjRole = it.key();
+    QVERIFY(subjRole != -1);
+    QVERIFY(model.data(model.index(0, 0),   subjRole).toString() == "w000");
+    QVERIFY(model.data(model.index(149, 0), subjRole).toString() == "w149");
+
+    (void) Ticket::objects().filter( Ticket::col().subject.expr("like", "w%") ).remove();
+}
+
+void SqliteTests::prefetchManyToMany() {
+    PostM p1; p1.postTitle = "pm1"; QVERIFY(p1.save());
+    PostM p2; p2.postTitle = "pm2"; QVERIFY(p2.save());
+    LabelM a; a.labelName = "pf-a"; QVERIFY(a.save());
+    LabelM b; b.labelName = "pf-b"; QVERIFY(b.save());
+
+    QVERIFY(p1.labels().add(a));
+    QVERIFY(p1.labels().add(b));
+    QVERIFY(p2.labels().add(a));
+
+    QiList<PostM> posts;
+    posts.append(new PostM(p1));
+    posts.append(new PostM(p2));
+
+    // Resolves both posts' labels in two queries (join table + targets).
+    QiPrefetch<LabelM> pf =
+        qiPrefetchManyToMany<LabelM>(posts, "postm_labelm", "postmId", "labelmId");
+    QVERIFY(pf.forKey(p1.id()).size() == 2);
+    QVERIFY(pf.forKey(p2.id()).size() == 1);
+}
+
+void SqliteTests::asyncCancel() {
+    QiAsync::configure("QSQLITE", "tests.db");
+
+    QiCancelToken token;
+    QFuture<int> f = QiAsync::runCancelable(token,
+        [](QiConnection &c, const QiCancelToken &t) -> int {
+            Q_UNUSED(c);
+            for (int i = 0; i < 2000; i++) {
+                if (t.isCanceled()) return -1;     // stop early
+                QThread::msleep(2);
+            }
+            return 2000;
+        });
+
+    QThread::msleep(60);      // let the worker get into the loop
+    token.cancel();
+
+    QVERIFY(f.result() == -1);   // the job noticed the cancel and returned early
 }

@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Qt-5.15%20%7C%206-41CD52?logo=qt&logoColor=white" alt="Qt 5.15 or 6">
   <img src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
+  <img src="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml/badge.svg" alt="CI">
 </p>
 
 <p align="center">

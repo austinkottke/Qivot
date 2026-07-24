@@ -179,6 +179,12 @@ private Q_SLOTS:
     void connectionPool();
     /// Async query + cancellation token (QiAsync)
     void asyncQuery();
+    /// Windowed list model — full count up front, pages fetched on demand
+    void windowedModel();
+    /// Many-to-many prefetch (QiPrefetch via two queries)
+    void prefetchManyToMany();
+    /// Cooperative cancellation of a running async job (runCancelable)
+    void asyncCancel();
 
 private:
     QiConnection connect;
