@@ -430,11 +430,15 @@ void SqliteTests::deleteAll() {
 //    QVERIFY(model1.id() == model1b.id() );
     QVERIFY(model1.id == model1b.id );
 
+    // DELETE ... LIMIT is a non-standard SQLite extension, only valid when SQLite
+    // is built with SQLITE_ENABLE_UPDATE_DELETE_LIMIT (Debian/Ubuntu ship it on;
+    // the Qt-bundled SQLite usually doesn't). Exercise the code path but don't
+    // assert on the result — either outcome is valid, and asserting one way turns
+    // CI red on the other (a QEXPECT_FAIL that passes is an XPASS = a test failure).
     query = QiQuery<Model1>().filter(QiWhere("key = " ,"temp")).limit(1);
-    QEXPECT_FAIL("","Normally sqlite do not support limit in delete from , unless it is build with special flag",Continue);
-    QVERIFY(query.remove());
+    (void) query.remove();
 
-    qDebug() << "Failed sql : " << query.lastQuery().lastQuery();
+    qDebug() << "delete-with-limit sql :" << query.lastQuery().lastQuery();
 
     query = QiQuery<Model1>().filter(QiWhere("key" , "=" , "temp"));
     QVERIFY(query.remove());
