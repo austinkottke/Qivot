@@ -17,6 +17,30 @@ is synthetic** (generated at startup); there are no real patients.
 > ./clinic
 > ```
 
+## How QML gets the data (no hand-mapping)
+
+Query results are exposed as **`QiListModel`s** — the roles come straight from the
+model's fields, so there is **no per-row copying** in C++:
+
+```cpp
+m_problems.setList(QiQuery<Problem>().filter(QiWhere("patientId = ", id)).all());
+```
+```qml
+Repeater { model: store.problems
+    Text { text: model.name + "  ·  " + model.status } }   // roles == field names
+```
+
+The selected chart is exposed as **raw gadget values** (`Q_GADGET` + `QI_QML_FIELD`
+in [`models.h`](models.h)), so QML reads fields directly:
+
+```qml
+Text { text: store.patient.firstName + " " + store.patient.lastName }
+```
+
+Joins and formatting — a provider's name, a time label, an age — are tiny
+invokables (`store.providerName(id)`, `store.minuteLabel(min)`, `store.ageOf(dob)`),
+not fields copied onto every row.
+
 ## What it shows off
 
 | Feature | Where |

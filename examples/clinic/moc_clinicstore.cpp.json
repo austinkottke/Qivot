@@ -204,6 +204,61 @@
                     "access": "public",
                     "arguments": [
                         {
+                            "name": "id",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "providerName",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "id",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "providerColor",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "id",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "providerIndex",
+                    "returnType": "int"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "id",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "patientName",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "dob",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "ageOf",
+                    "returnType": "int"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
                             "name": "minutesFromMidnight",
                             "type": "int"
                         }
@@ -220,16 +275,111 @@
             "object": true,
             "properties": [
                 {
-                    "constant": false,
+                    "constant": true,
                     "designable": true,
                     "final": false,
                     "name": "patients",
-                    "notify": "patientsChanged",
                     "read": "patients",
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QVariantList",
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "providers",
+                    "read": "providers",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "problems",
+                    "read": "problems",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "medications",
+                    "read": "medications",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "vitals",
+                    "read": "vitals",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "appointments",
+                    "read": "appointments",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "notes",
+                    "read": "notes",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "schedule",
+                    "read": "schedule",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "noteResults",
+                    "read": "noteResults",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
                     "user": false
                 },
                 {
@@ -242,72 +392,20 @@
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QVariantMap",
+                    "type": "Patient",
                     "user": false
                 },
                 {
                     "constant": false,
                     "designable": true,
                     "final": false,
-                    "name": "problems",
+                    "name": "latestVital",
                     "notify": "chartChanged",
-                    "read": "problems",
+                    "read": "latestVital",
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QVariantList",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "medications",
-                    "notify": "chartChanged",
-                    "read": "medications",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "vitals",
-                    "notify": "chartChanged",
-                    "read": "vitals",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "appointments",
-                    "notify": "chartChanged",
-                    "read": "appointments",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "notes",
-                    "notify": "chartChanged",
-                    "read": "notes",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
+                    "type": "Vital",
                     "user": false
                 },
                 {
@@ -321,31 +419,6 @@
                     "scriptable": true,
                     "stored": true,
                     "type": "int",
-                    "user": false
-                },
-                {
-                    "constant": true,
-                    "designable": true,
-                    "final": false,
-                    "name": "providers",
-                    "read": "providers",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "schedule",
-                    "notify": "scheduleChanged",
-                    "read": "schedule",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
                     "user": false
                 },
                 {
@@ -424,19 +497,6 @@
                     "scriptable": true,
                     "stored": true,
                     "type": "QVariantMap",
-                    "user": false
-                },
-                {
-                    "constant": false,
-                    "designable": true,
-                    "final": false,
-                    "name": "noteResults",
-                    "notify": "noteResultsChanged",
-                    "read": "noteResults",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
                     "user": false
                 },
                 {

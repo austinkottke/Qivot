@@ -72,6 +72,10 @@ static const QVector<ProvDef> kProviders = {
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
 
+    // Register the gadget value types so QML can read patient.firstName / latestVital.systolic.
+    qRegisterMetaType<Patient>("Patient");
+    qRegisterMetaType<Vital>("Vital");
+
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("clinic.db");
     if (!db.open()) return 1;

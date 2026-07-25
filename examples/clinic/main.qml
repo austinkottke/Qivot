@@ -20,10 +20,15 @@ ApplicationWindow {
              : s === "cancelled" ? "#EF4444"
              : "#3B82F6"                        // scheduled
     }
-    function providerIndex(id) {
-        for (var i = 0; i < store.providers.length; i++)
-            if (store.providers[i].id === id) return i
-        return 0
+    // display helpers computed from raw model roles (no C++ plumbing)
+    readonly property var avatarPalette: ["#3B82F6","#10B981","#8B5CF6","#F59E0B","#EF4444",
+                                          "#06B6D4","#EC4899","#14B8A6","#6366F1","#F97316"]
+    function avatarColor(id) { return avatarPalette[Math.abs(id) % avatarPalette.length] }
+    function initials(first, last) { return ((first||" ").charAt(0) + (last||" ").charAt(0)).toUpperCase() }
+    function dateLabel(iso, fmt) {
+        if (!iso) return ""
+        var p = ("" + iso).split("-")
+        return Qt.formatDate(new Date(p[0], p[1]-1, p[2]), fmt || "MMM d, yyyy")
     }
 
     ClinicStore { id: store }
@@ -78,7 +83,7 @@ ApplicationWindow {
             Rectangle { width: statChip.width + 24; height: 30; radius: 15; color: "#E8F5F5"
                         anchors.verticalCenter: parent.verticalCenter
                         Text { id: statChip; anchors.centerIn: parent
-                               text: store.stats.total + " today · " + store.providers.length + " providers"
+                               text: store.stats.total + " today · " + store.providers.count + " providers"
                                color: win.teal; font.pixelSize: 13; font.bold: true } }
         }
     }
@@ -124,15 +129,17 @@ ApplicationWindow {
                         ]
                         Rectangle {
                             width: parent.cw; height: 96; radius: 14; color: "white"
-                            Rectangle { width: 34; height: 34; radius: 10; color: modelData.c; opacity: 0.14
-                                        anchors { left: parent.left; leftMargin: 16; top: parent.top; topMargin: 16 } }
-                            Rectangle { width: 6; height: 6; radius: 3; color: modelData.c
-                                        anchors { left: parent.left; leftMargin: 30; top: parent.top; topMargin: 30 } }
-                            Column {
-                                anchors { left: parent.left; leftMargin: 16; bottom: parent.bottom; bottomMargin: 16 }
-                                spacing: 2
-                                Text { text: modelData.v; color: win.ink; font.pixelSize: 26; font.bold: true }
-                                Text { text: modelData.l; color: win.muted; font.pixelSize: 12 }
+                            Row {
+                                anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                                spacing: 14
+                                Rectangle { width: 5; height: 42; radius: 3; color: modelData.c
+                                            anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter; spacing: 4
+                                    Text { text: modelData.l.toUpperCase(); color: win.muted
+                                           font.pixelSize: 10; font.letterSpacing: 1; font.bold: true }
+                                    Text { text: modelData.v; color: win.ink; font.pixelSize: 28; font.bold: true }
+                                }
                             }
                         }
                     }
@@ -297,7 +304,7 @@ ApplicationWindow {
                             Timer { id: noteDebounce; interval: 110; onTriggered: store.searchNotes(noteSearch.text) }
                         }
                         Text { visible: store.noteQuery.length > 0
-                               text: store.noteResults.length + " matching notes"
+                               text: store.noteResults.count + " matching notes"
                                color: win.muted; font.pixelSize: 12 }
                         Column {
                             width: parent.width; spacing: 8
@@ -312,16 +319,16 @@ ApplicationWindow {
                                                   leftMargin: 14; rightMargin: 14; topMargin: 10 }
                                         spacing: 3
                                         Row { spacing: 8
-                                            Text { text: modelData.patientName; color: win.teal
+                                            Text { text: store.patientName(model.patientId); color: win.teal
                                                    font.pixelSize: 13; font.bold: true }
-                                            Text { text: modelData.kind + " · " + modelData.dateLabel
+                                            Text { text: model.kind + " · " + win.dateLabel(model.date)
                                                    color: win.muted; font.pixelSize: 11 } }
-                                        Text { text: modelData.body; color: "#374151"; font.pixelSize: 12
+                                        Text { text: model.body; color: "#374151"; font.pixelSize: 12
                                                width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2
                                                elide: Text.ElideRight }
                                     }
                                     MouseArea { id: nrHover; anchors.fill: parent; hoverEnabled: true
-                                        onClicked: { store.selectPatient(modelData.patientId); win.tab = 1 } }
+                                        onClicked: { store.selectPatient(model.patientId); win.tab = 1 } }
                                 }
                             }
                         }
@@ -372,7 +379,7 @@ ApplicationWindow {
             }
 
             Text { anchors { left: parent.left; leftMargin: 18; top: searchBox.bottom; topMargin: 8 }
-                   text: store.patients.length + " patients"; color: win.muted; font.pixelSize: 12 }
+                   text: store.patients.count + " patients"; color: win.muted; font.pixelSize: 12 }
             Rectangle {
                 anchors { right: parent.right; rightMargin: 16; top: searchBox.bottom; topMargin: 2 }
                 width: npT.width + 22; height: 26; radius: 13
@@ -395,33 +402,33 @@ ApplicationWindow {
                 displaced: Transition { NumberAnimation { properties: "x,y"; duration: 220; easing.type: Easing.OutCubic } }
                 delegate: Rectangle {
                     width: patientList.width; height: 64
-                    color: modelData.id === store.selectedId ? "#EAF6F6" : (rowHover.containsMouse ? "#F6F8FB" : "white")
+                    color: model.id === store.selectedId ? "#EAF6F6" : (rowHover.containsMouse ? "#F6F8FB" : "white")
                     Behavior on color { ColorAnimation { duration: 160 } }
                     Rectangle { height: parent.height; color: win.teal
-                                width: modelData.id === store.selectedId ? 3 : 0
+                                width: model.id === store.selectedId ? 3 : 0
                                 Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
                     Rectangle {
                         id: av
                         anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
-                        width: 40; height: 40; radius: 20; color: modelData.color
+                        width: 40; height: 40; radius: 20; color: win.avatarColor(model.id)
                         scale: rowHover.containsMouse ? 1.08 : 1.0
                         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
-                        Text { anchors.centerIn: parent; text: modelData.initials; color: "white"
-                               font.pixelSize: 15; font.bold: true }
+                        Text { anchors.centerIn: parent; text: win.initials(model.firstName, model.lastName)
+                               color: "white"; font.pixelSize: 15; font.bold: true }
                     }
                     Column {
                         anchors { left: av.right; leftMargin: 12; right: parent.right; rightMargin: 12
                                   verticalCenter: parent.verticalCenter }
                         spacing: 2
-                        Text { text: modelData.name; color: win.ink; font.pixelSize: 15; font.bold: true
-                               width: parent.width; elide: Text.ElideRight }
-                        Text { text: modelData.mrn + "  ·  " + modelData.age + "y  ·  " + modelData.sex
+                        Text { text: model.firstName + " " + model.lastName; color: win.ink
+                               font.pixelSize: 15; font.bold: true; width: parent.width; elide: Text.ElideRight }
+                        Text { text: model.mrn + "  ·  " + store.ageOf(model.dob) + "y  ·  " + model.sex
                                color: win.muted; font.pixelSize: 12 }
                     }
                     Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.leftMargin: 16
                                 width: parent.width - 16; height: 1; color: "#EEF1F6" }
                     MouseArea { id: rowHover; anchors.fill: parent; hoverEnabled: true
-                                onClicked: store.selectPatient(modelData.id) }
+                                onClicked: store.selectPatient(model.id) }
                 }
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 6 }
             }
@@ -454,20 +461,22 @@ ApplicationWindow {
                     Row {
                         anchors { left: parent.left; leftMargin: 24; verticalCenter: parent.verticalCenter }
                         spacing: 20
-                        Rectangle { width: 76; height: 76; radius: 38; color: store.patient.color || "#ccc"
+                        Rectangle { width: 76; height: 76; radius: 38; color: win.avatarColor(store.selectedId)
                                     anchors.verticalCenter: parent.verticalCenter
-                                    Text { anchors.centerIn: parent; text: store.patient.initials || ""
+                                    Text { anchors.centerIn: parent
+                                           text: win.initials(store.patient.firstName, store.patient.lastName)
                                            color: "white"; font.pixelSize: 28; font.bold: true } }
                         Column {
                             anchors.verticalCenter: parent.verticalCenter; spacing: 6
-                            Text { text: store.patient.name || ""; color: win.ink; font.pixelSize: 26; font.bold: true }
-                            Text { text: (store.patient.mrn || "") + "   ·   " + (store.patient.age || "") + "y   ·   "
-                                         + (store.patient.sex || "") + "   ·   DOB " + (store.patient.dob || "")
+                            Text { text: store.patient.firstName + " " + store.patient.lastName
+                                   color: win.ink; font.pixelSize: 26; font.bold: true }
+                            Text { text: store.patient.mrn + "   ·   " + store.ageOf(store.patient.dob) + "y   ·   "
+                                         + store.patient.sex + "   ·   DOB " + store.patient.dob
                                    color: win.muted; font.pixelSize: 14 }
                             Row {
                                 spacing: 8
-                                Text { text: "☎ " + (store.patient.phone || ""); color: win.muted; font.pixelSize: 13 }
-                                Text { text: "·  Blood " + (store.patient.bloodType || ""); color: win.muted; font.pixelSize: 13 }
+                                Text { text: "☎ " + store.patient.phone; color: win.muted; font.pixelSize: 13 }
+                                Text { text: "·  Blood " + store.patient.bloodType; color: win.muted; font.pixelSize: 13 }
                             }
                         }
                     }
@@ -475,7 +484,7 @@ ApplicationWindow {
                     Rectangle {
                         anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
                         height: 34; radius: 17; width: alg.width + 30
-                        property bool has: (store.patient.allergies || "") !== ""
+                        property bool has: (store.patient.allergies || "") !== ""   // gadget field
                         color: has ? "#FDECEC" : "#EAF7EF"
                         Text { id: alg; anchors.centerIn: parent
                                text: parent.has ? ("⚠  Allergy: " + store.patient.allergies) : "✓  No known allergies"
@@ -505,12 +514,15 @@ ApplicationWindow {
                     width: parent.width; spacing: 14
                     property real cw: (width - 4 * 14) / 5
                     Repeater {
+                        property var lv: store.latestVital
                         model: [
-                            { l: "Blood Pressure", v: store.patient.bp || "—", u: "mmHg", c: "#3B82F6" },
-                            { l: "Heart Rate",     v: (store.patient.hr || "—"), u: "bpm", c: "#EF4444" },
-                            { l: "Temp",           v: (store.patient.tempC || "—"), u: "°C", c: "#F59E0B" },
-                            { l: "SpO₂",           v: (store.patient.spo2 || "—"), u: "%", c: "#10B981" },
-                            { l: "BMI",            v: (store.patient.bmi || "—"), u: "kg/m²", c: "#8B5CF6" }
+                            { l: "Blood Pressure", v: lv.systolic > 0 ? (lv.systolic + "/" + lv.diastolic) : "—", u: "mmHg", c: "#3B82F6" },
+                            { l: "Heart Rate",     v: lv.heartRate > 0 ? lv.heartRate : "—", u: "bpm", c: "#EF4444" },
+                            { l: "Temp",           v: lv.tempC > 0 ? lv.tempC.toFixed(1) : "—", u: "°C", c: "#F59E0B" },
+                            { l: "SpO₂",           v: lv.spo2 > 0 ? lv.spo2 : "—", u: "%", c: "#10B981" },
+                            { l: "BMI",            v: (lv.weightKg > 0 && lv.heightCm > 0)
+                                                     ? (lv.weightKg / Math.pow(lv.heightCm/100, 2)).toFixed(1) : "—",
+                                                   u: "kg/m²", c: "#8B5CF6" }
                         ]
                         Rectangle {
                             width: parent.cw; height: 92; radius: 14; color: "white"
@@ -554,17 +566,17 @@ ApplicationWindow {
                                     Item {
                                         width: parent.width; height: 20
                                         Rectangle { id: pdot; width: 8; height: 8; radius: 4
-                                                    color: modelData.status === "active" ? "#EF4444" : "#94A3B8"
+                                                    color: model.status === "active" ? "#EF4444" : "#94A3B8"
                                                     anchors { left: parent.left; verticalCenter: parent.verticalCenter } }
-                                        Text { text: modelData.name; color: win.ink; font.pixelSize: 14
+                                        Text { text: model.name; color: win.ink; font.pixelSize: 14
                                                anchors { left: pdot.right; leftMargin: 10; right: pstatus.left; rightMargin: 10
                                                          verticalCenter: parent.verticalCenter }
                                                elide: Text.ElideRight }
-                                        Text { id: pstatus; text: modelData.status; color: win.muted; font.pixelSize: 12
+                                        Text { id: pstatus; text: model.status; color: win.muted; font.pixelSize: 12
                                                anchors { right: parent.right; verticalCenter: parent.verticalCenter } }
                                     }
                                 }
-                                Text { visible: store.problems.length === 0; text: "No problems recorded"
+                                Text { visible: store.problems.count === 0; text: "No problems recorded"
                                        color: win.muted; font.pixelSize: 13 }
                             }
                         }
@@ -586,16 +598,16 @@ ApplicationWindow {
                                         width: parent.width
                                         Column {
                                             width: parent.width - 70; spacing: 2
-                                            Text { text: modelData.name; color: win.ink; font.pixelSize: 14; font.bold: true }
-                                            Text { text: modelData.dose + " · " + modelData.frequency
+                                            Text { text: model.name; color: win.ink; font.pixelSize: 14; font.bold: true }
+                                            Text { text: model.dose + " · " + model.frequency
                                                    color: win.muted; font.pixelSize: 12 }
                                         }
                                         Rectangle { width: 62; height: 22; radius: 11
-                                                    color: modelData.active ? "#EAF7EF" : "#F1F3F8"
+                                                    color: model.active ? "#EAF7EF" : "#F1F3F8"
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     Text { anchors.centerIn: parent
-                                                           text: modelData.active ? "active" : "inactive"
-                                                           color: modelData.active ? "#1E9E63" : win.muted
+                                                           text: model.active ? "active" : "inactive"
+                                                           color: model.active ? "#1E9E63" : win.muted
                                                            font.pixelSize: 11; font.bold: true } }
                                     }
                                 }
@@ -621,25 +633,26 @@ ApplicationWindow {
                                 Repeater {
                                     model: store.appointments
                                     Rectangle {
+                                        property bool upcoming: model.day >= store.todayIso() && model.status !== "cancelled"
                                         width: parent.width; height: 46; radius: 10
-                                        color: modelData.upcoming ? "#F3F9FF" : "#F8F9FB"
+                                        color: upcoming ? "#F3F9FF" : "#F8F9FB"
                                         Rectangle { width: 4; height: parent.height - 16; radius: 2
-                                                    color: win.statusColor(modelData.status)
+                                                    color: win.statusColor(model.status)
                                                     anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } }
                                         Column {
                                             anchors { left: parent.left; leftMargin: 24; verticalCenter: parent.verticalCenter }
                                             spacing: 2
-                                            Text { text: modelData.reason; color: win.ink; font.pixelSize: 13; font.bold: true }
-                                            Text { text: modelData.providerName; color: win.muted; font.pixelSize: 11 }
+                                            Text { text: model.reason; color: win.ink; font.pixelSize: 13; font.bold: true }
+                                            Text { text: store.providerName(model.providerId); color: win.muted; font.pixelSize: 11 }
                                         }
                                         Column {
                                             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
                                             spacing: 2
-                                            Text { text: modelData.dateLabel; color: win.ink; font.pixelSize: 12
+                                            Text { text: win.dateLabel(model.day, "ddd, MMM d"); color: win.ink; font.pixelSize: 12
                                                    horizontalAlignment: Text.AlignRight; width: contentWidth
                                                    anchors.right: parent.right }
-                                            Text { text: modelData.timeLabel + " · " + modelData.status
-                                                   color: win.statusColor(modelData.status); font.pixelSize: 11
+                                            Text { text: store.minuteLabel(model.minute) + " · " + model.status
+                                                   color: win.statusColor(model.status); font.pixelSize: 11
                                                    anchors.right: parent.right }
                                         }
                                     }
@@ -663,10 +676,10 @@ ApplicationWindow {
                                     Column {
                                         width: parent.width; spacing: 4
                                         Row { spacing: 8
-                                            Text { text: modelData.kind; color: win.teal; font.pixelSize: 12; font.bold: true }
-                                            Text { text: modelData.dateLabel + " · " + modelData.providerName
+                                            Text { text: model.kind; color: win.teal; font.pixelSize: 12; font.bold: true }
+                                            Text { text: win.dateLabel(model.date) + " · " + store.providerName(model.providerId)
                                                    color: win.muted; font.pixelSize: 12 } }
-                                        Text { text: modelData.body; color: "#374151"; font.pixelSize: 13
+                                        Text { text: model.body; color: "#374151"; font.pixelSize: 13
                                                width: parent.width; wrapMode: Text.WordWrap }
                                     }
                                 }
@@ -751,7 +764,7 @@ ApplicationWindow {
             property int dayEnd: 1080
             property real pxPerMin: 1.15
             property int gutter: 60
-            property real colW: (width - gutter) / Math.max(1, store.providers.length)
+            property real colW: (width - gutter) / Math.max(1, store.providers.count)
 
             // provider headers
             Rectangle {
@@ -764,12 +777,12 @@ ApplicationWindow {
                     Column {
                         x: cal.gutter + index * cal.colW; width: cal.colW; height: parent.height
                         Item { width: 1; height: 8 }
-                        Text { text: modelData.name; color: win.ink; font.pixelSize: 13; font.bold: true
+                        Text { text: model.name; color: win.ink; font.pixelSize: 13; font.bold: true
                                width: parent.width - 12; anchors.horizontalCenter: parent.horizontalCenter
                                horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight }
-                        Text { text: modelData.specialty; color: win.muted; font.pixelSize: 11
+                        Text { text: model.specialty; color: win.muted; font.pixelSize: 11
                                width: parent.width; horizontalAlignment: Text.AlignHCenter }
-                        Rectangle { width: 28; height: 3; radius: 2; color: modelData.color
+                        Rectangle { width: 28; height: 3; radius: 2; color: model.color
                                     anchors.horizontalCenter: parent.horizontalCenter }
                     }
                 }
@@ -798,7 +811,7 @@ ApplicationWindow {
                     }
                     // provider column separators
                     Repeater {
-                        model: store.providers.length
+                        model: store.providers.count
                         Rectangle { x: cal.gutter + index * cal.colW; y: 0; width: 1
                                     height: parent.height; color: "#F2F4F8" }
                     }
@@ -808,15 +821,15 @@ ApplicationWindow {
                         model: store.schedule
                         Rectangle {
                             id: apptBlock
-                            visible: modelData.status !== "cancelled"
-                            x: cal.gutter + win.providerIndex(modelData.providerId) * cal.colW + 3
-                            y: (modelData.minute - cal.dayStart) * cal.pxPerMin + 8
+                            visible: model.status !== "cancelled"
+                            x: cal.gutter + store.providerIndex(model.providerId) * cal.colW + 3
+                            y: (model.minute - cal.dayStart) * cal.pxPerMin + 8
                             width: cal.colW - 6
-                            height: Math.max(modelData.durationMin * cal.pxPerMin - 3, 26)
+                            height: Math.max(model.durationMin * cal.pxPerMin - 3, 26)
                             radius: 8
                             color: Qt.rgba(0,0,0,0)
                             border.width: apptMa.containsMouse ? 2 : 0
-                            border.color: win.statusColor(modelData.status)
+                            border.color: win.statusColor(model.status)
                             z: apptMa.containsMouse ? 5 : 1
                             scale: apptMa.containsMouse ? 1.03 : 1.0
                             Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
@@ -830,25 +843,27 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 anchors.fill: parent; radius: 8
-                                color: win.statusColor(modelData.status)
-                                opacity: modelData.status === "completed" ? 0.28 : 0.16
+                                color: win.statusColor(model.status)
+                                opacity: model.status === "completed" ? 0.28 : 0.16
                             }
                             Rectangle { width: 3; height: parent.height - 10; radius: 2
-                                        color: win.statusColor(modelData.status)
+                                        color: win.statusColor(model.status)
                                         anchors { left: parent.left; leftMargin: 5; verticalCenter: parent.verticalCenter } }
                             Column {
                                 anchors { left: parent.left; leftMargin: 14; right: parent.right; rightMargin: 6
                                           top: parent.top; topMargin: 5 }
                                 spacing: 1
-                                Text { text: modelData.timeLabel + "  " + modelData.patientName
+                                Text { text: store.minuteLabel(model.minute) + "  " + store.patientName(model.patientId)
                                        color: win.ink; font.pixelSize: 12; font.bold: true
                                        width: parent.width; elide: Text.ElideRight }
-                                Text { text: modelData.reason; color: "#4B5563"; font.pixelSize: 11
+                                Text { text: model.reason; color: "#4B5563"; font.pixelSize: 11
                                        width: parent.width; elide: Text.ElideRight
                                        visible: parent.parent.height > 34 }
                             }
                             MouseArea { id: apptMa; anchors.fill: parent; hoverEnabled: true
-                                onClicked: { actionPopup.appt = modelData; actionPopup.open() } }
+                                onClicked: { actionPopup.appt = { id: model.id, name: store.patientName(model.patientId),
+                                             time: store.minuteLabel(model.minute), reason: model.reason }
+                                             actionPopup.open() } }
                         }
                     }
                 }
@@ -878,8 +893,8 @@ ApplicationWindow {
                 radius: 16
                 Column { anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter }
                     spacing: 3
-                    Text { text: actionPopup.appt.patientName || ""; color: win.ink; font.pixelSize: 17; font.bold: true }
-                    Text { text: (actionPopup.appt.timeLabel || "") + " · " + (actionPopup.appt.reason || "")
+                    Text { text: actionPopup.appt.name || ""; color: win.ink; font.pixelSize: 17; font.bold: true }
+                    Text { text: (actionPopup.appt.time || "") + " · " + (actionPopup.appt.reason || "")
                            color: win.muted; font.pixelSize: 12 } }
             }
             Column {
@@ -932,7 +947,10 @@ ApplicationWindow {
                 Column { spacing: 6; width: parent.width - 40
                     Text { text: "Patient"; color: win.muted; font.pixelSize: 12 }
                     ComboBox { id: cbPatient; width: parent.width; model: store.patients
-                               textRole: "name"; valueRole: "id" } }
+                               textRole: "lastName"; valueRole: "id"
+                               delegate: ItemDelegate { width: cbPatient.width
+                                   text: model.firstName + " " + model.lastName + "   ·   " + model.mrn
+                                   highlighted: cbPatient.highlightedIndex === index } } }
                 Row { spacing: 14; width: parent.width - 40
                     Column { spacing: 6; width: (parent.width - 14) / 2
                         Text { text: "Provider"; color: win.muted; font.pixelSize: 12 }
@@ -1045,7 +1063,7 @@ ApplicationWindow {
             width: parent.width
             Rectangle { width: parent.width; height: 56; color: "#FAFBFD"; radius: 16
                 Text { anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter }
-                       text: "Add note — " + (store.patient.name || ""); color: win.ink; font.pixelSize: 16; font.bold: true } }
+                       text: "Add note — " + (store.patient.firstName + " " + store.patient.lastName); color: win.ink; font.pixelSize: 16; font.bold: true } }
             Column {
                 width: parent.width; padding: 20; spacing: 12
                 Column { spacing: 5; width: parent.width - 40
@@ -1089,7 +1107,7 @@ ApplicationWindow {
             width: parent.width
             Rectangle { width: parent.width; height: 56; color: "#FAFBFD"; radius: 16
                 Text { anchors { left: parent.left; leftMargin: 20; verticalCenter: parent.verticalCenter }
-                       text: "Add vitals — " + (store.patient.name || ""); color: win.ink; font.pixelSize: 16; font.bold: true } }
+                       text: "Add vitals — " + (store.patient.firstName + " " + store.patient.lastName); color: win.ink; font.pixelSize: 16; font.bold: true } }
             Grid {
                 x: 20; topPadding: 20; columns: 3
                 rowSpacing: 12; columnSpacing: 12

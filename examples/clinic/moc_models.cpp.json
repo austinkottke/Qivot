@@ -1,0 +1,630 @@
+{
+    "classes": [
+        {
+            "className": "Provider",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "name",
+                    "read": "_qiGet_name",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_name"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "specialty",
+                    "read": "_qiGet_specialty",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_specialty"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "color",
+                    "read": "_qiGet_color",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_color"
+                }
+            ],
+            "qualifiedClassName": "Provider",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Patient",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "mrn",
+                    "read": "_qiGet_mrn",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_mrn"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "firstName",
+                    "read": "_qiGet_firstName",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_firstName"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "lastName",
+                    "read": "_qiGet_lastName",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_lastName"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "dob",
+                    "read": "_qiGet_dob",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_dob"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "sex",
+                    "read": "_qiGet_sex",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_sex"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "phone",
+                    "read": "_qiGet_phone",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_phone"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "bloodType",
+                    "read": "_qiGet_bloodType",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_bloodType"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "allergies",
+                    "read": "_qiGet_allergies",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_allergies"
+                }
+            ],
+            "qualifiedClassName": "Patient",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Appointment",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "patientId",
+                    "read": "_qiGet_patientId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_patientId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "providerId",
+                    "read": "_qiGet_providerId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_providerId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "day",
+                    "read": "_qiGet_day",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_day"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "minute",
+                    "read": "_qiGet_minute",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_minute"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "durationMin",
+                    "read": "_qiGet_durationMin",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_durationMin"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "reason",
+                    "read": "_qiGet_reason",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_reason"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "status",
+                    "read": "_qiGet_status",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_status"
+                }
+            ],
+            "qualifiedClassName": "Appointment",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Vital",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "patientId",
+                    "read": "_qiGet_patientId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_patientId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "takenOn",
+                    "read": "_qiGet_takenOn",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_takenOn"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "systolic",
+                    "read": "_qiGet_systolic",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_systolic"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "diastolic",
+                    "read": "_qiGet_diastolic",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_diastolic"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "heartRate",
+                    "read": "_qiGet_heartRate",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_heartRate"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "tempC",
+                    "read": "_qiGet_tempC",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "write": "_qiSet_tempC"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "weightKg",
+                    "read": "_qiGet_weightKg",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "write": "_qiSet_weightKg"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "heightCm",
+                    "read": "_qiGet_heightCm",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_heightCm"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "spo2",
+                    "read": "_qiGet_spo2",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_spo2"
+                }
+            ],
+            "qualifiedClassName": "Vital",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Problem",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "patientId",
+                    "read": "_qiGet_patientId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_patientId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "name",
+                    "read": "_qiGet_name",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_name"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "status",
+                    "read": "_qiGet_status",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_status"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "onset",
+                    "read": "_qiGet_onset",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_onset"
+                }
+            ],
+            "qualifiedClassName": "Problem",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Medication",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "patientId",
+                    "read": "_qiGet_patientId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_patientId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "name",
+                    "read": "_qiGet_name",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_name"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "dose",
+                    "read": "_qiGet_dose",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_dose"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "frequency",
+                    "read": "_qiGet_frequency",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_frequency"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "active",
+                    "read": "_qiGet_active",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "bool",
+                    "user": false,
+                    "write": "_qiSet_active"
+                }
+            ],
+            "qualifiedClassName": "Medication",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        },
+        {
+            "className": "Note",
+            "gadget": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "patientId",
+                    "read": "_qiGet_patientId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_patientId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "providerId",
+                    "read": "_qiGet_providerId",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "int",
+                    "user": false,
+                    "write": "_qiSet_providerId"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "date",
+                    "read": "_qiGet_date",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_date"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "kind",
+                    "read": "_qiGet_kind",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_kind"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "name": "body",
+                    "read": "_qiGet_body",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "_qiSet_body"
+                }
+            ],
+            "qualifiedClassName": "Note",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QiModel"
+                }
+            ]
+        }
+    ],
+    "inputFile": "models.h",
+    "outputRevision": 67
+}
