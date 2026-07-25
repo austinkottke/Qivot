@@ -22,6 +22,26 @@ QString ClinicStore::minuteLabel(int m) const {
 
 QString ClinicStore::todayIso() const { return QDate::currentDate().toString("yyyy-MM-dd"); }
 
+QString ClinicStore::statusLabel(int s) const {
+    switch (Clinic::ApptStatus(s)) {
+        case Clinic::Scheduled: return "scheduled";
+        case Clinic::Arrived:   return "arrived";
+        case Clinic::Completed: return "completed";
+        case Clinic::Cancelled: return "cancelled";
+    }
+    return "";
+}
+
+QString ClinicStore::kindLabel(int k) const {
+    switch (Clinic::NoteKind(k)) {
+        case Clinic::OfficeVisit: return "Office Visit";
+        case Clinic::Phone:       return "Phone";
+        case Clinic::LabReview:   return "Lab Review";
+        case Clinic::FollowUp:    return "Follow-up";
+    }
+    return "";
+}
+
 QString ClinicStore::scheduleLabel() const {
     const QDate d = QDate::fromString(m_day, "yyyy-MM-dd");
     return d.isValid() ? d.toString("dddd, MMMM d") : m_day;
@@ -117,15 +137,15 @@ void ClinicStore::refreshSchedule() {
     m_schedule.setList(QiQuery<Appointment>().filter(QiWhere("day = ", m_day))
                          .orderBy("minute asc").all());
 
-    auto n = [&](const QString &st) {
+    auto n = [&](Clinic::ApptStatus st) {
         return QiQuery<Appointment>().filter(QiWhere("day = ", m_day)
-                                             && QiWhere("status = ", st)).count();
+                                             && QiWhere("status = ", int(st))).count();
     };
     const int total = QiQuery<Appointment>().filter(QiWhere("day = ", m_day)
-                                                    && QiWhere("status <> ", "cancelled")).count();
+                                                    && QiWhere("status <> ", int(Clinic::Cancelled))).count();
     m_stats["total"] = total;
-    m_stats["arrived"] = n("arrived");
-    m_stats["completed"] = n("completed");
+    m_stats["arrived"] = n(Clinic::Arrived);
+    m_stats["completed"] = n(Clinic::Completed);
     emit scheduleChanged();
 }
 
@@ -136,7 +156,7 @@ bool ClinicStore::book(int patientId, int providerId, int minute, int durationMi
     const int newEnd = minute + durationMin;
     QiList<Appointment> same = QiQuery<Appointment>()
         .filter(QiWhere("day = ", m_day) && QiWhere("providerId = ", providerId)
-                && QiWhere("status <> ", "cancelled")).all();
+                && QiWhere("status <> ", int(Clinic::Cancelled))).all();
     for (int i = 0; i < same.size(); i++) {
         const int s = same.at(i)->minute.get().toInt();
         const int e = s + same.at(i)->durationMin.get().toInt();
@@ -153,7 +173,7 @@ bool ClinicStore::book(int patientId, int providerId, int minute, int durationMi
     a.patientId = patientId; a.providerId = providerId; a.day = m_day;
     a.minute = minute; a.durationMin = durationMin;
     a.reason = reason.isEmpty() ? QString("Office Visit") : reason;
-    a.status = QString("scheduled");
+    a.status = Clinic::Scheduled;
     if (!a.save()) { txn.rollback(); m_lastError = "Could not save the appointment."; emit errorChanged(); return false; }
     txn.commit();
 
@@ -163,11 +183,11 @@ bool ClinicStore::book(int patientId, int providerId, int minute, int durationMi
     return true;
 }
 
-void ClinicStore::setStatus(int appointmentId, const QString &status) {
+void ClinicStore::setStatus(int appointmentId, int status) {
     QiList<Appointment> al = QiQuery<Appointment>().filter(QiWhere("id = ", appointmentId)).limit(1).all();
     if (al.size() == 0) return;
     Appointment *a = al.at(0);
-    a->status = status;
+    a->status = Clinic::ApptStatus(status);
     a->save();
     refreshSchedule(); rebuildOverview();
     if (m_selectedId == a->patientId.get().toInt()) selectPatient(m_selectedId);
@@ -192,13 +212,13 @@ void ClinicStore::searchNotes(const QString &text) {
 }
 
 // ---- writes ----------------------------------------------------------------
-void ClinicStore::addNote(int patientId, int providerId, const QString &kind, const QString &body) {
+void ClinicStore::addNote(int patientId, int providerId, int kind, const QString &body) {
     if (body.trimmed().isEmpty()) return;
     Note n;
     n.patientId = patientId;
     n.providerId = providerId > 0 ? providerId : (m_provIds.isEmpty() ? 1 : m_provIds.first());
     n.date = todayIso();
-    n.kind = kind.isEmpty() ? QString("Office Visit") : kind;
+    n.kind = Clinic::NoteKind(kind);
     n.body = body.trimmed();
     n.save();                                 // FTS index stays in sync automatically
     if (m_selectedId == patientId) selectPatient(patientId);
@@ -238,21 +258,21 @@ void ClinicStore::rebuildOverview() {
     m_overview.clear();
     const QString today = todayIso();
     const QString weekEnd = QDate::currentDate().addDays(6).toString("yyyy-MM-dd");
-    auto todayCount = [&](const QString &st) {
-        return QiQuery<Appointment>().filter(QiWhere("day = ", today) && QiWhere("status = ", st)).count();
+    auto todayCount = [&](Clinic::ApptStatus st) {
+        return QiQuery<Appointment>().filter(QiWhere("day = ", today) && QiWhere("status = ", int(st))).count();
     };
 
     m_overview["patients"] = Patient::objects().count();
     const int todayTotal = QiQuery<Appointment>()
-        .filter(QiWhere("day = ", today) && QiWhere("status <> ", "cancelled")).count();
-    const int todayDone = todayCount("completed");
+        .filter(QiWhere("day = ", today) && QiWhere("status <> ", int(Clinic::Cancelled))).count();
+    const int todayDone = todayCount(Clinic::Completed);
     m_overview["todayTotal"]   = todayTotal;
-    m_overview["todayArrived"] = todayCount("arrived");
+    m_overview["todayArrived"] = todayCount(Clinic::Arrived);
     m_overview["completion"]   = todayTotal > 0 ? qRound(100.0 * todayDone / todayTotal) : 0;
-    m_overview["activeProblems"] = QiQuery<Problem>().filter(QiWhere("status = ", "active")).count();
+    m_overview["activeProblems"] = QiQuery<Problem>().filter(QiWhere("status = ", int(Clinic::Active))).count();
     m_overview["upcoming"] = QiQuery<Appointment>()
         .filter(QiWhere("day >= ", today) && QiWhere("day <= ", weekEnd)
-                && QiWhere("status <> ", "cancelled")).count();
+                && QiWhere("status <> ", int(Clinic::Cancelled))).count();
     {
         QiList<Patient> ps = QiQuery<Patient>().all();
         long sum = 0;
@@ -265,7 +285,7 @@ void ClinicStore::rebuildOverview() {
     {
         QiQuery<Appointment> q = QiQuery<Appointment>()
             .filter(QiWhere("day >= ", today) && QiWhere("day <= ", weekEnd)
-                    && QiWhere("status <> ", "cancelled"))
+                    && QiWhere("status <> ", int(Clinic::Cancelled)))
             .select(QStringList() << "day" << "count(*)").groupBy("day");
         if (q.exec()) while (q.next()) perDay[q.value(0).toString()] = q.value(1).toInt();
     }
@@ -283,7 +303,7 @@ void ClinicStore::rebuildOverview() {
     {
         QiQuery<Appointment> q = QiQuery<Appointment>()
             .filter(QiWhere("day >= ", today) && QiWhere("day <= ", weekEnd)
-                    && QiWhere("status <> ", "cancelled"))
+                    && QiWhere("status <> ", int(Clinic::Cancelled)))
             .select(QStringList() << "providerId" << "count(*)").groupBy("providerId");
         if (q.exec()) while (q.next()) perProv[q.value(0).toInt()] = q.value(1).toInt();
     }
@@ -298,15 +318,16 @@ void ClinicStore::rebuildOverview() {
 
     // today's status breakdown
     QVariantMap byStatus;
-    for (const QString &s : { QString("scheduled"), QString("arrived"),
-                              QString("completed"), QString("cancelled") })
-        byStatus[s] = todayCount(s);
+    byStatus["scheduled"] = todayCount(Clinic::Scheduled);
+    byStatus["arrived"]   = todayCount(Clinic::Arrived);
+    byStatus["completed"] = todayCount(Clinic::Completed);
+    byStatus["cancelled"] = todayCount(Clinic::Cancelled);
     m_overview["byStatus"] = byStatus;
 
     // top active conditions (GROUP BY name)
     QVariantList topCond;
     {
-        QiQuery<Problem> q = QiQuery<Problem>().filter(QiWhere("status = ", "active"))
+        QiQuery<Problem> q = QiQuery<Problem>().filter(QiWhere("status = ", int(Clinic::Active)))
             .select(QStringList() << "name" << "count(*) c").groupBy("name").orderBy("c desc").limit(6);
         if (q.exec()) while (q.next()) {
             QVariantMap m; m["name"] = q.value(0).toString(); m["count"] = q.value(1).toInt();

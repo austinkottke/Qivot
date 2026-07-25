@@ -16,7 +16,6 @@
 /// Joins and display formatting are small invokables, not copied onto every row.
 class ClinicStore : public QObject {
     Q_OBJECT
-    QML_ELEMENT
 
     // --- list models (bind directly to ListView / Repeater / ComboBox) ---
     Q_PROPERTY(QAbstractItemModel *patients     READ patients     CONSTANT)
@@ -77,9 +76,9 @@ public:
     Q_INVOKABLE void goToday();
     Q_INVOKABLE bool book(int patientId, int providerId, int minute,
                           int durationMin, const QString &reason);
-    Q_INVOKABLE void setStatus(int appointmentId, const QString &status);
+    Q_INVOKABLE void setStatus(int appointmentId, int status);   // status = Clinic::ApptStatus
     Q_INVOKABLE void searchNotes(const QString &text);
-    Q_INVOKABLE void addNote(int patientId, int providerId, const QString &kind, const QString &body);
+    Q_INVOKABLE void addNote(int patientId, int providerId, int kind, const QString &body); // kind = Clinic::NoteKind
     Q_INVOKABLE void addVital(int patientId, int systolic, int diastolic, int heartRate,
                               double tempC, int spo2, double weightKg, int heightCm);
     Q_INVOKABLE int  addPatient(const QString &first, const QString &last, const QString &dob,
@@ -93,6 +92,8 @@ public:
     Q_INVOKABLE int     ageOf(const QString &dob) const;
     Q_INVOKABLE QString minuteLabel(int minutesFromMidnight) const;
     Q_INVOKABLE QString todayIso() const;
+    Q_INVOKABLE QString statusLabel(int apptStatus) const;   // Clinic::ApptStatus -> text
+    Q_INVOKABLE QString kindLabel(int noteKind) const;       // Clinic::NoteKind  -> text
 
 signals:
     void patientsChanged();

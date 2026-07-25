@@ -1,5 +1,19 @@
 <RCC>
     <qresource prefix="/">
         <file>main.qml</file>
+        <file>TopBar.qml</file>
+        <file>OverviewView.qml</file>
+        <file>PatientsView.qml</file>
+        <file>ScheduleView.qml</file>
+        <file>KpiCard.qml</file>
+        <file>SectionCard.qml</file>
+        <file>VitalCard.qml</file>
+        <file>PatientListItem.qml</file>
+        <file>AppointmentBlock.qml</file>
+        <file>BookingDialog.qml</file>
+        <file>AddPatientDialog.qml</file>
+        <file>AddNoteDialog.qml</file>
+        <file>AddVitalsDialog.qml</file>
+        <file>ApptActionPopup.qml</file>
     </qresource>
 </RCC>

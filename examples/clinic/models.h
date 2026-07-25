@@ -1,7 +1,23 @@
 #ifndef MODELS_H
 #define MODELS_H
+#include <QObject>      // Q_NAMESPACE / Q_ENUM_NS
 #include <qivot.h>
 #include <qigadget.h>   // Q_GADGET + QI_QML_FIELD — exposes fields to QML directly
+
+// Finite-set fields are real enums, not magic strings. Qivot stores a QiField<enum>
+// in an INTEGER column; Q_ENUM_NS also exposes the names to QML (Clinic.Arrived, …).
+namespace Clinic {
+Q_NAMESPACE
+enum ApptStatus    { Scheduled = 0, Arrived = 1, Completed = 2, Cancelled = 3 };
+Q_ENUM_NS(ApptStatus)
+enum ProblemStatus { Active = 0, Resolved = 1 };
+Q_ENUM_NS(ProblemStatus)
+enum NoteKind      { OfficeVisit = 0, Phone = 1, LabReview = 2, FollowUp = 3 };
+Q_ENUM_NS(NoteKind)
+}
+Q_DECLARE_METATYPE(Clinic::ApptStatus)
+Q_DECLARE_METATYPE(Clinic::ProblemStatus)
+Q_DECLARE_METATYPE(Clinic::NoteKind)
 
 // A small clinical schema. Every model is a Q_GADGET, so its fields are readable
 // straight from QML (patient.firstName) and a QiListModel over a query exposes
@@ -47,7 +63,7 @@ class Appointment : public QiModel {
     QI_QML_FIELD(int,     minute)     // minutes from midnight (9:30 = 570)
     QI_QML_FIELD(int,     durationMin)
     QI_QML_FIELD(QString, reason)
-    QI_QML_FIELD(QString, status)     // scheduled | arrived | completed | cancelled
+    QI_QML_FIELD(Clinic::ApptStatus, status)   // enum -> INTEGER column
 };
 QI_DECLARE_MODEL(Appointment, "appointment",
     QI_FIELD(patientId), QI_FIELD(providerId), QI_FIELD(day), QI_FIELD(minute),
@@ -78,7 +94,7 @@ class Problem : public QiModel {
     QI_MODEL
     QI_QML_FIELD(int,     patientId)
     QI_QML_FIELD(QString, name)
-    QI_QML_FIELD(QString, status)     // active | resolved
+    QI_QML_FIELD(Clinic::ProblemStatus, status)
     QI_QML_FIELD(QString, onset)      // yyyy-MM-dd
 };
 QI_DECLARE_MODEL(Problem, "problem",
@@ -104,7 +120,7 @@ class Note : public QiModel {
     QI_QML_FIELD(int,     patientId)
     QI_QML_FIELD(int,     providerId)
     QI_QML_FIELD(QString, date)       // yyyy-MM-dd
-    QI_QML_FIELD(QString, kind)       // Office Visit | Phone | Lab Review | ...
+    QI_QML_FIELD(Clinic::NoteKind, kind)
     QI_QML_FIELD(QString, body)
 };
 QI_DECLARE_MODEL(Note, "note",

@@ -94,7 +94,7 @@
                         },
                         {
                             "name": "status",
-                            "type": "QString"
+                            "type": "int"
                         }
                     ],
                     "name": "setStatus",
@@ -124,7 +124,7 @@
                         },
                         {
                             "name": "kind",
-                            "type": "QString"
+                            "type": "int"
                         },
                         {
                             "name": "body",
@@ -269,6 +269,28 @@
                 {
                     "access": "public",
                     "name": "todayIso",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "apptStatus",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "statusLabel",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "noteKind",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "kindLabel",
                     "returnType": "QString"
                 }
             ],

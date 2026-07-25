@@ -12,9 +12,12 @@
  */
 #include "models.h"
 #include "clinicstore.h"
+#include "theme.h"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QtQml>            // qmlRegisterUncreatableMetaObject
+#include <QQmlContext>
 #include <QSqlDatabase>
 #include <QDate>
 #include <QTime>
@@ -47,7 +50,6 @@ static const QVector<MedDef> kMed = {
 static const QStringList kReason = {
     "Annual physical","Follow-up","New patient visit","Blood pressure check","Medication refill",
     "Lab review","Consult","Sick visit","Wellness check","Post-op follow-up" };
-static const QStringList kNoteKind = { "Office Visit","Phone","Lab Review","Follow-up" };
 static const QStringList kNoteBody = {
     "Patient reports feeling well. Blood pressure controlled on current medication. Continue lisinopril and recheck in three months.",
     "Discussed diabetes management and diet. A1C improved since the last visit. Ordered fasting labs and a lipid panel.",
@@ -75,6 +77,10 @@ int main(int argc, char **argv) {
     // Register the gadget value types so QML can read patient.firstName / latestVital.systolic.
     qRegisterMetaType<Patient>("Patient");
     qRegisterMetaType<Vital>("Vital");
+    // Expose the enums to QML as `Clinic.Arrived`, `Clinic.Active`, `Clinic.OfficeVisit`, …
+    // (a separate URI so it doesn't collide with the QML_ELEMENT-managed "Qivot" module).
+    qmlRegisterUncreatableMetaObject(Clinic::staticMetaObject, "ClinicApp", 1, 0, "Clinic",
+                                     "Clinic enums are not creatable");
 
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("clinic.db");
@@ -120,7 +126,7 @@ int main(int argc, char **argv) {
         for (int k = 0; k < nProb; k++) {
             Problem x; x.patientId = pid;
             x.name = kProblem.at((i * 5 + k * 3) % kProblem.size());
-            x.status = (k == 0 || (i + k) % 4 != 0) ? "active" : "resolved";
+            x.status = (k == 0 || (i + k) % 4 != 0) ? Clinic::Active : Clinic::Resolved;
             x.onset = today.addDays(-((i + 1) * 90 + k * 200)).toString("yyyy-MM-dd");
             x.save();
         }
@@ -150,7 +156,7 @@ int main(int argc, char **argv) {
             Note n; n.patientId = pid;
             n.providerId = provIds.at((i + k) % provIds.size());
             n.date = today.addDays(-(k * 75 + (i % 40))).toString("yyyy-MM-dd");
-            n.kind = kNoteKind.at((i + k) % kNoteKind.size());
+            n.kind = Clinic::NoteKind((i + k) % 4);
             n.body = kNoteBody.at((i * 2 + k) % kNoteBody.size());
             n.save();
         }
@@ -172,12 +178,12 @@ int main(int argc, char **argv) {
                 a.minute = minute;
                 a.durationMin = dur;
                 a.reason = kReason.at((ctr * 5) % kReason.size());
-                if (off < 0)      a.status = (ctr % 9 == 0) ? "cancelled" : "completed";
-                else if (off > 0) a.status = "scheduled";
+                if (off < 0)      a.status = (ctr % 9 == 0) ? Clinic::Cancelled : Clinic::Completed;
+                else if (off > 0) a.status = Clinic::Scheduled;
                 else {  // today: reflect the current time of day
-                    if (minute + dur <= nowMin)          a.status = "completed";
-                    else if (minute <= nowMin + 30)      a.status = "arrived";
-                    else                                 a.status = (ctr % 11 == 0) ? "cancelled" : "scheduled";
+                    if (minute + dur <= nowMin)          a.status = Clinic::Completed;
+                    else if (minute <= nowMin + 30)      a.status = Clinic::Arrived;
+                    else                                 a.status = (ctr % 11 == 0) ? Clinic::Cancelled : Clinic::Scheduled;
                 }
                 a.save();
                 minute += dur + 10 + (ctr % 3) * 10;          // gap to next slot
@@ -188,7 +194,7 @@ int main(int argc, char **argv) {
 
     // Full-text index over clinical notes — search stays in sync on every save().
     QiFtsIndex<Note> nfts("note_fts");
-    nfts << "body" << "kind";
+    nfts << "body";        // kind is an enum (int) now, so only the free text is indexed
     (void) connection.createFtsIndex(nfts);
 
     if (qEnvironmentVariableIsSet("QIVOT_SELFTEST")) {
@@ -206,7 +212,13 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    // The two C++ backends every QML component talks to.
+    Theme theme;
+    ClinicStore store;
+
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty("Theme", &theme);
+    engine.rootContext()->setContextProperty("store", &store);
     engine.load(QUrl("qrc:/main.qml"));
     if (engine.rootObjects().isEmpty()) return 1;
     return app.exec();

@@ -260,7 +260,7 @@
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QString",
+                    "type": "Clinic::ApptStatus",
                     "user": false,
                     "write": "_qiSet_status"
                 }
@@ -442,7 +442,7 @@
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QString",
+                    "type": "Clinic::ProblemStatus",
                     "user": false,
                     "write": "_qiSet_status"
                 },
@@ -598,7 +598,7 @@
                     "required": false,
                     "scriptable": true,
                     "stored": true,
-                    "type": "QString",
+                    "type": "Clinic::NoteKind",
                     "user": false,
                     "write": "_qiSet_kind"
                 },
@@ -623,6 +623,44 @@
                     "name": "QiModel"
                 }
             ]
+        },
+        {
+            "className": "Clinic",
+            "enums": [
+                {
+                    "isClass": false,
+                    "isFlag": false,
+                    "name": "ApptStatus",
+                    "values": [
+                        "Scheduled",
+                        "Arrived",
+                        "Completed",
+                        "Cancelled"
+                    ]
+                },
+                {
+                    "isClass": false,
+                    "isFlag": false,
+                    "name": "ProblemStatus",
+                    "values": [
+                        "Active",
+                        "Resolved"
+                    ]
+                },
+                {
+                    "isClass": false,
+                    "isFlag": false,
+                    "name": "NoteKind",
+                    "values": [
+                        "OfficeVisit",
+                        "Phone",
+                        "LabReview",
+                        "FollowUp"
+                    ]
+                }
+            ],
+            "namespace": true,
+            "qualifiedClassName": "Clinic"
         }
     ],
     "inputFile": "models.h",

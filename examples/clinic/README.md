@@ -17,6 +17,49 @@ is synthetic** (generated at startup); there are no real patients.
 > ./clinic
 > ```
 
+## Architecture at a glance
+
+```mermaid
+flowchart TD
+    subgraph db["SQLite · clinic.db (WAL)"]
+        tables["7 tables + note_fts (FTS5)"]
+    end
+
+    subgraph orm["Qivot ORM"]
+        models["Q_GADGET models · models.h<br/>QiField&lt;enum&gt;, QI_QML_FIELD"]
+        lists["QiListModel ×9<br/>roles = field names"]
+    end
+
+    subgraph cpp["C++ backends"]
+        store["ClinicStore → store<br/>queries · joins · aggregates<br/>book() transaction · FTS search"]
+        theme["Theme → Theme<br/>colours + view helpers"]
+    end
+
+    subgraph ui["QML components"]
+        main["main.qml — shell"]
+        topbar["TopBar"]
+        views["OverviewView · PatientsView · ScheduleView"]
+        reusable["KpiCard · SectionCard · VitalCard<br/>PatientListItem · AppointmentBlock"]
+        dialogs["BookingDialog · Add*Dialog · ApptActionPopup"]
+    end
+
+    tables <-->|"read / write"| models
+    models --> lists
+    store -->|"QiQuery&lt;T&gt;"| models
+    store --> lists
+    store -.->|"context property"| ui
+    theme -.->|"context property"| ui
+    main --> topbar
+    main --> views
+    views --> reusable
+    views --> dialogs
+```
+
+Data flows **up**: SQLite → Qivot models → `ClinicStore` turns queries into
+`QiListModel`s and gadget values → exposed to QML as the `store` context object.
+`Theme` supplies styling. `main.qml` composes the views; the views compose the
+reusable cards and dialogs. Nothing in QML copies rows by hand.
+
 ## How QML gets the data (no hand-mapping)
 
 Query results are exposed as **`QiListModel`s** — the roles come straight from the
@@ -41,6 +84,101 @@ Joins and formatting — a provider's name, a time label, an age — are tiny
 invokables (`store.providerName(id)`, `store.minuteLabel(min)`, `store.ageOf(dob)`),
 not fields copied onto every row.
 
+## How the UI is built (components)
+
+The UI is **not** one giant file — it's ~15 small QML components composed by a thin
+shell. Two things make that clean: shared **C++ context objects**, and QML's
+**same-directory** component resolution.
+
+### 1. Two backends every component can see
+
+`main.cpp` creates the controllers once and hands them to QML as context
+properties, so any component can use them by name — no passing objects down
+through layers:
+
+```cpp
+Theme theme;                       // colours + view helpers (theme.h)
+ClinicStore store;                 // data + queries + transactions
+engine.rootContext()->setContextProperty("Theme", &theme);
+engine.rootContext()->setContextProperty("store", &store);
+```
+
+Now every `.qml` file just writes `store.patients`, `store.book(...)`, `Theme.teal`,
+`Theme.statusColor(model.status)` — wherever it is in the tree.
+
+### 2. The shell composes; the pieces resolve as siblings
+
+Components live side-by-side in this directory, so QML finds them by filename with
+**no import statements**. [`main.qml`](main.qml) is the whole window:
+
+```qml
+ApplicationWindow {
+    property int tab: 0
+    TopBar       { currentTab: tab; onSelect: tab = index }        // child → parent via signal
+    OverviewView { currentTab: tab; onSwitchToPatients: tab = 1 }
+    PatientsView { currentTab: tab }
+    ScheduleView { currentTab: tab }
+}
+```
+
+Each view knows its own index and **animates itself** in/out based on the shared
+`tab` — the shell doesn't choreograph it:
+
+```qml
+// OverviewView.qml
+Item {
+    property int currentTab: 0
+    readonly property int myIndex: 0
+    opacity: currentTab === myIndex ? 1 : 0
+    // + a Translate for the slide, so switching tabs crossfades
+}
+```
+
+### 3. Reusable components take props; talk back with signals
+
+A card declares its inputs and is reused across views:
+
+```qml
+// KpiCard.qml           →  used 6× in OverviewView
+Rectangle {
+    property string label;  property var value;  property color accent
+    /* accent bar + label + big value, styled from Theme */
+}
+```
+```qml
+KpiCard { label: "Arrived"; value: store.overview.todayArrived; accent: "#10B981" }
+```
+
+Children report events **up** with signals rather than reaching out:
+
+```qml
+// AppointmentBlock.qml — a calendar block
+signal activate(var appt)
+MouseArea { onClicked: root.activate({ id: model.id, name: ..., time: ... }) }
+```
+```qml
+// ScheduleView.qml wires it to its own popup
+AppointmentBlock { onActivate: apptActionPopup.openFor(appt) }
+```
+
+### 4. Dialogs live with the view that owns them
+
+The modals are components too, instantiated inside the view that opens them — so
+`ScheduleView` holds the booking + action popups, `PatientsView` holds the
+add-patient / note / vitals dialogs:
+
+```qml
+// ScheduleView.qml
+Rectangle { /* “＋ New appointment” */ MouseArea { onClicked: bookingDialog.open() } }
+...
+BookingDialog   { id: bookingDialog }
+ApptActionPopup { id: apptActionPopup }
+```
+
+The net effect: `main.qml` is ~35 lines, every other file is small and
+single-purpose, and adding a field or a panel touches one component, not a
+thousand-line monolith.
+
 ## What it shows off
 
 | Feature | Where |
@@ -56,23 +194,32 @@ not fields copied onto every row.
 
 ## The schema (Step 1)
 
-Seven plain-C++ models. `patientId` / `providerId` are foreign keys (plain ints).
-Dates are stored as sortable `"yyyy-MM-dd"` strings and times as *minutes from
-midnight*, which makes the day/agenda queries trivial:
+Seven plain-C++ models. `patientId` / `providerId` are foreign keys (plain ints);
+dates are sortable `"yyyy-MM-dd"` strings and times are *minutes from midnight*.
+Finite-set fields are **real enums**, not magic strings — Qivot stores a
+`QiField<enum>` in an **INTEGER** column, and `Q_ENUM_NS` also exposes the names to
+QML (`Clinic.Arrived`, `Clinic.Active`, …):
 
 ```cpp
+namespace Clinic {
+Q_NAMESPACE
+enum ApptStatus { Scheduled = 0, Arrived = 1, Completed = 2, Cancelled = 3 };
+Q_ENUM_NS(ApptStatus)
+}
+
 class Appointment : public QiModel {
+    Q_GADGET
     QI_MODEL
-public:
-    QiField<int>     patientId;
-    QiField<int>     providerId;
-    QiField<QString> day;         // "2026-07-24"
-    QiField<int>     minute;      // 9:30am = 570
-    QiField<int>     durationMin;
-    QiField<QString> reason;
-    QiField<QString> status;      // scheduled | arrived | completed | cancelled
+    QI_QML_FIELD(int,     patientId)
+    QI_QML_FIELD(int,     minute)      // 9:30am = 570
+    QI_QML_FIELD(QString, reason)
+    QI_QML_FIELD(Clinic::ApptStatus, status)   // stored as an INTEGER column
 };
 ```
+
+Now the code is type-checked instead of stringly-typed — you filter with the enum
+(`QiWhere("status <> ", int(Clinic::Cancelled))`), set it (`a.status = Clinic::Scheduled`),
+and compare it in QML (`model.status === Clinic.Arrived`).
 
 ## Building a panel from a query (Step 2)
 
@@ -170,12 +317,27 @@ QiList<Note> hits = QiQuery<Note>().search("note_fts", "cholesterol*").all();  /
 
 ## Files
 
+**C++ backends** (exposed to QML as the `store` and `Theme` context objects):
+
 | File | Role |
 |---|---|
-| `models.h` | The seven models (the schema). |
-| `main.cpp` | Opens the DB, generates the synthetic clinic, loads the UI. |
+| `models.h` | The seven models + the `Clinic` enums (the schema). |
 | `clinicstore.h` / `.cpp` | All the queries; builds chart + schedule; the booking transaction. |
-| `main.qml` | The two views, the calendar grid, dialogs, and the transitions. |
+| `theme.h` / `.cpp` | Design tokens + view helpers (colours, `statusColor`, `initials`, `dateLabel`). |
+| `main.cpp` | Opens the DB, seeds the synthetic clinic, wires the context objects, loads the UI. |
+
+**QML components** (each in its own file — the shell just composes them):
+
+| File | Role |
+|---|---|
+| `main.qml` | The window shell: `TopBar` + the three views. |
+| `TopBar.qml` | Brand, the sliding segmented tabs, the date/count chip. |
+| `OverviewView` / `PatientsView` / `ScheduleView` | The three tabs. |
+| `KpiCard`, `SectionCard`, `VitalCard`, `PatientListItem`, `AppointmentBlock` | Reusable pieces. |
+| `BookingDialog`, `AddPatientDialog`, `AddNoteDialog`, `AddVitalsDialog`, `ApptActionPopup` | The modals. |
+
+Components access data through the global `store` and styling through `Theme`, so
+there's no prop-drilling — each file stays small and focused.
 
 ## See also
 
