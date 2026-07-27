@@ -8,6 +8,7 @@ build/
 *.dll
 moc_*.cpp
 moc_*.h
+moc_*.json
 qrc_*.cpp
 ui_*.h
 Makefile*
