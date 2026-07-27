@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  <strong>▶ <a href="https://austinkottke.github.io/Qivot/">Try Qivot in your browser</a></strong> — a live Qt/QML app compiled to
+  WebAssembly, backed by an in-browser SQLite database (<a href="examples/qivot-wasm-demo">source</a>).
+</p>
+
+<p align="center">
   <a href="examples/clinic"><img src="docs/clinic-demo.gif" alt="Qivot Clinic — an EHR scheduler and patient chart built on Qivot" width="820"></a>
   <br>
   <em><a href="examples/clinic">Qivot Clinic</a> — a basic EHR over seven related tables: an analytics dashboard (aggregate queries), a live patient chart, and a day-calendar scheduler with conflict-checked booking, plus full-text note search.&nbsp; <a href="docs/clinic-demo.mp4">▶ full-quality video</a></em>

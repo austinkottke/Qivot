@@ -1,5 +1,7 @@
 # Qivot Notes — a Qt for WebAssembly demo
 
+**▶ [Try it live](https://austinkottke.github.io/Qivot/)** (no install — runs in your browser)
+
 A tiny live notes board that runs **in the browser**: the whole page is a Qt/QML
 app compiled to WebAssembly, and every note is a row in an **in-browser SQLite
 database** driven by Qivot. Add a note and the list updates itself — it's bound to
