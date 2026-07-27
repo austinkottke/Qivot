@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>▶ <a href="https://austinkottke.github.io/Qivot/">Try the Clinic EHR in your browser</a></strong> — the full Qt/QML demo below,
+  <strong>▶ <a href="https://austinkottke.github.io/Qivot/" target="_blank" rel="noopener">Try the Clinic EHR in your browser</a></strong> — the full Qt/QML demo below,
   compiled to WebAssembly and backed by an in-browser SQLite database (<a href="examples/clinic">source</a>).
 </p>
 

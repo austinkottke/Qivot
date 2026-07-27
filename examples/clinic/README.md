@@ -8,7 +8,7 @@ also **add patients, notes, and vitals**, and **full-text search every clinical
 note**. It's the example that pulls most of Qivot together in one app. **All data
 is synthetic** (generated at startup); there are no real patients.
 
-**▶ [Try it live in your browser](https://austinkottke.github.io/Qivot/)** — this same app,
+<strong>▶ <a href="https://austinkottke.github.io/Qivot/" target="_blank" rel="noopener">Try it live in your browser</a></strong> — this same app,
 compiled to WebAssembly (no install).
 
 <img src="../../docs/clinic-demo.gif" alt="Qivot Clinic — patient chart and day scheduler with transitions" width="820">
