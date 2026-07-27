@@ -83,7 +83,13 @@ int main(int argc, char **argv) {
                                      "Clinic enums are not creatable");
 
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
+#ifdef Q_OS_WASM
+    // The browser sandbox has no persistent filesystem; keep the DB in memory.
+    // (The schema is dropped and reseeded every launch anyway — see below.)
+    db.setDatabaseName(":memory:");
+#else
     db.setDatabaseName("clinic.db");
+#endif
     if (!db.open()) return 1;
 
     QiConnection connection;

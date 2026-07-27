@@ -8,6 +8,9 @@ also **add patients, notes, and vitals**, and **full-text search every clinical
 note**. It's the example that pulls most of Qivot together in one app. **All data
 is synthetic** (generated at startup); there are no real patients.
 
+**▶ [Try it live in your browser](https://austinkottke.github.io/Qivot/)** — this same app,
+compiled to WebAssembly (no install).
+
 <img src="../../docs/clinic-demo.gif" alt="Qivot Clinic — patient chart and day scheduler with transitions" width="820">
 
 > **Run it**
@@ -16,6 +19,28 @@ is synthetic** (generated at startup); there are no real patients.
 > qmake && make
 > ./clinic
 > ```
+
+## Run it in the browser (WebAssembly)
+
+The same code compiles to WebAssembly and runs entirely client-side — the SQLite
+database lives in browser memory (`:memory:`), and note search still uses FTS5. This
+is what powers the live link above; every push to `main` rebuilds and republishes it
+via [`.github/workflows/wasm.yml`](../../.github/workflows/wasm.yml).
+
+To build it yourself you need a Qt-for-WebAssembly install and the matching Emscripten
+(e.g. Qt 6.7.2 ↔ emsdk 3.1.50 — each Qt release pins one Emscripten version):
+
+```sh
+cd examples/clinic
+/path/to/Qt/6.7.2/wasm_singlethread/bin/qmake   # wasm qmake (host tools via QT_HOST_PATH)
+make -j
+# then serve this folder and open index.html (the custom loading shell):
+python3 -m http.server 8000     # → http://localhost:8000
+```
+
+Two things make the wasm build work, both already wired up here: the DB name switches
+to `:memory:` under `#ifdef Q_OS_WASM` (the browser has no filesystem), and `clinic.pro`
+statically links the SQLite driver with `wasm: QTPLUGIN += qsqlite`.
 
 ## Architecture at a glance
 

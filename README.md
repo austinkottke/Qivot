@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <strong>▶ <a href="https://austinkottke.github.io/Qivot/">Try Qivot in your browser</a></strong> — a live Qt/QML app compiled to
-  WebAssembly, backed by an in-browser SQLite database (<a href="examples/qivot-wasm-demo">source</a>).
+  <strong>▶ <a href="https://austinkottke.github.io/Qivot/">Try the Clinic EHR in your browser</a></strong> — the full Qt/QML demo below,
+  compiled to WebAssembly and backed by an in-browser SQLite database (<a href="examples/clinic">source</a>).
 </p>
 
 <p align="center">

@@ -1,7 +1,7 @@
 name: WASM demo
 
-# Builds the qivot-wasm-demo example for Qt for WebAssembly and publishes it to GitHub
-# Pages, so the live "try it in your browser" link stays current automatically.
+# Builds the clinic example (Qivot Clinic EHR) for Qt for WebAssembly and publishes it
+# to GitHub Pages, so the live "try it in your browser" link stays current automatically.
 #
 # The two version pins below MUST agree with each other — each Qt release is built
 # against exactly one Emscripten version. If you bump QT_VERSION, update EMSDK_VERSION
@@ -10,7 +10,7 @@ name: WASM demo
 on:
   push:
     branches: [ main ]
-    paths: [ "examples/qivot-wasm-demo/**", "src/**", ".github/workflows/wasm.yml" ]
+    paths: [ "examples/clinic/**", "src/**", ".github/workflows/wasm.yml" ]
   workflow_dispatch:
 
 permissions:
@@ -60,17 +60,17 @@ jobs:
           cache: true
 
       - name: Build the demo (wasm)
-        working-directory: examples/qivot-wasm-demo
+        working-directory: examples/clinic
         run: |
           "$QT_ROOT_DIR/bin/qmake"      # wasm qmake; finds host tools via QT_HOST_PATH
           make -j"$(nproc)"
 
       - name: Stage the site
-        working-directory: examples/qivot-wasm-demo
+        working-directory: examples/clinic
         run: |
           mkdir -p "$GITHUB_WORKSPACE/_site"
           # Copy whatever the build produced (a .data file only exists if assets are bundled).
-          for f in index.html qtloader.js qivotwasmdemo.js qivotwasmdemo.wasm qivotwasmdemo.data; do
+          for f in index.html qtloader.js clinic.js clinic.wasm clinic.data; do
             [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/_site/"
           done
           ls -la "$GITHUB_WORKSPACE/_site/"
