@@ -28,6 +28,14 @@ examples/**/*.db
 examples/fluxo/fluxo
 examples/lexica/lexica
 examples/clinic/clinic
+examples/qivot-wasm-demo/qivotwasmdemo
+
+# WebAssembly build output (from a wasm qmake build in an example dir)
+examples/*/*.wasm
+examples/*/*.data
+examples/*/qtloader.js
+examples/qivot-wasm-demo/qivotwasmdemo.html
+examples/qivot-wasm-demo/qivotwasmdemo.js
 
 # macOS
 .DS_Store

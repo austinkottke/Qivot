@@ -1,0 +1,66 @@
+{
+    "classes": [
+        {
+            "classInfos": [
+                {
+                    "name": "QML.Element",
+                    "value": "auto"
+                }
+            ],
+            "className": "NoteStore",
+            "methods": [
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "text",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "add",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "id",
+                            "type": "int"
+                        }
+                    ],
+                    "name": "remove",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "clear",
+                    "returnType": "void"
+                }
+            ],
+            "object": true,
+            "properties": [
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "name": "notes",
+                    "read": "notes",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QAbstractItemModel*",
+                    "user": false
+                }
+            ],
+            "qualifiedClassName": "NoteStore",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "notestore.h",
+    "outputRevision": 67
+}

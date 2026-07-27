@@ -1,0 +1,90 @@
+name: WASM demo
+
+# Builds the qivot-wasm-demo example for Qt for WebAssembly and publishes it to GitHub
+# Pages, so the live "try it in your browser" link stays current automatically.
+#
+# The two version pins below MUST agree with each other — each Qt release is built
+# against exactly one Emscripten version. If you bump QT_VERSION, update EMSDK_VERSION
+# to match (Qt 6.5 → 3.1.25, 6.6 → 3.1.37, 6.7 → 3.1.50).
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "examples/qivot-wasm-demo/**", "src/**", ".github/workflows/wasm.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: 6.7.2
+  EMSDK_VERSION: 3.1.50
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+
+      # Host Qt — provides moc / rcc / qmltyperegistrar that the wasm build runs on the host.
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+      - name: Remember host path
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      # Target Qt — the WebAssembly (single-threaded) build.
+      - name: Install wasm Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          cache: true
+
+      - name: Build the demo (wasm)
+        working-directory: examples/qivot-wasm-demo
+        run: |
+          "$QT_ROOT_DIR/bin/qmake"      # wasm qmake; finds host tools via QT_HOST_PATH
+          make -j"$(nproc)"
+
+      - name: Stage the site
+        working-directory: examples/qivot-wasm-demo
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/_site"
+          # Copy whatever the build produced (a .data file only exists if assets are bundled).
+          for f in index.html qtloader.js qivotwasmdemo.js qivotwasmdemo.wasm qivotwasmdemo.data; do
+            [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/_site/"
+          done
+          ls -la "$GITHUB_WORKSPACE/_site/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

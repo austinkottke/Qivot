@@ -30,5 +30,6 @@ SUBDIRS += \
     fluxo \
     lexica \
     clinic \
+    qivot-wasm-demo \
     contacts \
     index
