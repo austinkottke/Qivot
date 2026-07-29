@@ -134,6 +134,7 @@ QString QiSqliteStatement::columnTypeName(int type) {
     case QMetaType::ULongLong:
         res = "INTEGER";
         break;
+    case QMetaType::Float:
     case QMetaType::Double:
         res = "DOUBLE";
         break;
@@ -150,6 +151,9 @@ QString QiSqliteStatement::columnTypeName(int type) {
         break;
     case QMetaType::QDate:
         res = "DATE";
+        break;
+    case QMetaType::QTime:
+        res = "TIME";
         break;
     case QMetaType::QByteArray:
         res = "BLOB";

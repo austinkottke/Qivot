@@ -78,9 +78,17 @@ bool QiConnection::open(QSqlDatabase db){
 bool QiConnection::open(QSqlDatabase db, bool asDefault){
     Q_ASSERT(db.isOpen());
 
-    if (db.driverName() != "QSQLITE") {
-        qWarning() << "Only QSQLITE dirver is supported.";
-        setLastError(QiError(QiError::NotSupported, QStringLiteral("Only the QSQLITE driver is supported")));
+    const QString driver = db.driverName();
+    const bool sqlite = (driver == QLatin1String("QSQLITE"));
+
+    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL.
+    if (!sqlite
+        && driver != QLatin1String("QMYSQL")
+        && driver != QLatin1String("QMARIADB")
+        && driver != QLatin1String("QPSQL")) {
+        qWarning() << "Unsupported SQL driver:" << driver;
+        setLastError(QiError(QiError::NotSupported,
+                             QStringLiteral("Unsupported SQL driver: %1").arg(driver)));
         return false;
     }
 
@@ -93,15 +101,17 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
 
     }
 
-    d->m_sql.setStatement(new QiSqliteStatement());
+    d->m_sql.setStatement(QiSqlStatement::forDriver(driver));
     d->m_sql.setDatabase(db);
 
-    // Enable recursive triggers so REPLACE-based save() fires the DELETE
-    // triggers that keep an FTS index (and any user triggers) in sync.
-    d->m_sql.query().exec("PRAGMA recursive_triggers = ON");
-
-    // Enforce foreign keys (SQLite ignores them by default).
-    d->m_sql.query().exec("PRAGMA foreign_keys = ON");
+    if (sqlite) {
+        // SQLite-only session settings. Enable recursive triggers so REPLACE-based
+        // save() fires the DELETE triggers that keep an FTS index in sync, and turn
+        // on foreign-key enforcement (SQLite ignores FKs by default). MySQL and
+        // Postgres enforce foreign keys natively.
+        d->m_sql.query().exec("PRAGMA recursive_triggers = ON");
+        d->m_sql.query().exec("PRAGMA foreign_keys = ON");
+    }
 
     QiLog::write(QiLog::Connection, QiLog::Info,
                  QStringLiteral("opened \"%1\"%2")

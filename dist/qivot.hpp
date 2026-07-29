@@ -4290,6 +4290,234 @@ private:
 
 #endif // QiQUERYRULES_H
 
+// ---- src/qisqlstatement.h ----------------------------------------
+#ifndef QiSQLSTATEMENT_H
+#define QiSQLSTATEMENT_H
+
+#include <QString>
+
+
+class QiSharedQuery;
+class QiQueryRules;
+
+/// Sql Statement generator abstract interface
+
+class QiSqlStatement
+{
+public:
+    /// Default constructor
+    QiSqlStatement();
+
+    virtual ~QiSqlStatement() {}
+
+    /// Get the supported driver name
+    virtual QString driverName() = 0;
+
+    /// Build the statement generator for a Qt SQL driver name:
+    /// "QSQLITE", "QMYSQL"/"QMARIADB", or "QPSQL". Unknown drivers fall back to SQLite.
+    static QiSqlStatement *forDriver(const QString &driverName);
+
+    /// "CREATE TABLE IF NOT EXISTS" statement
+    template <typename T>
+    QString createTableIfNotExists() {
+        QiModelMetaInfo *info = qiMetaInfo<T>();
+        return _createTableIfNotExists(info);
+    }
+
+    /// "CREATE TABLE IF NOT EXISTS" statement
+    virtual QString createTableIfNotExists(QiModelMetaInfo *info);
+
+    /// "DROP TABLE" statement
+    template <typename T>
+    QString dropTable() {
+        QiModelMetaInfo *info = qiMetaInfo<T>();
+        return dropTable(info);
+    }
+
+    /// Drop table statement
+    virtual QString dropTable(QiModelMetaInfo *info);
+
+    /// "ALTER TABLE ... ADD COLUMN" statement for a single field (migrations)
+    virtual QString addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field);
+
+    /// Rename a column (SQLite 3.25+): ALTER TABLE ... RENAME COLUMN a TO b
+    virtual QString renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to);
+
+    /// Drop a column (SQLite 3.35+): ALTER TABLE ... DROP COLUMN name
+    virtual QString dropColumn(QiModelMetaInfo *info, const QString &name);
+
+    /// Create index statement
+    virtual QString createIndexIfNotExists(const QiBaseIndex& index);
+
+    /// Drop the index
+    virtual QString dropIndexIfExists(QString name);
+
+    /// Statements that create an FTS5 index (virtual table + sync triggers + rebuild)
+    virtual QStringList createFtsIndex(const QiBaseFtsIndex &index);
+
+    /// Statements that drop an FTS5 index (its triggers + virtual table)
+    virtual QStringList dropFtsIndex(QString name);
+
+    /// Insert into statement
+    /**
+      @param with_id TRUE if the "id" field should be included.
+     */
+    virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
+
+    /// Replace into statement
+    /**
+      @param with_id TRUE if the "id" field should be included.
+     */
+    virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
+
+    /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
+    /**
+      A non-destructive upsert: insert the row, or if it collides on the given
+      conflict column(s), update the other columns in place (keeping the row's
+      primary key). Requires SQLite 3.24 or newer.
+
+      @param fields The columns to insert.
+      @param conflictColumns The unique/primary column(s) that identify an
+             existing row (the ON CONFLICT target).
+     */
+    virtual QString upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns);
+
+    /// Select statement
+    virtual QString select(QiSharedQuery query);
+
+    /// Delete from statement
+    virtual QString deleteFrom(QiSharedQuery query);
+
+    /// Update statement: UPDATE <table> SET <field> = :set_<field> ... WHERE ...
+    /** The value for each field is bound under the placeholder ":set_<field>". */
+    virtual QString update(QiSharedQuery query, const QStringList &fields);
+
+    /// Returns a string representation of the QVariant for SQL statement
+    virtual QString formatValue(QVariant value,bool trimStrings = false);
+
+    // --- dialect hooks (overridden per database) ------------------------------
+
+    /// Map a QMetaType id to this dialect's column type (INTEGER / INT / VARCHAR(255) / …).
+    /// Returns a null string for an unsupported type.
+    virtual QString columnTypeName(int type);
+
+    /// Like columnTypeName(), but may adapt the type to the column's clause — e.g. MySQL
+    /// needs a bounded VARCHAR for a keyed string but wants TEXT for free text. The default
+    /// ignores the clause and returns columnTypeName(type).
+    virtual QString columnTypeForField(int type, QiClause clause);
+
+    /// Build a column's constraint text: NOT NULL / UNIQUE / DEFAULT / CHECK / PRIMARY KEY.
+    virtual QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
+
+    /// The PRIMARY KEY clause for a column, including auto-increment where the dialect wants it.
+    virtual QString primaryKeyClause(const QString &typeName);
+
+    /// Text appended right after the closing ")" of CREATE TABLE (WITHOUT ROWID, ENGINE=…, …).
+    virtual QString tableSuffix(QiModelMetaInfo *info);
+
+    /// A query that returns at least one row iff the given table already exists.
+    virtual QString exists(QiModelMetaInfo *info);
+
+    /// TRUE when INSERT reports the new row id via "RETURNING id" (Postgres) instead of
+    /// QSqlQuery::lastInsertId() (SQLite / MySQL).
+    virtual bool returnsIdOnInsert() const { return false; }
+
+protected:
+    /// The real function for create table if not exists. The base implementation is a
+    /// portable generator that calls the dialect hooks above; SQLite overrides it.
+    virtual QString _createTableIfNotExists(QiModelMetaInfo *info);
+
+    /// The real function for "insert into / replace into" statement
+    virtual QString _insertInto(QiModelMetaInfo *info ,QString type, QStringList fields);
+
+    virtual QString selectCore(QiQueryRules rules);
+
+    virtual QString selectResultColumn(QiQueryRules rules);
+
+    /// Generate the JOIN clauses (e.g. "INNER JOIN friendship ON ...")
+    virtual QString joinClause(QiQueryRules rules);
+
+    virtual QString limitAndOffset(int limit, int offset = 0);
+
+    virtual QString orderBy(QiQueryRules rules);
+
+};
+
+
+#endif // QiSQLSTATEMENT_H
+
+// ---- src/qimysqlstatement.h --------------------------------------
+#ifndef QIMYSQLSTATEMENT_H
+#define QIMYSQLSTATEMENT_H
+
+#include <QVariant>
+
+/// MySQL / MariaDB SQL statement generator (Qt drivers "QMYSQL" / "QMARIADB").
+/**
+    Reuses the portable base generator and overrides only what differs from
+    ANSI SQL: real column types, AUTO_INCREMENT primary keys, InnoDB/utf8mb4
+    table options, and MySQL's "ON DUPLICATE KEY UPDATE" upsert. Full-text
+    search (FTS) is SQLite-only for now.
+
+    @remarks Stateless / thread-safe, like every QiSqlStatement.
+ */
+class QiMysqlStatement : public QiSqlStatement
+{
+public:
+    QiMysqlStatement();
+
+    QString driverName() override;
+
+    QString columnTypeName(int type) override;
+    QString columnTypeForField(int type, QiClause clause) override;
+    QString primaryKeyClause(const QString &typeName) override;
+    QString tableSuffix(QiModelMetaInfo *info) override;
+
+    QString upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns) override;
+
+    QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
+    QStringList dropFtsIndex(QString name) override;
+};
+
+#endif // QIMYSQLSTATEMENT_H
+
+// ---- src/qipgstatement.h -----------------------------------------
+#ifndef QIPGSTATEMENT_H
+#define QIPGSTATEMENT_H
+
+#include <QVariant>
+
+/// PostgreSQL SQL statement generator (Qt driver "QPSQL").
+/**
+    Postgres is close to the portable base: its upsert is the same "INSERT ...
+    ON CONFLICT DO UPDATE" as SQLite, so that is inherited. What differs: real
+    column types, identity primary keys, and the new-row id — Postgres reports it
+    via "RETURNING id" rather than lastInsertId(), so insertInto appends RETURNING
+    and returnsIdOnInsert() tells QiSql to read it back. FTS is SQLite-only for now.
+
+    @remarks Stateless / thread-safe.
+ */
+class QiPgStatement : public QiSqlStatement
+{
+public:
+    QiPgStatement();
+
+    QString driverName() override;
+
+    QString columnTypeName(int type) override;
+    QString primaryKeyClause(const QString &typeName) override;
+
+    bool returnsIdOnInsert() const override { return true; }
+
+    QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
+    QStringList dropFtsIndex(QString name) override;
+
+protected:
+    QString _insertInto(QiModelMetaInfo *info, QString type, QStringList fields) override;
+};
+
+#endif // QIPGSTATEMENT_H
+
 // ---- src/qirelation.h --------------------------------------------
 #ifndef QiRELATION_H
 #define QiRELATION_H
@@ -4898,128 +5126,6 @@ private:
 
 #endif // QiSQL_H
 
-// ---- src/qisqlstatement.h ----------------------------------------
-#ifndef QiSQLSTATEMENT_H
-#define QiSQLSTATEMENT_H
-
-#include <QString>
-
-
-class QiSharedQuery;
-class QiQueryRules;
-
-/// Sql Statement generator abstract interface
-
-class QiSqlStatement
-{
-public:
-    /// Default constructor
-    QiSqlStatement();
-
-    /// Get the supported driver name
-    virtual QString driverName() = 0;
-
-    /// "CREATE TABLE IF NOT EXISTS" statement
-    template <typename T>
-    QString createTableIfNotExists() {
-        QiModelMetaInfo *info = qiMetaInfo<T>();
-        return _createTableIfNotExists(info);
-    }
-
-    /// "CREATE TABLE IF NOT EXISTS" statement
-    virtual QString createTableIfNotExists(QiModelMetaInfo *info);
-
-    /// "DROP TABLE" statement
-    template <typename T>
-    QString dropTable() {
-        QiModelMetaInfo *info = qiMetaInfo<T>();
-        return dropTable(info);
-    }
-
-    /// Drop table statement
-    virtual QString dropTable(QiModelMetaInfo *info);
-
-    /// "ALTER TABLE ... ADD COLUMN" statement for a single field (migrations)
-    virtual QString addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field);
-
-    /// Rename a column (SQLite 3.25+): ALTER TABLE ... RENAME COLUMN a TO b
-    virtual QString renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to);
-
-    /// Drop a column (SQLite 3.35+): ALTER TABLE ... DROP COLUMN name
-    virtual QString dropColumn(QiModelMetaInfo *info, const QString &name);
-
-    /// Create index statement
-    virtual QString createIndexIfNotExists(const QiBaseIndex& index);
-
-    /// Drop the index
-    virtual QString dropIndexIfExists(QString name);
-
-    /// Statements that create an FTS5 index (virtual table + sync triggers + rebuild)
-    virtual QStringList createFtsIndex(const QiBaseFtsIndex &index);
-
-    /// Statements that drop an FTS5 index (its triggers + virtual table)
-    virtual QStringList dropFtsIndex(QString name);
-
-    /// Insert into statement
-    /**
-      @param with_id TRUE if the "id" field should be included.
-     */
-    virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
-
-    /// Replace into statement
-    /**
-      @param with_id TRUE if the "id" field should be included.
-     */
-    virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
-
-    /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
-    /**
-      A non-destructive upsert: insert the row, or if it collides on the given
-      conflict column(s), update the other columns in place (keeping the row's
-      primary key). Requires SQLite 3.24 or newer.
-
-      @param fields The columns to insert.
-      @param conflictColumns The unique/primary column(s) that identify an
-             existing row (the ON CONFLICT target).
-     */
-    virtual QString upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns);
-
-    /// Select statement
-    virtual QString select(QiSharedQuery query);
-
-    /// Delete from statement
-    virtual QString deleteFrom(QiSharedQuery query);
-
-    /// Update statement: UPDATE <table> SET <field> = :set_<field> ... WHERE ...
-    /** The value for each field is bound under the placeholder ":set_<field>". */
-    virtual QString update(QiSharedQuery query, const QStringList &fields);
-
-    /// Returns a string representation of the QVariant for SQL statement
-    virtual QString formatValue(QVariant value,bool trimStrings = false);
-
-protected:
-    /// The real function for create table if not exists
-    virtual QString _createTableIfNotExists(QiModelMetaInfo *info) = 0;
-
-    /// The real function for "insert into / replace into" statement
-    virtual QString _insertInto(QiModelMetaInfo *info ,QString type, QStringList fields);
-
-    virtual QString selectCore(QiQueryRules rules);
-
-    virtual QString selectResultColumn(QiQueryRules rules);
-
-    /// Generate the JOIN clauses (e.g. "INNER JOIN friendship ON ...")
-    virtual QString joinClause(QiQueryRules rules);
-
-    virtual QString limitAndOffset(int limit, int offset = 0);
-
-    virtual QString orderBy(QiQueryRules rules);
-
-};
-
-
-#endif // QiSQLSTATEMENT_H
-
 // ---- src/qisqlitestatement.h -------------------------------------
 #ifndef QiSQLITESTATEMENT_H
 #define QiSQLITESTATEMENT_H
@@ -5037,13 +5143,13 @@ class QiSqliteStatement : public QiSqlStatement
 public:
     QiSqliteStatement();
 
-    QString columnTypeName(int type);
-    QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
+    QString columnTypeName(int type) override;
+    QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true) override;
 
     QString driverName() override;
 
     /// Check is a table exist
-    static QString exists(QiModelMetaInfo *info);
+    QString exists(QiModelMetaInfo *info) override;
 
 protected:
 
@@ -5485,9 +5591,17 @@ bool QiConnection::open(QSqlDatabase db){
 bool QiConnection::open(QSqlDatabase db, bool asDefault){
     Q_ASSERT(db.isOpen());
 
-    if (db.driverName() != "QSQLITE") {
-        qWarning() << "Only QSQLITE dirver is supported.";
-        setLastError(QiError(QiError::NotSupported, QStringLiteral("Only the QSQLITE driver is supported")));
+    const QString driver = db.driverName();
+    const bool sqlite = (driver == QLatin1String("QSQLITE"));
+
+    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL.
+    if (!sqlite
+        && driver != QLatin1String("QMYSQL")
+        && driver != QLatin1String("QMARIADB")
+        && driver != QLatin1String("QPSQL")) {
+        qWarning() << "Unsupported SQL driver:" << driver;
+        setLastError(QiError(QiError::NotSupported,
+                             QStringLiteral("Unsupported SQL driver: %1").arg(driver)));
         return false;
     }
 
@@ -5500,15 +5614,17 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
 
     }
 
-    d->m_sql.setStatement(new QiSqliteStatement());
+    d->m_sql.setStatement(QiSqlStatement::forDriver(driver));
     d->m_sql.setDatabase(db);
 
-    // Enable recursive triggers so REPLACE-based save() fires the DELETE
-    // triggers that keep an FTS index (and any user triggers) in sync.
-    d->m_sql.query().exec("PRAGMA recursive_triggers = ON");
-
-    // Enforce foreign keys (SQLite ignores them by default).
-    d->m_sql.query().exec("PRAGMA foreign_keys = ON");
+    if (sqlite) {
+        // SQLite-only session settings. Enable recursive triggers so REPLACE-based
+        // save() fires the DELETE triggers that keep an FTS index in sync, and turn
+        // on foreign-key enforcement (SQLite ignores FKs by default). MySQL and
+        // Postgres enforce foreign keys natively.
+        d->m_sql.query().exec("PRAGMA recursive_triggers = ON");
+        d->m_sql.query().exec("PRAGMA foreign_keys = ON");
+    }
 
     QiLog::write(QiLog::Connection, QiLog::Info,
                  QStringLiteral("opened \"%1\"%2")
@@ -6943,6 +7059,176 @@ QiSharedList QiModelMetaInfo::initialData(){
     return initialDataFunc();
 }
 
+// ---- src/qimysqlstatement.cpp ------------------------------------
+#include <QStringList>
+#include <QDebug>
+
+
+QiMysqlStatement::QiMysqlStatement()
+{
+}
+
+QString QiMysqlStatement::driverName(){
+    return QStringLiteral("MYSQL");
+}
+
+QString QiMysqlStatement::columnTypeName(int type){
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("INT");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
+    case QMetaType::Float:         return QStringLiteral("FLOAT");
+    case QMetaType::Double:        return QStringLiteral("DOUBLE");
+    case QMetaType::QString:       return QStringLiteral("VARCHAR(255)");
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:    return QStringLiteral("JSON");     // native JSON (MySQL 5.7+/MariaDB 10.2+)
+    case QMetaType::QStringList:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("TEXT");
+    case QMetaType::QDateTime:     return QStringLiteral("DATETIME");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    case QMetaType::QTime:         return QStringLiteral("TIME");
+    case QMetaType::QByteArray:    return QStringLiteral("BLOB");
+    case QMetaType::Bool:          return QStringLiteral("TINYINT(1)");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("INT");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("INT");
+#endif
+    return QString();
+}
+
+QString QiMysqlStatement::columnTypeForField(int type, QiClause clause){
+    // MySQL can't index/key a TEXT column without a prefix length, but TEXT is the
+    // only type that won't truncate long strings. So: a string that is a key
+    // (PRIMARY KEY / UNIQUE) becomes a bounded VARCHAR(255); any other string is TEXT.
+    if (type == QMetaType::QString) {
+        if (clause.testFlag(QiClause::PRIMARY_KEY) || clause.testFlag(QiClause::UNIQUE))
+            return QStringLiteral("VARCHAR(255)");
+        return QStringLiteral("TEXT");
+    }
+    return columnTypeName(type);
+}
+
+QString QiMysqlStatement::primaryKeyClause(const QString &typeName){
+    // AUTO_INCREMENT is only legal on an integer key.
+    if (typeName.startsWith(QLatin1String("INT")) || typeName == QLatin1String("BIGINT"))
+        return QStringLiteral("AUTO_INCREMENT PRIMARY KEY");
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiMysqlStatement::tableSuffix(QiModelMetaInfo *info){
+    Q_UNUSED(info);
+    return QStringLiteral(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+QString QiMysqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns){
+    QStringList values;
+    foreach (QString f, fields)
+        values << ":" + f;
+
+    // Update every inserted column except the primary key and the conflict key(s).
+    QStringList setList;
+    foreach (QString f, fields) {
+        if (f == QLatin1String("id") || conflictColumns.contains(f))
+            continue;
+        setList << QString("%1=VALUES(%1)").arg(f);
+    }
+
+    // MySQL keys the upsert on the table's own PRIMARY/UNIQUE indexes, so the
+    // conflict columns are informational here. With nothing to update, a harmless
+    // self-assignment leaves the existing row untouched (MySQL has no DO NOTHING).
+    QString action = setList.isEmpty()
+            ? QString("%1=%1").arg(conflictColumns.value(0, QStringLiteral("id")))
+            : setList.join(",");
+
+    return QString("INSERT INTO %1 (%2) VALUES (%3) ON DUPLICATE KEY UPDATE %4;")
+            .arg(info->name(), fields.join(","), values.join(","), action);
+}
+
+QStringList QiMysqlStatement::createFtsIndex(const QiBaseFtsIndex &index){
+    Q_UNUSED(index);
+    qWarning() << "QiMysqlStatement: full-text search (FTS) is not supported on MySQL yet; skipping.";
+    return QStringList();
+}
+
+QStringList QiMysqlStatement::dropFtsIndex(QString name){
+    Q_UNUSED(name);
+    return QStringList();
+}
+
+// ---- src/qipgstatement.cpp ---------------------------------------
+#include <QStringList>
+#include <QDebug>
+
+
+QiPgStatement::QiPgStatement()
+{
+}
+
+QString QiPgStatement::driverName(){
+    return QStringLiteral("PSQL");
+}
+
+QString QiPgStatement::columnTypeName(int type){
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("INTEGER");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
+    case QMetaType::Float:         return QStringLiteral("REAL");
+    case QMetaType::Double:        return QStringLiteral("DOUBLE PRECISION");
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:    return QStringLiteral("JSONB");     // native binary JSON
+    case QMetaType::QString:
+    case QMetaType::QStringList:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("TEXT");
+    case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    case QMetaType::QTime:         return QStringLiteral("TIME");
+    case QMetaType::QByteArray:    return QStringLiteral("BYTEA");
+    case QMetaType::Bool:          return QStringLiteral("BOOLEAN");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#endif
+    return QString();
+}
+
+QString QiPgStatement::primaryKeyClause(const QString &typeName){
+    // An auto-incrementing integer key uses an identity column in modern Postgres.
+    if (typeName == QLatin1String("INTEGER") || typeName == QLatin1String("BIGINT"))
+        return QStringLiteral("PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY");
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiPgStatement::_insertInto(QiModelMetaInfo *info, QString type, QStringList fields){
+    // Postgres has no lastInsertId(); ask for the new id back on the same round-trip.
+    QString sql = QiSqlStatement::_insertInto(info, type, fields);
+    if (sql.endsWith(QLatin1Char(';')))
+        sql.chop(1);
+    sql += QStringLiteral(" RETURNING id;");
+    return sql;
+}
+
+QStringList QiPgStatement::createFtsIndex(const QiBaseFtsIndex &index){
+    Q_UNUSED(index);
+    qWarning() << "QiPgStatement: full-text search (FTS) is not supported on Postgres yet; skipping.";
+    return QStringList();
+}
+
+QStringList QiPgStatement::dropFtsIndex(QString name){
+    Q_UNUSED(name);
+    return QStringList();
+}
+
 // ---- src/qiqueryrules.cpp ----------------------------------------
 #include <QSharedData>
 
@@ -7748,12 +8034,7 @@ bool QiSql::dropFtsIndex(QString name){
 }
 
 bool QiSql::exists(QiModelMetaInfo* info){
-    if (d->m_db.driverName() != "QSQLITE") {
-        qWarning() << "Only QSQLITE dirver is supported.";
-        return false;
-    }
-
-    QString sql = QiSqliteStatement::exists(info);
+    QString sql = d->m_statement->exists(info);
 //    qDebug() << sql;
     QSqlQuery q = query();
 
@@ -7861,8 +8142,12 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = q.lastInsertId().toInt();
-            if (model->id.get().toInt() != id)
+            // Postgres reports the new id via "RETURNING id" (read from the result
+            // row); SQLite and MySQL report it via lastInsertId().
+            int id = d->m_statement->returnsIdOnInsert()
+                       ? (q.next() ? q.value(0).toInt() : 0)
+                       : q.lastInsertId().toInt();
+            if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
     }
@@ -8008,6 +8293,7 @@ QString QiSqliteStatement::columnTypeName(int type) {
     case QMetaType::ULongLong:
         res = "INTEGER";
         break;
+    case QMetaType::Float:
     case QMetaType::Double:
         res = "DOUBLE";
         break;
@@ -8024,6 +8310,9 @@ QString QiSqliteStatement::columnTypeName(int type) {
         break;
     case QMetaType::QDate:
         res = "DATE";
+        break;
+    case QMetaType::QTime:
+        res = "TIME";
         break;
     case QMetaType::QByteArray:
         res = "BLOB";
@@ -8093,10 +8382,20 @@ QString QiSqliteStatement::exists(QiModelMetaInfo *info) {
 
 // ---- src/qisqlstatement.cpp --------------------------------------
 #include <QStringList>
+#include <QDebug>
 
 
 QiSqlStatement::QiSqlStatement()
 {
+}
+
+QiSqlStatement *QiSqlStatement::forDriver(const QString &driverName){
+    if (driverName == QLatin1String("QMYSQL") || driverName == QLatin1String("QMARIADB"))
+        return new QiMysqlStatement();
+    if (driverName == QLatin1String("QPSQL"))
+        return new QiPgStatement();
+    // QSQLITE and anything else fall back to SQLite.
+    return new QiSqliteStatement();
 }
 
 QString QiSqlStatement::dropTable(QiModelMetaInfo *info) {
@@ -8111,10 +8410,163 @@ QString QiSqlStatement::createTableIfNotExists(QiModelMetaInfo *info){
 }
 
 QString QiSqlStatement::addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field){
-    // Overridden by the concrete (SQLite) generator.
-    Q_UNUSED(info);
-    Q_UNUSED(field);
+    // Portable "ALTER TABLE ... ADD COLUMN". SQLite overrides this with its own
+    // (more restrictive) variant; MySQL / Postgres use this generic one.
+    QiClause clause = field->clause;   // copy: flag()/testFlag() are non-const
+    QString typeName;
+    if (clause.testFlag(QiClause::SQL_TYPE)) {
+        typeName = clause.flag(QiClause::SQL_TYPE).toString();
+    } else {
+        typeName = columnTypeForField(field->type, clause);
+        if (typeName.isNull())
+            return QString();
+    }
+
+    QString sql = QString("ALTER TABLE %1 ADD COLUMN %2 %3")
+                    .arg(info->name(), field->name, typeName).trimmed();
+
+    if (clause.testFlag(QiClause::DEFAULT))
+        sql += QString(" DEFAULT %1").arg(clause.flag(QiClause::DEFAULT).toString());
+
+    sql += ";";
+    return sql;
+}
+
+QString QiSqlStatement::columnTypeName(int type){
+    // A portable ANSI-ish default. SQLite / MySQL / Postgres each override this.
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("INTEGER");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
+    case QMetaType::Float:         return QStringLiteral("REAL");
+    case QMetaType::Double:        return QStringLiteral("DOUBLE PRECISION");
+    case QMetaType::QString:
+    case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("TEXT");
+    case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    case QMetaType::QTime:         return QStringLiteral("TIME");
+    case QMetaType::QByteArray:    return QStringLiteral("BLOB");
+    case QMetaType::Bool:          return QStringLiteral("BOOLEAN");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#endif
     return QString();
+}
+
+QString QiSqlStatement::columnTypeForField(int type, QiClause clause){
+    Q_UNUSED(clause);
+    return columnTypeName(type);
+}
+
+QString QiSqlStatement::primaryKeyClause(const QString &typeName){
+    Q_UNUSED(typeName);
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiSqlStatement::columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey){
+    QStringList res;
+    if (clause.testFlag(QiClause::NOT_NULL))
+        res << "NOT NULL";
+    if (clause.testFlag(QiClause::UNIQUE))
+        res << "UNIQUE";
+    if (clause.testFlag(QiClause::DEFAULT))
+        res << QString("DEFAULT %1 ").arg(clause.flag(QiClause::DEFAULT).toString());
+    if (clause.testFlag(QiClause::CHECK))
+        res << QString("CHECK (%1)").arg(clause.flag(QiClause::CHECK).toString());
+    if (emitPrimaryKey && clause.testFlag(QiClause::PRIMARY_KEY))
+        res << primaryKeyClause(typeName);
+    return res.join(" ");
+}
+
+QString QiSqlStatement::tableSuffix(QiModelMetaInfo *info){
+    Q_UNUSED(info);
+    return QString();
+}
+
+QString QiSqlStatement::exists(QiModelMetaInfo *info){
+    // information_schema is shared by MySQL and Postgres; SQLite overrides this.
+    return QString("SELECT table_name FROM information_schema.tables WHERE table_name = '%1'")
+            .arg(info->name());
+}
+
+QString QiSqlStatement::_createTableIfNotExists(QiModelMetaInfo *info){
+    // Portable CREATE TABLE generator built from the dialect hooks. SQLite keeps
+    // its own override; MySQL / Postgres use this one.
+    QString statement   = QStringLiteral("%1 (\n%2\n)%3;");
+    QString createTable = QStringLiteral("CREATE TABLE IF NOT EXISTS %1 ");
+
+    QStringList columnDefList;
+
+    const QStringList pkFields = info->primaryKeyFields();
+    const bool composite = pkFields.size() > 1;
+
+    int n = info->size();
+    for (int i = 0; i < n; i++){
+        const QiModelMetaInfoField *f = info->at(i);
+        QiClause clause = f->clause;
+
+        QString typeName;
+        if (clause.testFlag(QiClause::SQL_TYPE)) {
+            typeName = clause.flag(QiClause::SQL_TYPE).toString();
+        } else {
+            typeName = columnTypeForField(f->type, clause);
+            if (typeName.isNull()) {
+                qWarning() << QString("%1::%3 - QiField<%2> is not supported yet")
+                            .arg(info->name()).arg(QString::fromUtf8(QMetaType(f->type).name())).arg(f->name);
+                continue;
+            }
+        }
+
+        QString cons = columnConstraint(clause, typeName, !composite);
+        QString columnDef;
+        if (typeName.isEmpty()) {
+            columnDef = cons.isEmpty() ? f->name : QString("%1 %2").arg(f->name).arg(cons);
+        } else {
+            columnDef = QString("%1 %2 %3").arg(f->name).arg(typeName).arg(cons);
+        }
+        columnDefList << columnDef;
+    }
+
+    if (composite)
+        columnDefList << QString("PRIMARY KEY (%1)").arg(pkFields.join(", "));
+
+    QList<QiModelMetaInfoField> foreignKeyList = info->foreignKeyList();
+    n = foreignKeyList.size();
+    for (int i = 0; i < n; i++){
+        QiModelMetaInfoField f = foreignKeyList.at(i);
+        QVariant v = f.clause.flag(QiClause::FOREIGN_KEY);
+        QiModelMetaInfo *targetInfo = (QiModelMetaInfo*) v.value<void *>();
+        Q_ASSERT(targetInfo);
+        QString targetKey = targetInfo->primaryKeyName();
+        if (targetKey.isEmpty()) targetKey = QStringLiteral("id");
+        QString columnDef = QString("FOREIGN KEY(%1) REFERENCES %2(%3)")
+                            .arg(f.name).arg(targetInfo->name()).arg(targetKey);
+        QVariant action = f.clause.flag(QiClause::FK_ON_DELETE);
+        if (action.isValid()) {
+            switch (action.toInt()) {
+            case QiFkCascade:    columnDef += " ON DELETE CASCADE";     break;
+            case QiFkRestrict:   columnDef += " ON DELETE RESTRICT";    break;
+            case QiFkSetNull:    columnDef += " ON DELETE SET NULL";    break;
+            case QiFkSetDefault: columnDef += " ON DELETE SET DEFAULT"; break;
+            default: break;
+            }
+        }
+        columnDefList << columnDef;
+    }
+
+    return statement
+          .arg(createTable.arg(info->name()))
+          .arg(columnDefList.join(",\n"))
+          .arg(tableSuffix(info));
 }
 
 QString QiSqlStatement::renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to){

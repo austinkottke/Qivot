@@ -15,13 +15,13 @@ class QiSqliteStatement : public QiSqlStatement
 public:
     QiSqliteStatement();
 
-    QString columnTypeName(int type);
-    QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
+    QString columnTypeName(int type) override;
+    QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true) override;
 
     QString driverName() override;
 
     /// Check is a table exist
-    static QString exists(QiModelMetaInfo *info);
+    QString exists(QiModelMetaInfo *info) override;
 
 protected:
 

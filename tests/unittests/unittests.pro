@@ -19,12 +19,14 @@ TEMPLATE = app
 SOURCES += main.cpp \
     testobjectrunner.cpp \
     sqlitetests.cpp \
-    coretests.cpp
+    coretests.cpp \
+    dialecttests.cpp
 
 HEADERS += \
     testobjectrunner.h \
     coretests.h \
-    sqlitetests.h
+    sqlitetests.h \
+    dialecttests.h
 
 include (../../src/qivot.pri)
 include(../models/models.pri)

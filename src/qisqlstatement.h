@@ -3,6 +3,7 @@
 
 #include <QString>
 
+#include <qiclause.h>
 #include <qimodelmetainfo.h>
 #include <qisharedquery.h>
 #include <qiqueryrules.h>
@@ -20,8 +21,14 @@ public:
     /// Default constructor
     QiSqlStatement();
 
+    virtual ~QiSqlStatement() {}
+
     /// Get the supported driver name
     virtual QString driverName() = 0;
+
+    /// Build the statement generator for a Qt SQL driver name:
+    /// "QSQLITE", "QMYSQL"/"QMARIADB", or "QPSQL". Unknown drivers fall back to SQLite.
+    static QiSqlStatement *forDriver(const QString &driverName);
 
     /// "CREATE TABLE IF NOT EXISTS" statement
     template <typename T>
@@ -101,9 +108,37 @@ public:
     /// Returns a string representation of the QVariant for SQL statement
     virtual QString formatValue(QVariant value,bool trimStrings = false);
 
+    // --- dialect hooks (overridden per database) ------------------------------
+
+    /// Map a QMetaType id to this dialect's column type (INTEGER / INT / VARCHAR(255) / …).
+    /// Returns a null string for an unsupported type.
+    virtual QString columnTypeName(int type);
+
+    /// Like columnTypeName(), but may adapt the type to the column's clause — e.g. MySQL
+    /// needs a bounded VARCHAR for a keyed string but wants TEXT for free text. The default
+    /// ignores the clause and returns columnTypeName(type).
+    virtual QString columnTypeForField(int type, QiClause clause);
+
+    /// Build a column's constraint text: NOT NULL / UNIQUE / DEFAULT / CHECK / PRIMARY KEY.
+    virtual QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
+
+    /// The PRIMARY KEY clause for a column, including auto-increment where the dialect wants it.
+    virtual QString primaryKeyClause(const QString &typeName);
+
+    /// Text appended right after the closing ")" of CREATE TABLE (WITHOUT ROWID, ENGINE=…, …).
+    virtual QString tableSuffix(QiModelMetaInfo *info);
+
+    /// A query that returns at least one row iff the given table already exists.
+    virtual QString exists(QiModelMetaInfo *info);
+
+    /// TRUE when INSERT reports the new row id via "RETURNING id" (Postgres) instead of
+    /// QSqlQuery::lastInsertId() (SQLite / MySQL).
+    virtual bool returnsIdOnInsert() const { return false; }
+
 protected:
-    /// The real function for create table if not exists
-    virtual QString _createTableIfNotExists(QiModelMetaInfo *info) = 0;
+    /// The real function for create table if not exists. The base implementation is a
+    /// portable generator that calls the dialect hooks above; SQLite overrides it.
+    virtual QString _createTableIfNotExists(QiModelMetaInfo *info);
 
     /// The real function for "insert into / replace into" statement
     virtual QString _insertInto(QiModelMetaInfo *info ,QString type, QStringList fields);

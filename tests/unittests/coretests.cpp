@@ -254,10 +254,12 @@ void CoreTests::model5() {
     QiSqliteStatement statement;
     QString sql = statement.createTableIfNotExists<Model5>();
 
+    // QTime is now a supported field type (maps to SQLite's TIME affinity), so
+    // model5's accessTime column is included in the generated table.
     QString answer = "CREATE TABLE IF NOT EXISTS model5  (\n"
-            "id INTEGER PRIMARY KEY AUTOINCREMENT\n"
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+            "accessTime TIME \n"
             ");" ;
-    // All the fields in model5 should be unsupported
 
     QCOMPARE(sql,answer);
 

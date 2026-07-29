@@ -16,6 +16,8 @@ QIVOT_HEADERS += \
     $$PWD/qibasefield.h \
     $$PWD/qisqlstatement.h \
     $$PWD/qisqlitestatement.h \
+    $$PWD/qimysqlstatement.h \
+    $$PWD/qipgstatement.h \
     $$PWD/qiwhere.h \
     $$PWD/qisql.h \
     $$PWD/qifield.h \
@@ -61,6 +63,8 @@ SOURCES += \
     $$PWD/qibasefield.cpp \
     $$PWD/qisqlstatement.cpp \
     $$PWD/qisqlitestatement.cpp \
+    $$PWD/qimysqlstatement.cpp \
+    $$PWD/qipgstatement.cpp \
     $$PWD/qiwhere.cpp \
     $$PWD/qisql.cpp \
     $$PWD/qifield.cpp \

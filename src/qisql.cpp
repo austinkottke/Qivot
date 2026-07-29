@@ -223,12 +223,7 @@ bool QiSql::dropFtsIndex(QString name){
 }
 
 bool QiSql::exists(QiModelMetaInfo* info){
-    if (d->m_db.driverName() != "QSQLITE") {
-        qWarning() << "Only QSQLITE dirver is supported.";
-        return false;
-    }
-
-    QString sql = QiSqliteStatement::exists(info);
+    QString sql = d->m_statement->exists(info);
 //    qDebug() << sql;
     QSqlQuery q = query();
 
@@ -336,8 +331,12 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = q.lastInsertId().toInt();
-            if (model->id.get().toInt() != id)
+            // Postgres reports the new id via "RETURNING id" (read from the result
+            // row); SQLite and MySQL report it via lastInsertId().
+            int id = d->m_statement->returnsIdOnInsert()
+                       ? (q.next() ? q.value(0).toInt() : 0)
+                       : q.lastInsertId().toInt();
+            if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
     }
