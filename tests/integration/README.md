@@ -31,7 +31,22 @@ cd tests/integration && qmake && make
 It checks: the returned auto-increment id (Postgres `RETURNING` vs MySQL `lastInsertId`), a >255-char
 string surviving intact (MySQL `TEXT`, not a truncating `VARCHAR`), a JSON/JSONB round-trip, and an
 upsert on a unique key. If the driver plugin is missing or no server answers, it **skips** (exit 0),
-so it's safe to run anywhere.
+so it's safe to run anywhere — unless `QIVOT_REQUIRE_DB=1`, which turns those into hard failures.
+
+Connection details come from environment variables (per-backend defaults in parentheses):
+
+| Var | MySQL default | Postgres default |
+|-----|---------------|------------------|
+| `QIVOT_HOST` | `127.0.0.1` | `127.0.0.1` |
+| `QIVOT_PORT` | `3306` | `5432` |
+| `QIVOT_NAME` | `qivot_test` | `qivot_test` |
+| `QIVOT_USER` | `root` | `postgres` |
+| `QIVOT_PASS` | `qivot` | `qivot` |
+| `QIVOT_REQUIRE_DB` | (unset = skip on failure) | (set = fail on failure) |
+
+**CI runs this automatically.** The `db-integration` job in `.github/workflows/ci.yml` boots MariaDB
+and PostgreSQL as service containers, installs the distro Qt SQL driver plugins
+(`libqt6sql6-mysql` / `libqt6sql6-psql`), and runs both backends with `QIVOT_REQUIRE_DB=1`.
 
 ### macOS caveat — the Qt SQL driver plugins
 

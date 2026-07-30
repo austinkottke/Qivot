@@ -31,4 +31,5 @@ SUBDIRS += \
     lexica \
     clinic \
     contacts \
+    multidb \
     index

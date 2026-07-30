@@ -32,10 +32,19 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     const QString backend = argc > 1 ? QString::fromLocal8Bit(argv[1]).toLower() : QString();
 
-    QString driver, user, pass;
-    int port = 0;
-    if (backend == "mysql")                              { driver = "QMYSQL"; port = 3307; user = "root";     pass = "qivot"; }
-    else if (backend == "postgres" || backend == "pg")   { driver = "QPSQL";  port = 5432; user = "postgres"; pass = "qivot"; }
+    // With QIVOT_REQUIRE_DB set (as CI does), a missing driver or failed connection
+    // is a hard failure; otherwise it's a graceful skip so the test is safe anywhere.
+    const bool requireDb = qEnvironmentVariableIsSet("QIVOT_REQUIRE_DB");
+    auto skipOrFail = [&](const QString &why) -> int {
+        if (requireDb) { qCritical().noquote() << "FAIL:" << why; return 1; }
+        qWarning().noquote() << "SKIP:" << why;
+        return 0;
+    };
+
+    QString driver, defUser, defPass;
+    int defPort = 0;
+    if (backend == "mysql" || backend == "mariadb")      { driver = "QMYSQL"; defPort = 3306; defUser = "root";     defPass = "qivot"; }
+    else if (backend == "postgres" || backend == "pg")   { driver = "QPSQL";  defPort = 5432; defUser = "postgres"; defPass = "qivot"; }
     else if (backend == "print-mysql" || backend == "print-postgres") {
         // Print the generated SQL (no DB / driver needed) so it can be validated
         // directly against a real server via psql / mariadb.
@@ -49,21 +58,17 @@ int main(int argc, char **argv) {
     }
     else { qWarning().noquote() << "usage: integration <mysql|postgres|print-mysql|print-postgres>"; return 2; }
 
-    if (!QSqlDatabase::drivers().contains(driver)) {
-        qWarning().noquote() << "SKIP:" << driver << "driver plugin not available";
-        return 0;
-    }
+    if (!QSqlDatabase::drivers().contains(driver))
+        return skipOrFail(driver + " driver plugin not available");
 
     QSqlDatabase db = QSqlDatabase::addDatabase(driver);
-    db.setHostName("127.0.0.1");
-    db.setPort(port);
-    db.setDatabaseName("qivot_test");
-    db.setUserName(user);
-    db.setPassword(pass);
-    if (!db.open()) {
-        qWarning().noquote() << "SKIP: cannot connect to" << backend << "-" << db.lastError().text();
-        return 0;
-    }
+    db.setHostName(qEnvironmentVariable("QIVOT_HOST", "127.0.0.1"));
+    db.setPort(qEnvironmentVariable("QIVOT_PORT", QString::number(defPort)).toInt());
+    db.setDatabaseName(qEnvironmentVariable("QIVOT_NAME", "qivot_test"));
+    db.setUserName(qEnvironmentVariable("QIVOT_USER", defUser));
+    db.setPassword(qEnvironmentVariable("QIVOT_PASS", defPass));
+    if (!db.open())
+        return skipOrFail(QString("cannot connect to %1 - %2").arg(backend, db.lastError().text()));
 
     qInfo().noquote() << QString("\n=== Integration: %1 (%2) ===").arg(backend, driver);
 

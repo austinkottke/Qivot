@@ -102,6 +102,63 @@ jobs:
           make -j"$(getconf _NPROCESSORS_ONLN)"
           ./unittests
 
+  # Live MySQL/MariaDB + PostgreSQL: distro Qt 6 (which ships the QMYSQL/QPSQL driver
+  # plugins), with the two databases as service containers. Runs the integration
+  # round-trip against both real servers. QIVOT_REQUIRE_DB=1 makes a missing driver or
+  # failed connection a hard failure (not a skip), so this job genuinely gates the
+  # multi-database support.
+  db-integration:
+    name: db-integration · MySQL + Postgres (Qt 6 distro)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: qivot
+          MARIADB_DATABASE: qivot_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: qivot
+          POSTGRES_DB: qivot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 + MySQL/Postgres SQL driver plugins
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qmake6 qt6-base-dev libqt6sql6-sqlite libqt6sql6-mysql libqt6sql6-psql
+
+      - name: Build the integration test
+        working-directory: tests/integration
+        run: |
+          qmake6
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run against PostgreSQL
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+        run: ./integration postgres
+
+      - name: Run against MySQL / MariaDB
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+        run: ./integration mysql
+
   windows:
     name: windows-latest (msvc)
     runs-on: windows-latest

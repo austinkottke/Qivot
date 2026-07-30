@@ -85,5 +85,8 @@ generates. They need **no database** and run everywhere:
 cd tests/unittests && qmake && make && ./unittests
 ```
 
-**Integration tests** against real MySQL/Postgres need running servers. A Docker setup is provided —
-see [`tests/integration/README.md`](../tests/integration/README.md).
+**Integration tests** against real MySQL/Postgres need running servers. A Docker setup is provided
+(see [`tests/integration/README.md`](../tests/integration/README.md)), and **CI runs them on every
+push** — the `db-integration` job boots MariaDB + PostgreSQL as service containers, installs the
+distro Qt SQL driver plugins, and runs the round-trip with `QIVOT_REQUIRE_DB=1` so a missing driver
+or failed connection fails the build rather than skipping.
