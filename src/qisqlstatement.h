@@ -131,9 +131,10 @@ public:
     /// A query that returns at least one row iff the given table already exists.
     virtual QString exists(QiModelMetaInfo *info);
 
-    /// TRUE when INSERT reports the new row id via "RETURNING id" (Postgres) instead of
-    /// QSqlQuery::lastInsertId() (SQLite / MySQL).
-    virtual bool returnsIdOnInsert() const { return false; }
+    /// An optional query that returns the id of the row just inserted, for drivers whose
+    /// QSqlQuery::lastInsertId() doesn't report it (Postgres → "SELECT lastval()"). An empty
+    /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
+    virtual QString lastInsertIdQuery() const { return QString(); }
 
 protected:
     /// The real function for create table if not exists. The base implementation is a

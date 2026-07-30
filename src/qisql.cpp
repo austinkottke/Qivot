@@ -331,11 +331,17 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            // Postgres reports the new id via "RETURNING id" (read from the result
-            // row); SQLite and MySQL report it via lastInsertId().
-            int id = d->m_statement->returnsIdOnInsert()
-                       ? (q.next() ? q.value(0).toInt() : 0)
-                       : q.lastInsertId().toInt();
+            // Most drivers report the new id via lastInsertId(). Postgres can't, so the
+            // statement provides a query (SELECT lastval()) to fetch it on the same connection.
+            int id = 0;
+            const QString idSql = d->m_statement->lastInsertIdQuery();
+            if (!idSql.isEmpty()) {
+                QSqlQuery idq = query();
+                if (idq.exec(idSql) && idq.next())
+                    id = idq.value(0).toInt();
+            } else {
+                id = q.lastInsertId().toInt();
+            }
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }

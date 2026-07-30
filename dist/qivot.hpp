@@ -4418,9 +4418,10 @@ public:
     /// A query that returns at least one row iff the given table already exists.
     virtual QString exists(QiModelMetaInfo *info);
 
-    /// TRUE when INSERT reports the new row id via "RETURNING id" (Postgres) instead of
-    /// QSqlQuery::lastInsertId() (SQLite / MySQL).
-    virtual bool returnsIdOnInsert() const { return false; }
+    /// An optional query that returns the id of the row just inserted, for drivers whose
+    /// QSqlQuery::lastInsertId() doesn't report it (Postgres → "SELECT lastval()"). An empty
+    /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
+    virtual QString lastInsertIdQuery() const { return QString(); }
 
 protected:
     /// The real function for create table if not exists. The base implementation is a
@@ -4507,13 +4508,10 @@ public:
     QString columnTypeName(int type) override;
     QString primaryKeyClause(const QString &typeName) override;
 
-    bool returnsIdOnInsert() const override { return true; }
+    QString lastInsertIdQuery() const override;
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
-
-protected:
-    QString _insertInto(QiModelMetaInfo *info, QString type, QStringList fields) override;
 };
 
 #endif // QIPGSTATEMENT_H
@@ -7081,9 +7079,11 @@ QString QiMysqlStatement::columnTypeName(int type){
     case QMetaType::Float:         return QStringLiteral("FLOAT");
     case QMetaType::Double:        return QStringLiteral("DOUBLE");
     case QMetaType::QString:       return QStringLiteral("VARCHAR(255)");
-    case QMetaType::QJsonObject:
-    case QMetaType::QJsonArray:    return QStringLiteral("JSON");     // native JSON (MySQL 5.7+/MariaDB 10.2+)
+    // JSON stored as TEXT (serialized string) for a portable, parameter-safe round-trip
+    // — matching Postgres/SQLite. Qivot never queries into JSON, so native JSON buys nothing.
     case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
     case QMetaType::QVariantMap:
     case QMetaType::QVariantList:  return QStringLiteral("TEXT");
     case QMetaType::QDateTime:     return QStringLiteral("DATETIME");
@@ -7181,10 +7181,13 @@ QString QiPgStatement::columnTypeName(int type){
     case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
     case QMetaType::Float:         return QStringLiteral("REAL");
     case QMetaType::Double:        return QStringLiteral("DOUBLE PRECISION");
-    case QMetaType::QJsonObject:
-    case QMetaType::QJsonArray:    return QStringLiteral("JSONB");     // native binary JSON
+    // JSON is stored as TEXT (a serialized string). Postgres won't implicitly cast a
+    // bound text parameter into a JSONB column, which breaks parameterized inserts —
+    // and Qivot never queries into JSON, so TEXT is the portable, correct choice.
     case QMetaType::QString:
     case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
     case QMetaType::QVariantMap:
     case QMetaType::QVariantList:  return QStringLiteral("TEXT");
     case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
@@ -7209,13 +7212,11 @@ QString QiPgStatement::primaryKeyClause(const QString &typeName){
     return QStringLiteral("PRIMARY KEY");
 }
 
-QString QiPgStatement::_insertInto(QiModelMetaInfo *info, QString type, QStringList fields){
-    // Postgres has no lastInsertId(); ask for the new id back on the same round-trip.
-    QString sql = QiSqlStatement::_insertInto(info, type, fields);
-    if (sql.endsWith(QLatin1Char(';')))
-        sql.chop(1);
-    sql += QStringLiteral(" RETURNING id;");
-    return sql;
+QString QiPgStatement::lastInsertIdQuery() const {
+    // QPSQL's lastInsertId() returns the row OID, not the serial/identity id — and putting
+    // RETURNING into the prepared INSERT is unreliable with QPSQL. So after a normal insert we
+    // ask Postgres for the last generated sequence value in this session.
+    return QStringLiteral("SELECT lastval()");
 }
 
 QStringList QiPgStatement::createFtsIndex(const QiBaseFtsIndex &index){
@@ -8142,11 +8143,17 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            // Postgres reports the new id via "RETURNING id" (read from the result
-            // row); SQLite and MySQL report it via lastInsertId().
-            int id = d->m_statement->returnsIdOnInsert()
-                       ? (q.next() ? q.value(0).toInt() : 0)
-                       : q.lastInsertId().toInt();
+            // Most drivers report the new id via lastInsertId(). Postgres can't, so the
+            // statement provides a query (SELECT lastval()) to fetch it on the same connection.
+            int id = 0;
+            const QString idSql = d->m_statement->lastInsertIdQuery();
+            if (!idSql.isEmpty()) {
+                QSqlQuery idq = query();
+                if (idq.exec(idSql) && idq.next())
+                    id = idq.value(0).toInt();
+            } else {
+                id = q.lastInsertId().toInt();
+            }
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }

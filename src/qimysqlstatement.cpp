@@ -20,9 +20,11 @@ QString QiMysqlStatement::columnTypeName(int type){
     case QMetaType::Float:         return QStringLiteral("FLOAT");
     case QMetaType::Double:        return QStringLiteral("DOUBLE");
     case QMetaType::QString:       return QStringLiteral("VARCHAR(255)");
-    case QMetaType::QJsonObject:
-    case QMetaType::QJsonArray:    return QStringLiteral("JSON");     // native JSON (MySQL 5.7+/MariaDB 10.2+)
+    // JSON stored as TEXT (serialized string) for a portable, parameter-safe round-trip
+    // — matching Postgres/SQLite. Qivot never queries into JSON, so native JSON buys nothing.
     case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
     case QMetaType::QVariantMap:
     case QMetaType::QVariantList:  return QStringLiteral("TEXT");
     case QMetaType::QDateTime:     return QStringLiteral("DATETIME");

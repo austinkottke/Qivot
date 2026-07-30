@@ -67,10 +67,10 @@ void DialectTests::extraTypes() {
     QCOMPARE(pg.columnTypeName(QMetaType::QTime),   QString("TIME"));
     QCOMPARE(lite.columnTypeName(QMetaType::QTime), QString("TIME"));
 
-    // native JSON on MySQL / Postgres; SQLite stays TEXT
-    QCOMPARE(my.columnTypeName(QMetaType::QJsonObject), QString("JSON"));
-    QCOMPARE(pg.columnTypeName(QMetaType::QJsonObject), QString("JSONB"));
+    // JSON is stored as TEXT on every backend (portable + parameter-safe round-trip)
     QCOMPARE(lite.columnTypeName(QMetaType::QJsonObject), QString("TEXT"));
+    QCOMPARE(my.columnTypeName(QMetaType::QJsonObject),   QString("TEXT"));
+    QCOMPARE(pg.columnTypeName(QMetaType::QJsonObject),   QString("TEXT"));
 }
 
 void DialectTests::primaryKey() {
@@ -128,17 +128,14 @@ void DialectTests::upsert() {
 }
 
 void DialectTests::pgReturning() {
-    QiModelMetaInfo *info = model1Info();
-    const QStringList fields = QStringList() << "id" << "key" << "value";
-
     QiPgStatement     pg;
     QiSqliteStatement lite;
+    QiMysqlStatement  my;
 
-    QVERIFY(pg.insertInto(info, fields).contains("RETURNING id"));
-    QVERIFY(pg.returnsIdOnInsert());
-
-    QVERIFY(!lite.insertInto(info, fields).contains("RETURNING"));
-    QVERIFY(!lite.returnsIdOnInsert());
+    // Postgres fetches the new id with a follow-up query; SQLite/MySQL use lastInsertId().
+    QCOMPARE(pg.lastInsertIdQuery(), QString("SELECT lastval()"));
+    QVERIFY(lite.lastInsertIdQuery().isEmpty());
+    QVERIFY(my.lastInsertIdQuery().isEmpty());
 }
 
 void DialectTests::tableExists() {

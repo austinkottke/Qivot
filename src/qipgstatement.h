@@ -24,13 +24,10 @@ public:
     QString columnTypeName(int type) override;
     QString primaryKeyClause(const QString &typeName) override;
 
-    bool returnsIdOnInsert() const override { return true; }
+    QString lastInsertIdQuery() const override;
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
-
-protected:
-    QString _insertInto(QiModelMetaInfo *info, QString type, QStringList fields) override;
 };
 
 #endif // QIPGSTATEMENT_H

@@ -37,7 +37,7 @@ Everything else — models, queries, joins, relations, migrations — is identic
 |-----------|-----------|-------|
 | `QSQLITE` | `QiSqliteStatement` | the original; unchanged |
 | `QMYSQL`, `QMARIADB` | `QiMysqlStatement` | InnoDB / utf8mb4, `AUTO_INCREMENT`, `ON DUPLICATE KEY UPDATE` |
-| `QPSQL` | `QiPgStatement` | identity keys, `RETURNING id`, `ON CONFLICT` |
+| `QPSQL` | `QiPgStatement` | identity keys, `lastval()` id, `ON CONFLICT` |
 | anything else | `QiSqliteStatement` | safe fallback |
 
 Most of the SQL (SELECT, JOIN, GROUP BY, LIMIT/OFFSET, UPDATE, DELETE, ON CONFLICT upsert) is
@@ -53,10 +53,10 @@ primary-key auto-increment clause, table options, and how the new row id comes b
 | Strings — key / unique | `TEXT` | `VARCHAR(255)` | `TEXT` |
 | float / double | `DOUBLE` | `FLOAT` / `DOUBLE` | `REAL` / `DOUBLE PRECISION` |
 | date / time | `DATE` / `TIME` | `DATE` / `TIME` | `DATE` / `TIME` |
-| JSON (`QJsonObject`/`QJsonArray`) | `TEXT` | `JSON` | `JSONB` |
+| JSON (`QJsonObject`/`QJsonArray`) | `TEXT` | `TEXT` | `TEXT` |
 | Booleans | `BOOLEAN` | `TINYINT(1)` | `BOOLEAN` |
 | Blobs | `BLOB` | `BLOB` | `BYTEA` |
-| New-row id | `lastInsertId()` | `lastInsertId()` | `INSERT … RETURNING id` |
+| New-row id | `lastInsertId()` | `lastInsertId()` | `SELECT lastval()` after insert |
 | Upsert | `ON CONFLICT DO UPDATE` | `ON DUPLICATE KEY UPDATE` | `ON CONFLICT DO UPDATE` |
 
 **MySQL strings are clause-aware:** a string that is a `PRIMARY KEY` or `UNIQUE` becomes a bounded
@@ -69,12 +69,10 @@ truncated. (SQLite and Postgres use `TEXT` for both — no length limit there.)
   no portable equivalent. On MySQL/Postgres, `createFtsIndex` is a no-op with a warning. Native FTS
   (MySQL `FULLTEXT`, Postgres `tsvector`) is a possible future addition.
 - **`REPLACE INTO`** is SQLite/MySQL only; prefer `upsert()` on Postgres.
-- **Native JSON columns** (MySQL `JSON`, Postgres `JSONB`) are used for `QJsonObject`/`QJsonArray`
-  fields; `QStringList` / `QVariantMap` / `QVariantList` stay `TEXT` (their serialization isn't
-  guaranteed valid JSON). The JSON/JSONB mapping is covered by SQL-generation tests; verify the
-  round-trip against a live server (the Docker setup below) before relying on it in production.
-- The Postgres path (`RETURNING id`, identity keys) is covered by SQL-generation tests and is wired
-  end to end, but has not yet been run against a live server in CI — see below.
+- **JSON is stored as `TEXT`** (a serialized string) on every backend — Qivot serializes
+  `QJsonObject`/`QJsonArray` to a string and never queries into it. Native `JSONB`/`JSON` columns
+  were tried but reverted: Postgres won't implicitly cast a *bound text parameter* into `JSONB`,
+  which breaks parameterized inserts. `TEXT` round-trips correctly and portably everywhere.
 
 ## Testing
 

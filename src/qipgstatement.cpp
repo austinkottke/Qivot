@@ -19,10 +19,13 @@ QString QiPgStatement::columnTypeName(int type){
     case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
     case QMetaType::Float:         return QStringLiteral("REAL");
     case QMetaType::Double:        return QStringLiteral("DOUBLE PRECISION");
-    case QMetaType::QJsonObject:
-    case QMetaType::QJsonArray:    return QStringLiteral("JSONB");     // native binary JSON
+    // JSON is stored as TEXT (a serialized string). Postgres won't implicitly cast a
+    // bound text parameter into a JSONB column, which breaks parameterized inserts —
+    // and Qivot never queries into JSON, so TEXT is the portable, correct choice.
     case QMetaType::QString:
     case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
     case QMetaType::QVariantMap:
     case QMetaType::QVariantList:  return QStringLiteral("TEXT");
     case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
@@ -47,13 +50,11 @@ QString QiPgStatement::primaryKeyClause(const QString &typeName){
     return QStringLiteral("PRIMARY KEY");
 }
 
-QString QiPgStatement::_insertInto(QiModelMetaInfo *info, QString type, QStringList fields){
-    // Postgres has no lastInsertId(); ask for the new id back on the same round-trip.
-    QString sql = QiSqlStatement::_insertInto(info, type, fields);
-    if (sql.endsWith(QLatin1Char(';')))
-        sql.chop(1);
-    sql += QStringLiteral(" RETURNING id;");
-    return sql;
+QString QiPgStatement::lastInsertIdQuery() const {
+    // QPSQL's lastInsertId() returns the row OID, not the serial/identity id — and putting
+    // RETURNING into the prepared INSERT is unreliable with QPSQL. So after a normal insert we
+    // ask Postgres for the last generated sequence value in this session.
+    return QStringLiteral("SELECT lastval()");
 }
 
 QStringList QiPgStatement::createFtsIndex(const QiBaseFtsIndex &index){
