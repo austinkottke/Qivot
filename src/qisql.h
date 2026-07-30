@@ -70,7 +70,7 @@ public:
     /// Is the model exists on database?
     bool exists(QiModelMetaInfo* info);
 
-    /// The column names of an existing table (via PRAGMA table_info)
+    /// The column names of an existing table (portable, via QSqlDatabase::record)
     QStringList columnNames(QiModelMetaInfo* info);
 
     /// Add a single column to an existing table (ALTER TABLE ADD COLUMN)
@@ -156,6 +156,11 @@ protected:
 
 private:
     void setLastQuery(QSqlQuery query);
+
+    /// The id of the row just inserted by `insertQuery`. Uses the dialect's
+    /// lastInsertIdQuery() when set (e.g. Postgres "SELECT lastval()"), otherwise
+    /// QSqlQuery::lastInsertId() (SQLite / MySQL).
+    int newRowId(QSqlQuery &insertQuery);
 
     bool insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,bool with_id,bool replace);
 

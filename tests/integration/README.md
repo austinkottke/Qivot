@@ -19,19 +19,31 @@ This starts MariaDB on `127.0.0.1:3306` and PostgreSQL on `127.0.0.1:5432`, each
 
 ## 2. The integration test program
 
-`integration.pro` builds a small program that runs a full round-trip (create table, insert, load,
-upsert) against a live server and checks the cross-dialect paths the unit tests can't:
+`integration.pro` builds a small program that runs a full round-trip against a live server and
+checks the cross-dialect paths the unit tests can't:
 
 ```bash
 cd tests/integration && qmake && make
+./integration sqlite        # -> in-memory SQLite, no server needed
 ./integration postgres      # -> connects to 127.0.0.1:5432
 ./integration mysql         # -> connects to 127.0.0.1:3307 (or 3306)
 ```
 
-It checks: the returned auto-increment id (Postgres `RETURNING` vs MySQL `lastInsertId`), a >255-char
-string surviving intact (MySQL `TEXT`, not a truncating `VARCHAR`), a JSON/JSONB round-trip, and an
-upsert on a unique key. If the driver plugin is missing or no server answers, it **skips** (exit 0),
-so it's safe to run anywhere — unless `QIVOT_REQUIRE_DB=1`, which turns those into hard failures.
+The **exact same suite** runs on every backend, so `./integration sqlite` validates all the ORM
+logic locally with zero setup before you ever touch a server. It checks:
+
+- the returned auto-increment id (Postgres `SELECT lastval()` vs MySQL/SQLite `lastInsertId`)
+- a 600-char string surviving intact (MySQL `TEXT`, not a truncating `VARCHAR`)
+- `double` / `bool` / JSON / `QDate` / `QDateTime` round-trips
+- **batch** insert (`QiList::save`) assigning a distinct id back to every row
+- **transactions**: a rollback discards the row, a commit persists it
+- a **string primary key** model (no auto id): save, load, and re-save updating in place
+  (on Postgres this exercises `save()`'s `REPLACE`→`ON CONFLICT` translation on a non-`id` key)
+- the **migration** path: a second `createTables()` is a safe no-op (portable column reading)
+- **upsert** on a unique key updating in place instead of duplicating
+
+If the driver plugin is missing or no server answers, it **skips** (exit 0), so it's safe to run
+anywhere — unless `QIVOT_REQUIRE_DB=1`, which turns those into hard failures.
 
 Connection details come from environment variables (per-backend defaults in parentheses):
 
@@ -74,7 +86,7 @@ the test can print it, and you feed it straight to `psql` / `mariadb`:
 ./integration print-mysql    | docker exec -i qivot-mysql-3307 mariadb -uroot -pqivot qivot_test
 ```
 
-This is how the Postgres identity/`RETURNING`/`JSONB` and MySQL `AUTO_INCREMENT`/`TEXT`/`JSON`/
+This is how the Postgres identity / `lastval()` / `ON CONFLICT` and MySQL `AUTO_INCREMENT` / `TEXT` /
 `ON DUPLICATE KEY UPDATE` paths were verified against Postgres 16 and MariaDB 11.
 
 ## 3. Tear down
@@ -87,6 +99,7 @@ docker rm -f qivot-mysql-3307 2>/dev/null   # if you started MariaDB on the alt 
 ## Notes
 
 - **FTS** (`QiQuery::search`) is SQLite-only; skip those assertions on MySQL/Postgres.
-- MySQL maps `QString` to `VARCHAR(255)` by default — use `QI_FIELD_AS(field, "TEXT")` for long text.
+- On MySQL a plain `QString` column is `TEXT` (no truncation); a keyed/unique one is `VARCHAR(255)`
+  so it can be indexed. JSON is stored as `TEXT` on every backend (portable, parameter-safe).
 - These integration tests are intentionally kept out of the default unit-test build so `make`
   stays database-free. Wire them into CI once a MySQL/Postgres service is available in the pipeline.

@@ -147,6 +147,12 @@ jobs:
           qmake6
           make -j"$(getconf _NPROCESSORS_ONLN)"
 
+      - name: Run against SQLite (in-memory, same suite)
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+        run: ./integration sqlite
+
       - name: Run against PostgreSQL
         working-directory: tests/integration
         env:

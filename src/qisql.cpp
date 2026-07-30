@@ -1,5 +1,6 @@
 #include <QtCore>
 #include <QSqlError>
+#include <QSqlRecord>
 #include <QSharedDataPointer>
 #include "qimodel.h"
 #include "qisql.h"
@@ -141,15 +142,24 @@ bool QiSql::rollback(){
 }
 
 QStringList QiSql::columnNames(QiModelMetaInfo* info){
+    // QSqlDatabase::record() lists a table's columns on every driver (SQLite, MySQL,
+    // Postgres). PRAGMA table_info is SQLite-only and would break migrations elsewhere.
     QStringList cols;
-    QSqlQuery q = query();
-    if (q.exec(QString("PRAGMA table_info(%1)").arg(info->name()))) {
-        while (q.next()) {
-            cols << q.value(1).toString(); // column 1 of table_info is the name
-        }
-    }
-    setLastQuery(q);
+    const QSqlRecord rec = d->m_db.record(info->name());
+    for (int i = 0; i < rec.count(); i++)
+        cols << rec.fieldName(i);
     return cols;
+}
+
+int QiSql::newRowId(QSqlQuery &insertQuery){
+    const QString idSql = d->m_statement->lastInsertIdQuery();
+    if (!idSql.isEmpty()) {                 // e.g. Postgres: SELECT lastval()
+        QSqlQuery idq = query();
+        if (idq.exec(idSql) && idq.next())
+            return idq.value(0).toInt();
+        return 0;
+    }
+    return insertQuery.lastInsertId().toInt();   // SQLite / MySQL
 }
 
 bool QiSql::addColumn(QiModelMetaInfo* info, const QiModelMetaInfoField* field){
@@ -263,7 +273,7 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = q.lastInsertId().toInt();
+            int id = newRowId(q);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
@@ -300,7 +310,7 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
             res = false;
             break;
         }
-        int id = q.lastInsertId().toInt();
+        int id = newRowId(q);
         if (id != 0 && model->id.get().toInt() != id)
             model->id.set(id);
     }
@@ -337,17 +347,7 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            // Most drivers report the new id via lastInsertId(). Postgres can't, so the
-            // statement provides a query (SELECT lastval()) to fetch it on the same connection.
-            int id = 0;
-            const QString idSql = d->m_statement->lastInsertIdQuery();
-            if (!idSql.isEmpty()) {
-                QSqlQuery idq = query();
-                if (idq.exec(idSql) && idq.next())
-                    id = idq.value(0).toInt();
-            } else {
-                id = q.lastInsertId().toInt();
-            }
+            int id = newRowId(q);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
