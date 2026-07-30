@@ -53,7 +53,9 @@ int main(int argc, char **argv) {
                               : static_cast<QiSqlStatement*>(new QiMysqlStatement());
         QiModelMetaInfo *info = qiMetaInfo<IntThing>();
         const QStringList cols = QStringList() << "name" << "code" << "score" << "active" << "meta";
-        std::printf("%s\n", qPrintable(s->createTableIfNotExists(info)));
+        std::printf("CREATE: %s\n", qPrintable(s->createTableIfNotExists(info)));
+        std::printf("INSERT: %s\n", qPrintable(s->insertInto(info, cols)));
+        std::printf("UPSERT: %s\n", qPrintable(s->upsertInto(info, cols, QStringList() << "code")));
         return 0;
     }
     else { qWarning().noquote() << "usage: integration <mysql|postgres|print-mysql|print-postgres>"; return 2; }

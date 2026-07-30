@@ -8060,9 +8060,11 @@ bool QiSql::replaceInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,
 
 bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,QStringList conflictColumns,bool updateId){
     QString sql = d->m_statement->upsertInto(info,fields,conflictColumns);
+    sql = sql.trimmed();
+    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
 
     QSqlQuery q = query();
-    q.prepare(sql);
+    if (!q.prepare(sql)) { setLastQuery(q); return false; }
 
     foreach (QString field , fields) {
         q.bindValue(":" + field , info->value(model,field,true));
@@ -8091,6 +8093,9 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
     } else {
         sql = d->m_statement->insertInto(info,fields);
     }
+
+    sql = sql.trimmed();
+    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
 
     QSqlQuery q = query();
     if (!q.prepare(sql)) {
@@ -8128,8 +8133,9 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
         sql = d->m_statement->insertInto(info,fields);
     }
 
-//    qDebug() << sql;
-    q.prepare(sql);
+    sql = sql.trimmed();
+    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    if (!q.prepare(sql)) { setLastQuery(q); return false; }
 
     foreach (QString field , fields) {
         QVariant value;
