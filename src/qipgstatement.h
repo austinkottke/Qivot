@@ -24,6 +24,9 @@ public:
     QString columnTypeName(int type) override;
     QString primaryKeyClause(const QString &typeName) override;
 
+    /// Postgres has no REPLACE INTO — emulate it as an upsert on the primary key.
+    QString replaceInto(QiModelMetaInfo *info, QStringList fields) override;
+
     QString lastInsertIdQuery() const override;
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;

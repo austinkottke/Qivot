@@ -50,6 +50,15 @@ QString QiPgStatement::primaryKeyClause(const QString &typeName){
     return QStringLiteral("PRIMARY KEY");
 }
 
+QString QiPgStatement::replaceInto(QiModelMetaInfo *info, QStringList fields){
+    // "REPLACE INTO" (insert, or overwrite the row on a primary-key clash) is a
+    // SQLite/MySQL idiom Postgres doesn't have. Its exact equivalent is an upsert
+    // whose conflict target is the primary key.
+    QString pk = info->primaryKeyName();
+    if (pk.isEmpty()) pk = QStringLiteral("id");
+    return upsertInto(info, fields, QStringList() << pk);
+}
+
 QString QiPgStatement::lastInsertIdQuery() const {
     // QPSQL's lastInsertId() returns the row OID, not the serial/identity id — and putting
     // RETURNING into the prepared INSERT is unreliable with QPSQL. So after a normal insert we

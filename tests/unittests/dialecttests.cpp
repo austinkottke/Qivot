@@ -125,6 +125,14 @@ void DialectTests::upsert() {
 
     const QString liteS = lite.upsertInto(info, fields, conflict);
     QVERIFY(liteS.contains("ON CONFLICT(key)"));
+
+    // save() uses REPLACE INTO. SQLite/MySQL support it; Postgres has no REPLACE, so
+    // it must become an upsert on the primary key instead.
+    QVERIFY(lite.replaceInto(info, fields).contains("REPLACE INTO"));
+    QVERIFY(my.replaceInto(info, fields).contains("REPLACE INTO"));
+    const QString pgReplace = pg.replaceInto(info, fields);
+    QVERIFY(!pgReplace.contains("REPLACE"));
+    QVERIFY(pgReplace.contains("ON CONFLICT(id)"));
 }
 
 void DialectTests::pgReturning() {
