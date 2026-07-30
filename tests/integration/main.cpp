@@ -88,7 +88,10 @@ int main(int argc, char **argv) {
     t.active = true;
     QJsonObject meta; meta.insert("k", "v"); meta.insert("n", 42);
     t.meta = meta;
-    check(t.save(), "insert row");
+    const bool inserted = t.save();
+    check(inserted, "insert row");
+    if (!inserted)
+        qWarning().noquote() << "      -> db error:" << t.lastError().text();
     const int id = t.id.get().toInt();
     check(id > 0, QString("auto-increment id assigned = %1").arg(id));
 
