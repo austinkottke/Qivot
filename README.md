@@ -22,6 +22,12 @@
 </p>
 
 <p align="center">
+  <a href="examples/erp"><img src="examples/erp/screenshot.png" alt="Qivot ERP — a CRM/PSA dashboard: KPIs, revenue by month, pipeline by stage, AR aging, and top clients" width="820"></a>
+  <br>
+  <em><a href="examples/erp">Qivot ERP</a> — a CRM/PSA over <strong>eight related models</strong>, using every relation shape Qivot has: <code>QiForeignKey</code> (auto-loading), <code>QI_HAS_MANY</code>, and <code>QI_MANY_TO_MANY</code> (a toggleable project-staffing roster). The fullest relations walkthrough in the repo.</em>
+</p>
+
+<p align="center">
   <img src="docs/contacts-hero.png" alt="Qivot Contacts example — an iOS-style address book over 10,000 records" width="460">
   <br>
   <em><a href="examples/contacts">Contacts example</a> — an iOS-style address book over 10,000 live records: sticky A–Z sections, drag-to-jump index, and reactive search, all backed by SQLite through Qivot.</em>
@@ -95,7 +101,10 @@ step-by-step example:
 - 🔗 **Relations** — **one-to-many** with `QI_HAS_MANY(Song, songs, "artist")`
   → `artist.songs()`; **many-to-many** with `QI_MANY_TO_MANY(Tag, tags, "photo_tag")`
   → `photo.tags().add(tag)` / `.all()` / `.remove()` / `.contains()`, join table
-  auto-created. → [`examples/relations`](examples/relations), [`examples/manytomany`](examples/manytomany)
+  auto-created. → [`examples/relations`](examples/relations), [`examples/manytomany`](examples/manytomany),
+  and [`examples/erp`](examples/erp) — a CRM/PSA over eight models using every
+  relation shape (`QiForeignKey`, `QI_HAS_MANY`, `QI_MANY_TO_MANY`) together; the
+  fullest relations walkthrough in the repo.
 - 🎛️ **Custom type converters** — `QI_DECLARE_CONVERTER(Type, toStorage, fromStorage)`
   stores any value type in a column. → [`examples/relations`](examples/relations)
 - 🪝 **Lifecycle hooks, timestamps & soft delete** — `clean()` / `afterSave()` /
@@ -809,7 +818,8 @@ a **many-to-many** with `QI_MANY_TO_MANY(Tag, tags, "photo_tag")` on each side �
 `photo.tags().add(tag)` / `.all()` / `.remove()` / `.contains()`, the join table
 created for you. Load a whole list's relations without N+1 using
 `qiPrefetchHasMany`. See [`relations`](examples/relations), [`manytomany`](examples/manytomany),
-and [`prefetch`](examples/prefetch).
+and [`prefetch`](examples/prefetch) — or [`erp`](examples/erp) for all three
+relation kinds working together across a real, eight-model schema.
 
 ```c++
 class FriendShip : public QiModel {

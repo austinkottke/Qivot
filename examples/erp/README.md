@@ -10,6 +10,8 @@ relation shape Qivot offers: `QiForeignKey` (child → parent, auto-loading),
 table with add/remove/toggle). **All data is synthetic**, generated at startup;
 there are no real companies, people, or invoices.
 
+<img src="screenshot.png" alt="Qivot ERP — firm overview dashboard: KPIs, revenue by month, pipeline by stage, AR aging, and top clients" width="820">
+
 > **Run it**
 > ```sh
 > cd examples/erp
