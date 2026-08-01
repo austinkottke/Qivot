@@ -1,0 +1,22 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>TopBar.qml</file>
+        <file>KpiCard.qml</file>
+        <file>SectionCard.qml</file>
+        <file>OverviewView.qml</file>
+        <file>ClientsView.qml</file>
+        <file>ClientListItem.qml</file>
+        <file>AddClientDialog.qml</file>
+        <file>AddContactDialog.qml</file>
+        <file>AddOpportunityDialog.qml</file>
+        <file>ProjectsView.qml</file>
+        <file>ProjectListItem.qml</file>
+        <file>AddProjectDialog.qml</file>
+        <file>AddTimeEntryDialog.qml</file>
+        <file>AddExpenseDialog.qml</file>
+        <file>GenerateInvoiceDialog.qml</file>
+        <file>TimeExpenseView.qml</file>
+        <file>InvoicesView.qml</file>
+    </qresource>
+</RCC>

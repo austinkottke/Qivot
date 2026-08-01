@@ -30,6 +30,7 @@ SUBDIRS += \
     fluxo \
     lexica \
     clinic \
+    erp \
     contacts \
     multidb \
     index
