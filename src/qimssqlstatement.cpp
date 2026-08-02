@@ -112,8 +112,19 @@ QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, 
     foreach (QString f, fields)
         sourceCols << QString(":%1 AS %1").arg(f);
 
-    foreach (QString f, conflictColumns)
-        onList << QString("target.%1 = source.%1").arg(f);
+    // A conflict column only belongs in the ON clause if it's actually one of the
+    // inserted fields — "source" is built solely from `fields`, so referencing
+    // source.id when id was deliberately omitted (a fresh insert, letting IDENTITY
+    // assign it) is an invalid-column error, not merely a match that never fires.
+    // When none of the conflict columns have a value to compare, there's nothing
+    // to conflict on either way, so fall back to a condition that never matches —
+    // every row lands in WHEN NOT MATCHED, i.e. a plain insert.
+    foreach (QString f, conflictColumns) {
+        if (fields.contains(f))
+            onList << QString("target.%1 = source.%1").arg(f);
+    }
+    if (onList.isEmpty())
+        onList << QStringLiteral("1 = 0");
 
     foreach (QString f, fields) {
         if (f == QLatin1String("id") || conflictColumns.contains(f))

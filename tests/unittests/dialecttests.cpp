@@ -225,6 +225,22 @@ void DialectTests::upsert() {
     const QString oraReplace = ora.replaceInto(info, fields);
     QVERIFY(!oraReplace.contains("REPLACE"));
     QVERIFY(oraReplace.contains("ON (target.id = source.id)"));
+
+    // Fresh insert: QiModel::save() deliberately omits "id" from the field list so
+    // IDENTITY/the sequence assigns it, but replaceInto()'s conflict target is always
+    // "id" regardless. The MERGE's "source" derived table only has the columns in
+    // `fields`, so the ON clause must not reference source.id when id isn't one of
+    // them (a real bug: SQL Server rejected this as "Invalid column name 'id'" against
+    // a live container). With no id to compare, it should fall back to a condition
+    // that never matches, so every row is a plain insert.
+    const QStringList freshInsertFields = QStringList() << "key" << "value";
+    const QString mssqlFreshInsert = mssql.replaceInto(info, freshInsertFields);
+    QVERIFY(!mssqlFreshInsert.contains("source.id"));
+    QVERIFY(mssqlFreshInsert.contains("ON (1 = 0)"));
+    QVERIFY(mssqlFreshInsert.contains("WHEN NOT MATCHED THEN INSERT (key, value) VALUES (source.key, source.value)"));
+    const QString oraFreshInsert = ora.replaceInto(info, freshInsertFields);
+    QVERIFY(!oraFreshInsert.contains("source.id"));
+    QVERIFY(oraFreshInsert.contains("ON (1 = 0)"));
 }
 
 void DialectTests::lastInsertIdStrategy() {

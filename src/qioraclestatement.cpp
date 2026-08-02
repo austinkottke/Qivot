@@ -121,8 +121,16 @@ QString QiOracleStatement::upsertInto(QiModelMetaInfo *info, QStringList fields,
     foreach (QString f, fields)
         sourceCols << QString(":%1 AS %1").arg(f);
 
-    foreach (QString f, conflictColumns)
-        onList << QString("target.%1 = source.%1").arg(f);
+    // Same reasoning as QiMsSqlStatement::upsertInto(): "source" only has the columns
+    // in `fields`, so a conflict column omitted from a fresh insert (id, left for the
+    // sequence to assign) can't be referenced there. With nothing to compare, fall
+    // back to a condition that never matches, so every row lands in WHEN NOT MATCHED.
+    foreach (QString f, conflictColumns) {
+        if (fields.contains(f))
+            onList << QString("target.%1 = source.%1").arg(f);
+    }
+    if (onList.isEmpty())
+        onList << QStringLiteral("1 = 0");
 
     foreach (QString f, fields) {
         if (f == QLatin1String("id") || conflictColumns.contains(f))
