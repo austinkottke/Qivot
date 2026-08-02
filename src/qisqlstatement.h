@@ -26,8 +26,9 @@ public:
     /// Get the supported driver name
     virtual QString driverName() = 0;
 
-    /// Build the statement generator for a Qt SQL driver name:
-    /// "QSQLITE", "QMYSQL"/"QMARIADB", or "QPSQL". Unknown drivers fall back to SQLite.
+    /// Build the statement generator for a Qt SQL driver name: "QSQLITE",
+    /// "QMYSQL"/"QMARIADB", "QPSQL", "QODBC" (SQL Server), or "QOCI" (Oracle).
+    /// Unknown drivers fall back to SQLite.
     static QiSqlStatement *forDriver(const QString &driverName);
 
     /// "CREATE TABLE IF NOT EXISTS" statement
@@ -135,6 +136,19 @@ public:
     /// QSqlQuery::lastInsertId() doesn't report it (Postgres → "SELECT lastval()"). An empty
     /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
     virtual QString lastInsertIdQuery() const { return QString(); }
+
+    /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
+    /// dialects don't need this (Postgres's lastval()/SQL Server's SCOPE_IDENTITY()
+    /// are both session-scoped, not table-scoped) and can leave this at the default,
+    /// which just forwards to the no-arg overload above. Oracle overrides this one
+    /// instead, because its per-table companion sequence (see QiOracleStatement) can
+    /// only be named once the table is known.
+    virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
+
+    /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's
+    /// MERGE statement is a syntax error without one, unlike every other statement shape
+    /// every other dialect emits. Everything else is fine either way, hence the default.
+    virtual bool keepsStatementTerminator() const { return false; }
 
 protected:
     /// The real function for create table if not exists. The base implementation is a

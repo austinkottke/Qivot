@@ -4313,8 +4313,9 @@ public:
     /// Get the supported driver name
     virtual QString driverName() = 0;
 
-    /// Build the statement generator for a Qt SQL driver name:
-    /// "QSQLITE", "QMYSQL"/"QMARIADB", or "QPSQL". Unknown drivers fall back to SQLite.
+    /// Build the statement generator for a Qt SQL driver name: "QSQLITE",
+    /// "QMYSQL"/"QMARIADB", "QPSQL", "QODBC" (SQL Server), or "QOCI" (Oracle).
+    /// Unknown drivers fall back to SQLite.
     static QiSqlStatement *forDriver(const QString &driverName);
 
     /// "CREATE TABLE IF NOT EXISTS" statement
@@ -4423,6 +4424,19 @@ public:
     /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
     virtual QString lastInsertIdQuery() const { return QString(); }
 
+    /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
+    /// dialects don't need this (Postgres's lastval()/SQL Server's SCOPE_IDENTITY()
+    /// are both session-scoped, not table-scoped) and can leave this at the default,
+    /// which just forwards to the no-arg overload above. Oracle overrides this one
+    /// instead, because its per-table companion sequence (see QiOracleStatement) can
+    /// only be named once the table is known.
+    virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
+
+    /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's
+    /// MERGE statement is a syntax error without one, unlike every other statement shape
+    /// every other dialect emits. Everything else is fine either way, hence the default.
+    virtual bool keepsStatementTerminator() const { return false; }
+
 protected:
     /// The real function for create table if not exists. The base implementation is a
     /// portable generator that calls the dialect hooks above; SQLite overrides it.
@@ -4446,6 +4460,59 @@ protected:
 
 
 #endif // QiSQLSTATEMENT_H
+
+// ---- src/qimssqlstatement.h --------------------------------------
+#ifndef QIMSSQLSTATEMENT_H
+#define QIMSSQLSTATEMENT_H
+
+#include <QVariant>
+
+/// Microsoft SQL Server SQL statement generator (Qt driver "QODBC").
+/**
+    SQL Server diverges from the portable base more than MySQL/Postgres do: no
+    LIMIT/OFFSET (needs OFFSET...FETCH, which requires an ORDER BY), no
+    ON CONFLICT/ON DUPLICATE KEY upsert (needs MERGE, which — unlike every other
+    statement shape this library emits — is a syntax error without a trailing
+    ";"), and no ANSI RENAME COLUMN (needs sp_rename). Full-text search (FTS) is
+    SQLite-only for now.
+
+    @remarks Stateless / thread-safe, like every QiSqlStatement.
+ */
+class QiMsSqlStatement : public QiSqlStatement
+{
+public:
+    QiMsSqlStatement();
+
+    QString driverName() override;
+
+    QString columnTypeName(int type) override;
+    QString columnTypeForField(int type, QiClause clause) override;
+    QString primaryKeyClause(const QString &typeName) override;
+
+    QString createTableIfNotExists(QiModelMetaInfo *info) override;
+
+    QString addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field) override;
+    QString renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to) override;
+
+    QString upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns) override;
+    QString replaceInto(QiModelMetaInfo *info, QStringList fields) override;
+
+    // Un-hides QiSqlStatement::lastInsertIdQuery(QiModelMetaInfo*) — declaring the
+    // no-arg overload below in this class's own scope would otherwise hide every base
+    // overload of the same name from any caller holding a concrete QiMsSqlStatement
+    // (as opposed to a QiSqlStatement base pointer, where virtual dispatch already
+    // finds it regardless).
+    using QiSqlStatement::lastInsertIdQuery;
+    QString lastInsertIdQuery() const override;
+    bool keepsStatementTerminator() const override { return true; }
+
+    QString select(QiSharedQuery query) override;
+
+    QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
+    QStringList dropFtsIndex(QString name) override;
+};
+
+#endif // QIMSSQLSTATEMENT_H
 
 // ---- src/qimysqlstatement.h --------------------------------------
 #ifndef QIMYSQLSTATEMENT_H
@@ -4481,6 +4548,60 @@ public:
 };
 
 #endif // QIMYSQLSTATEMENT_H
+
+// ---- src/qioraclestatement.h -------------------------------------
+#ifndef QIORACLESTATEMENT_H
+#define QIORACLESTATEMENT_H
+
+#include <QVariant>
+
+/// Oracle SQL statement generator (Qt driver "QOCI").
+/**
+    Oracle has no ON CONFLICT/ON DUPLICATE KEY (needs MERGE, like SQL Server, though
+    Oracle's doesn't require a trailing ";"), no information_schema (needs
+    user_tables), and — the one genuinely new problem versus every other dialect
+    here — no session-scoped "id of the row I just inserted": Postgres's lastval()
+    and SQL Server's SCOPE_IDENTITY() both work because *any* insert in the session
+    counts, but Oracle only offers that via a sequence's CURRVAL, and CURRVAL needs
+    to know *which* sequence. So every auto-increment table gets its own
+    deterministically-named companion sequence ("<table>_id_seq"), created
+    alongside the table (see createTableIfNotExists()), and lastInsertIdQuery(info)
+    — the table-aware overload — asks that specific sequence for its CURRVAL.
+
+    Full-text search (FTS) is SQLite-only for now.
+
+    @remarks Stateless / thread-safe, like every QiSqlStatement.
+ */
+class QiOracleStatement : public QiSqlStatement
+{
+public:
+    QiOracleStatement();
+
+    QString driverName() override;
+
+    QString columnTypeName(int type) override;
+    QString columnTypeForField(int type, QiClause clause) override;
+    QString primaryKeyClause(const QString &typeName) override;
+
+    QString createTableIfNotExists(QiModelMetaInfo *info) override;
+    QString exists(QiModelMetaInfo *info) override;
+
+    QString upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns) override;
+    QString replaceInto(QiModelMetaInfo *info, QStringList fields) override;
+
+    // Un-hides QiSqlStatement::lastInsertIdQuery() — see the identical comment in
+    // qimssqlstatement.h for why this is needed.
+    using QiSqlStatement::lastInsertIdQuery;
+    QString lastInsertIdQuery(QiModelMetaInfo *info) const override;
+
+    QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
+    QStringList dropFtsIndex(QString name) override;
+
+private:
+    static QString sequenceName(QiModelMetaInfo *info);
+};
+
+#endif // QIORACLESTATEMENT_H
 
 // ---- src/qipgstatement.h -----------------------------------------
 #ifndef QIPGSTATEMENT_H
@@ -5117,10 +5238,11 @@ protected:
 private:
     void setLastQuery(QSqlQuery query);
 
-    /// The id of the row just inserted by `insertQuery`. Uses the dialect's
-    /// lastInsertIdQuery() when set (e.g. Postgres "SELECT lastval()"), otherwise
+    /// The id of the row just inserted into `info`'s table by `insertQuery`. Uses the
+    /// dialect's lastInsertIdQuery(info) when set (e.g. Postgres "SELECT lastval()";
+    /// Oracle needs the table to find its companion sequence), otherwise
     /// QSqlQuery::lastInsertId() (SQLite / MySQL).
-    int newRowId(QSqlQuery &insertQuery);
+    int newRowId(QSqlQuery &insertQuery, QiModelMetaInfo *info);
 
     bool insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,bool with_id,bool replace);
 
@@ -5600,11 +5722,18 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
     const QString driver = db.driverName();
     const bool sqlite = (driver == QLatin1String("QSQLITE"));
 
-    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL.
+    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL, SQL Server (QODBC),
+    // Oracle (QOCI). This allow-list is deliberately separate from
+    // QiSqlStatement::forDriver()'s own driver-name dispatch — both must be kept
+    // in sync, or a new dialect either can't open a connection at all (rejected
+    // here first) or silently falls back to the SQLite statement generator
+    // (forDriver()'s fallback) despite this gate having let the driver through.
     if (!sqlite
         && driver != QLatin1String("QMYSQL")
         && driver != QLatin1String("QMARIADB")
-        && driver != QLatin1String("QPSQL")) {
+        && driver != QLatin1String("QPSQL")
+        && driver != QLatin1String("QODBC")
+        && driver != QLatin1String("QOCI")) {
         qWarning() << "Unsupported SQL driver:" << driver;
         setLastError(QiError(QiError::NotSupported,
                              QStringLiteral("Unsupported SQL driver: %1").arg(driver)));
@@ -7065,6 +7194,199 @@ QiSharedList QiModelMetaInfo::initialData(){
     return initialDataFunc();
 }
 
+// ---- src/qimssqlstatement.cpp ------------------------------------
+#include <QStringList>
+#include <QDebug>
+
+
+QiMsSqlStatement::QiMsSqlStatement()
+{
+}
+
+QString QiMsSqlStatement::driverName(){
+    return QStringLiteral("MSSQL");
+}
+
+QString QiMsSqlStatement::columnTypeName(int type){
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("INT");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
+    case QMetaType::Float:         return QStringLiteral("REAL");
+    case QMetaType::Double:        return QStringLiteral("FLOAT");
+    // NVARCHAR (not VARCHAR) so non-ASCII text round-trips correctly.
+    case QMetaType::QString:       return QStringLiteral("NVARCHAR(MAX)");
+    // JSON stored as text (serialized string) for a portable, parameter-safe round-trip
+    // — matching every other dialect. Qivot never queries into JSON, so a native JSON
+    // type (SQL Server has none pre-2025 anyway) buys nothing.
+    case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("NVARCHAR(MAX)");
+    case QMetaType::QDateTime:     return QStringLiteral("DATETIME2");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    case QMetaType::QTime:         return QStringLiteral("TIME");
+    case QMetaType::QByteArray:    return QStringLiteral("VARBINARY(MAX)");
+    // No native boolean; BIT is SQL Server's 0/1 convention.
+    case QMetaType::Bool:          return QStringLiteral("BIT");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("INT");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("INT");
+#endif
+    return QString();
+}
+
+QString QiMsSqlStatement::columnTypeForField(int type, QiClause clause){
+    // A plain NVARCHAR(MAX) can't be indexed/keyed (SQL Server's index key limit is
+    // ~900 bytes), so a string that is a key (PRIMARY KEY / UNIQUE) gets a bounded
+    // NVARCHAR(450) instead — any other string stays NVARCHAR(MAX) so it never truncates.
+    if (type == QMetaType::QString) {
+        if (clause.testFlag(QiClause::PRIMARY_KEY) || clause.testFlag(QiClause::UNIQUE))
+            return QStringLiteral("NVARCHAR(450)");
+        return QStringLiteral("NVARCHAR(MAX)");
+    }
+    return columnTypeName(type);
+}
+
+QString QiMsSqlStatement::primaryKeyClause(const QString &typeName){
+    // IDENTITY is only legal on an integer key.
+    if (typeName.startsWith(QLatin1String("INT")) || typeName == QLatin1String("BIGINT"))
+        return QStringLiteral("IDENTITY(1,1) PRIMARY KEY");
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiMsSqlStatement::createTableIfNotExists(QiModelMetaInfo *info){
+    // T-SQL has no "CREATE TABLE IF NOT EXISTS" (that clause is MySQL/Postgres/SQLite
+    // syntax) — but QiConnection::createTables() already checks exists() before ever
+    // calling this, so the "IF NOT EXISTS" the base generator emits is always
+    // redundant by the time it would matter; just drop it rather than reach for
+    // T-SQL's more verbose "IF NOT EXISTS (SELECT * FROM sys.tables WHERE ...)" wrapper.
+    QString ddl = _createTableIfNotExists(info);
+    ddl.replace(QLatin1String("CREATE TABLE IF NOT EXISTS"), QLatin1String("CREATE TABLE"));
+    return ddl;
+}
+
+QString QiMsSqlStatement::addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field){
+    // T-SQL: "ALTER TABLE ... ADD col type" — no COLUMN keyword (unlike the ANSI
+    // default every other dialect here inherits unmodified).
+    QiClause clause = field->clause;   // copy: flag()/testFlag() are non-const
+    QString typeName;
+    if (clause.testFlag(QiClause::SQL_TYPE)) {
+        typeName = clause.flag(QiClause::SQL_TYPE).toString();
+    } else {
+        typeName = columnTypeForField(field->type, clause);
+        if (typeName.isNull())
+            return QString();
+    }
+
+    QString sql = QString("ALTER TABLE %1 ADD %2 %3")
+                    .arg(info->name(), field->name, typeName).trimmed();
+
+    if (clause.testFlag(QiClause::DEFAULT))
+        sql += QString(" DEFAULT %1").arg(clause.flag(QiClause::DEFAULT).toString());
+
+    sql += ";";
+    return sql;
+}
+
+QString QiMsSqlStatement::renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to){
+    // T-SQL has no RENAME COLUMN — sp_rename is the equivalent system procedure.
+    return QString("EXEC sp_rename '%1.%2', '%3', 'COLUMN';")
+            .arg(info->name(), from, to);
+}
+
+QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns){
+    // No ON CONFLICT / ON DUPLICATE KEY in T-SQL — MERGE is the equivalent, and
+    // (unlike everything else this library emits) a syntax error without its
+    // trailing ";" — see keepsStatementTerminator().
+    QStringList sourceCols, onList, setList, insertCols, insertVals;
+    foreach (QString f, fields)
+        sourceCols << QString(":%1 AS %1").arg(f);
+
+    foreach (QString f, conflictColumns)
+        onList << QString("target.%1 = source.%1").arg(f);
+
+    foreach (QString f, fields) {
+        if (f == QLatin1String("id") || conflictColumns.contains(f))
+            continue;
+        setList << QString("%1 = source.%1").arg(f);
+    }
+
+    foreach (QString f, fields) {
+        insertCols << f;
+        insertVals << QString("source.%1").arg(f);
+    }
+
+    QStringList sql;
+    sql << QString("MERGE INTO %1 AS target").arg(info->name());
+    sql << QString("USING (SELECT %1) AS source").arg(sourceCols.join(", "));
+    sql << QString("ON (%1)").arg(onList.join(" AND "));
+    // With nothing to update (every field is a conflict column), SQL Server allows
+    // omitting WHEN MATCHED entirely rather than requiring a no-op SET like MySQL does.
+    if (!setList.isEmpty())
+        sql << QString("WHEN MATCHED THEN UPDATE SET %1").arg(setList.join(", "));
+    sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2);")
+               .arg(insertCols.join(", "), insertVals.join(", "));
+
+    return sql.join(" ");
+}
+
+QString QiMsSqlStatement::replaceInto(QiModelMetaInfo *info, QStringList fields){
+    // T-SQL has no REPLACE INTO either — same translation Postgres uses: an
+    // upsert whose conflict target is the primary key.
+    QString pk = info->primaryKeyName();
+    if (pk.isEmpty()) pk = QStringLiteral("id");
+    return upsertInto(info, fields, QStringList() << pk);
+}
+
+QString QiMsSqlStatement::lastInsertIdQuery() const {
+    // SCOPE_IDENTITY() is scoped to the current session and stored procedure/batch
+    // (unlike @@IDENTITY, which would also report an identity inserted by a trigger).
+    return QStringLiteral("SELECT SCOPE_IDENTITY()");
+}
+
+QString QiMsSqlStatement::select(QiSharedQuery query) {
+    // T-SQL has no LIMIT/OFFSET — paging needs OFFSET...FETCH, which is only legal
+    // with an ORDER BY. When the query didn't ask for one, synthesize a no-op
+    // ordering so paging still works (the row order is then merely unspecified,
+    // same as it effectively already was without an ORDER BY on any dialect).
+    QiQueryRules rules;
+    rules = query;
+    QStringList sql;
+    sql << selectCore(rules);
+
+    const bool paging = rules.limit() > 0 || rules.offset() > 0;
+    if (rules.orderBy().size() > 0)
+        sql << orderBy(rules);
+    else if (paging)
+        sql << QStringLiteral("ORDER BY (SELECT NULL)");
+
+    if (paging) {
+        sql << QString("OFFSET %1 ROWS").arg(rules.offset() > 0 ? rules.offset() : 0);
+        if (rules.limit() > 0)
+            sql << QString("FETCH NEXT %1 ROWS ONLY").arg(rules.limit());
+    }
+
+    sql << ";";
+    return sql.join(" ");
+}
+
+QStringList QiMsSqlStatement::createFtsIndex(const QiBaseFtsIndex &index){
+    Q_UNUSED(index);
+    qWarning() << "QiMsSqlStatement: full-text search (FTS) is not supported on SQL Server yet; skipping.";
+    return QStringList();
+}
+
+QStringList QiMsSqlStatement::dropFtsIndex(QString name){
+    Q_UNUSED(name);
+    return QStringList();
+}
+
 // ---- src/qimysqlstatement.cpp ------------------------------------
 #include <QStringList>
 #include <QDebug>
@@ -7164,6 +7486,184 @@ QStringList QiMysqlStatement::createFtsIndex(const QiBaseFtsIndex &index){
 }
 
 QStringList QiMysqlStatement::dropFtsIndex(QString name){
+    Q_UNUSED(name);
+    return QStringList();
+}
+
+// ---- src/qioraclestatement.cpp -----------------------------------
+#include <QStringList>
+#include <QDebug>
+
+
+// A placeholder substituted with the real "<table>_id_seq" name inside
+// createTableIfNotExists() — the only hook here that knows the table name;
+// primaryKeyClause() only sees the column's type. Chosen to be extremely
+// unlikely to collide with anything a real DEFAULT/CHECK clause would contain.
+static const QString kSeqToken = QStringLiteral("__QIVOT_ORACLE_SEQ__");
+
+QiOracleStatement::QiOracleStatement()
+{
+}
+
+QString QiOracleStatement::driverName(){
+    return QStringLiteral("ORACLE");
+}
+
+QString QiOracleStatement::columnTypeName(int type){
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("NUMBER(10)");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("NUMBER(19)");
+    case QMetaType::Float:         return QStringLiteral("BINARY_FLOAT");
+    case QMetaType::Double:        return QStringLiteral("BINARY_DOUBLE");
+    case QMetaType::QString:       return QStringLiteral("VARCHAR2(255)");
+    // JSON stored as text (serialized string), matching every other dialect — Qivot
+    // never queries into JSON, so a native JSON type buys nothing. CLOB, not
+    // VARCHAR2, since a serialized JSON value can easily exceed 4000 bytes.
+    case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("CLOB");
+    case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    // Oracle has no native TIME type; stored as a formatted "HH24:MI:SS" string.
+    // Untested by the integration suite (which has no QTime field) — lowest-
+    // confidence mapping in this file.
+    case QMetaType::QTime:         return QStringLiteral("VARCHAR2(8)");
+    case QMetaType::QByteArray:    return QStringLiteral("BLOB");
+    // No native boolean pre-23c; NUMBER(1) is the conventional 0/1 encoding.
+    case QMetaType::Bool:          return QStringLiteral("NUMBER(1)");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("NUMBER(10)");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("NUMBER(10)");
+#endif
+    return QString();
+}
+
+QString QiOracleStatement::columnTypeForField(int type, QiClause clause){
+    // A VARCHAR2 can be indexed/keyed; a CLOB can't. So a string that is a key
+    // (PRIMARY KEY / UNIQUE) gets a bounded VARCHAR2(255); any other string is a
+    // CLOB, so it never truncates.
+    if (type == QMetaType::QString) {
+        if (clause.testFlag(QiClause::PRIMARY_KEY) || clause.testFlag(QiClause::UNIQUE))
+            return QStringLiteral("VARCHAR2(255)");
+        return QStringLiteral("CLOB");
+    }
+    return columnTypeName(type);
+}
+
+QString QiOracleStatement::primaryKeyClause(const QString &typeName){
+    // Auto-increment key: DEFAULT <table>_id_seq.NEXTVAL. kSeqToken stands in for the
+    // real sequence name, filled in by createTableIfNotExists() below.
+    if (typeName.startsWith(QLatin1String("NUMBER")))
+        return QString("DEFAULT \"%1\".NEXTVAL PRIMARY KEY").arg(kSeqToken);
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiOracleStatement::sequenceName(QiModelMetaInfo *info){
+    return info->name() + QStringLiteral("_id_seq");
+}
+
+QString QiOracleStatement::createTableIfNotExists(QiModelMetaInfo *info){
+    // Oracle has no CREATE TABLE IF NOT EXISTS, and QiConnection execs exactly one
+    // statement per table (see QiSql::createTableIfNotExists) — but an auto-increment
+    // table here needs two DDL statements: its companion sequence, then the table
+    // itself (see primaryKeyClause() above). Both problems are solved the same way:
+    // wrap everything in one PL/SQL anonymous block — a single statement as far as
+    // QSqlQuery::exec() is concerned — with each half independently idempotent via an
+    // exception trap on ORA-00955 ("name is already used by an existing object"), so
+    // this is safe to re-run whether the sequence, the table, both, or neither exist.
+    //
+    // The generated CREATE TABLE text is embedded via q'[...]', PL/SQL's alternative
+    // quoting operator, so embedded single quotes (e.g. inside a DEFAULT clause's
+    // string literal) don't need doubling.
+    const QString seq = sequenceName(info);
+
+    QString ddl = _createTableIfNotExists(info);
+    ddl.replace(QLatin1String("CREATE TABLE IF NOT EXISTS"), QLatin1String("CREATE TABLE"));
+    ddl.replace(kSeqToken, seq);
+    if (ddl.endsWith(QLatin1Char(';'))) ddl.chop(1);
+
+    return QStringLiteral(
+        "BEGIN\n"
+        "  BEGIN EXECUTE IMMEDIATE 'CREATE SEQUENCE \"%1\" START WITH 1 INCREMENT BY 1 NOCACHE';\n"
+        "  EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;\n"
+        "  BEGIN EXECUTE IMMEDIATE q'[%2]';\n"
+        "  EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;\n"
+        "END;"
+    ).arg(seq, ddl);
+}
+
+QString QiOracleStatement::exists(QiModelMetaInfo *info){
+    // No information_schema in Oracle; user_tables is the per-schema catalog view.
+    // Unquoted identifiers fold to uppercase, so compare uppercased.
+    return QString("SELECT table_name FROM user_tables WHERE table_name = UPPER('%1')")
+            .arg(info->name());
+}
+
+QString QiOracleStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns){
+    // No ON CONFLICT / ON DUPLICATE KEY in Oracle either — MERGE is the equivalent
+    // (unlike SQL Server's, Oracle's MERGE doesn't require a trailing ";").
+    QStringList sourceCols, onList, setList, insertCols, insertVals;
+    foreach (QString f, fields)
+        sourceCols << QString(":%1 AS %1").arg(f);
+
+    foreach (QString f, conflictColumns)
+        onList << QString("target.%1 = source.%1").arg(f);
+
+    foreach (QString f, fields) {
+        if (f == QLatin1String("id") || conflictColumns.contains(f))
+            continue;
+        setList << QString("%1 = source.%1").arg(f);
+    }
+
+    foreach (QString f, fields) {
+        insertCols << f;
+        insertVals << QString("source.%1").arg(f);
+    }
+
+    QStringList sql;
+    sql << QString("MERGE INTO %1 target").arg(info->name());
+    sql << QString("USING (SELECT %1 FROM DUAL) source").arg(sourceCols.join(", "));
+    sql << QString("ON (%1)").arg(onList.join(" AND "));
+    // With nothing to update (every field is a conflict column), Oracle — like SQL
+    // Server — allows omitting WHEN MATCHED entirely.
+    if (!setList.isEmpty())
+        sql << QString("WHEN MATCHED THEN UPDATE SET %1").arg(setList.join(", "));
+    sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2)")
+               .arg(insertCols.join(", "), insertVals.join(", "));
+
+    return sql.join(" ");
+}
+
+QString QiOracleStatement::replaceInto(QiModelMetaInfo *info, QStringList fields){
+    // Oracle has no REPLACE INTO either — same translation Postgres/SQL Server use:
+    // an upsert whose conflict target is the primary key.
+    QString pk = info->primaryKeyName();
+    if (pk.isEmpty()) pk = QStringLiteral("id");
+    return upsertInto(info, fields, QStringList() << pk);
+}
+
+QString QiOracleStatement::lastInsertIdQuery(QiModelMetaInfo *info) const {
+    // Unlike Postgres's lastval()/SQL Server's SCOPE_IDENTITY() (both session-scoped —
+    // any insert in the session counts), Oracle's CURRVAL is per-sequence: it needs to
+    // know which sequence, hence this table-aware overload rather than the base
+    // no-argument one.
+    return QString("SELECT \"%1\".CURRVAL FROM DUAL").arg(sequenceName(info));
+}
+
+QStringList QiOracleStatement::createFtsIndex(const QiBaseFtsIndex &index){
+    Q_UNUSED(index);
+    qWarning() << "QiOracleStatement: full-text search (FTS) is not supported on Oracle yet; skipping.";
+    return QStringList();
+}
+
+QStringList QiOracleStatement::dropFtsIndex(QString name){
     Q_UNUSED(name);
     return QStringList();
 }
@@ -7980,8 +8480,8 @@ QStringList QiSql::columnNames(QiModelMetaInfo* info){
     return cols;
 }
 
-int QiSql::newRowId(QSqlQuery &insertQuery){
-    const QString idSql = d->m_statement->lastInsertIdQuery();
+int QiSql::newRowId(QSqlQuery &insertQuery, QiModelMetaInfo *info){
+    const QString idSql = d->m_statement->lastInsertIdQuery(info);
     if (!idSql.isEmpty()) {                 // e.g. Postgres: SELECT lastval()
         QSqlQuery idq = query();
         if (idq.exec(idSql) && idq.next())
@@ -8088,7 +8588,10 @@ bool QiSql::replaceInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,
 bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,QStringList conflictColumns,bool updateId){
     QString sql = d->m_statement->upsertInto(info,fields,conflictColumns);
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
 
     QSqlQuery q = query();
     if (!q.prepare(sql)) { setLastQuery(q); return false; }
@@ -8102,7 +8605,7 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = newRowId(q);
+            int id = newRowId(q, info);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
@@ -8122,7 +8625,10 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
     }
 
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
 
     QSqlQuery q = query();
     if (!q.prepare(sql)) {
@@ -8139,7 +8645,7 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
             res = false;
             break;
         }
-        int id = newRowId(q);
+        int id = newRowId(q, info);
         if (id != 0 && model->id.get().toInt() != id)
             model->id.set(id);
     }
@@ -8161,7 +8667,10 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     }
 
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
     if (!q.prepare(sql)) { setLastQuery(q); return false; }
 
     foreach (QString field , fields) {
@@ -8176,7 +8685,7 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = newRowId(q);
+            int id = newRowId(q, info);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
@@ -8424,6 +8933,12 @@ QiSqlStatement *QiSqlStatement::forDriver(const QString &driverName){
         return new QiMysqlStatement();
     if (driverName == QLatin1String("QPSQL"))
         return new QiPgStatement();
+    // QODBC is Qt's generic ODBC driver name — also used for Access, generic ODBC
+    // DSNs, etc. — but SQL Server via ODBC is this library's only intended use of it.
+    if (driverName == QLatin1String("QODBC"))
+        return new QiMsSqlStatement();
+    if (driverName == QLatin1String("QOCI"))
+        return new QiOracleStatement();
     // QSQLITE and anything else fall back to SQLite.
     return new QiSqliteStatement();
 }

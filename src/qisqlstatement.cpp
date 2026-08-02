@@ -5,6 +5,8 @@
 #include "qisqlitestatement.h"
 #include "qimysqlstatement.h"
 #include "qipgstatement.h"
+#include "qimssqlstatement.h"
+#include "qioraclestatement.h"
 #include "qiexpression.h"
 #include "qijoin.h"
 
@@ -17,6 +19,12 @@ QiSqlStatement *QiSqlStatement::forDriver(const QString &driverName){
         return new QiMysqlStatement();
     if (driverName == QLatin1String("QPSQL"))
         return new QiPgStatement();
+    // QODBC is Qt's generic ODBC driver name — also used for Access, generic ODBC
+    // DSNs, etc. — but SQL Server via ODBC is this library's only intended use of it.
+    if (driverName == QLatin1String("QODBC"))
+        return new QiMsSqlStatement();
+    if (driverName == QLatin1String("QOCI"))
+        return new QiOracleStatement();
     // QSQLITE and anything else fall back to SQLite.
     return new QiSqliteStatement();
 }

@@ -37,5 +37,10 @@ examples/*/qtloader.js
 examples/clinic/clinic.html
 examples/clinic/clinic.js
 
+# Local-only example directories (not ready to commit)
+examples/catmatch/
+examples/flightglobe/
+examples/insider/
+
 # macOS
 .DS_Store

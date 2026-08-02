@@ -157,10 +157,11 @@ protected:
 private:
     void setLastQuery(QSqlQuery query);
 
-    /// The id of the row just inserted by `insertQuery`. Uses the dialect's
-    /// lastInsertIdQuery() when set (e.g. Postgres "SELECT lastval()"), otherwise
+    /// The id of the row just inserted into `info`'s table by `insertQuery`. Uses the
+    /// dialect's lastInsertIdQuery(info) when set (e.g. Postgres "SELECT lastval()";
+    /// Oracle needs the table to find its companion sequence), otherwise
     /// QSqlQuery::lastInsertId() (SQLite / MySQL).
-    int newRowId(QSqlQuery &insertQuery);
+    int newRowId(QSqlQuery &insertQuery, QiModelMetaInfo *info);
 
     bool insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,bool with_id,bool replace);
 

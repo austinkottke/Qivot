@@ -151,8 +151,8 @@ QStringList QiSql::columnNames(QiModelMetaInfo* info){
     return cols;
 }
 
-int QiSql::newRowId(QSqlQuery &insertQuery){
-    const QString idSql = d->m_statement->lastInsertIdQuery();
+int QiSql::newRowId(QSqlQuery &insertQuery, QiModelMetaInfo *info){
+    const QString idSql = d->m_statement->lastInsertIdQuery(info);
     if (!idSql.isEmpty()) {                 // e.g. Postgres: SELECT lastval()
         QSqlQuery idq = query();
         if (idq.exec(idSql) && idq.next())
@@ -259,7 +259,10 @@ bool QiSql::replaceInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,
 bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,QStringList conflictColumns,bool updateId){
     QString sql = d->m_statement->upsertInto(info,fields,conflictColumns);
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
 
     QSqlQuery q = query();
     if (!q.prepare(sql)) { setLastQuery(q); return false; }
@@ -273,7 +276,7 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = newRowId(q);
+            int id = newRowId(q, info);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }
@@ -293,7 +296,10 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
     }
 
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
 
     QSqlQuery q = query();
     if (!q.prepare(sql)) {
@@ -310,7 +316,7 @@ bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,
             res = false;
             break;
         }
-        int id = newRowId(q);
+        int id = newRowId(q, info);
         if (id != 0 && model->id.get().toInt() != id)
             model->id.set(id);
     }
@@ -332,7 +338,10 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     }
 
     sql = sql.trimmed();
-    if (sql.endsWith(QLatin1Char(';'))) sql.chop(1);   // QPSQL: no trailing ';' in a prepared statement
+    // QPSQL: no trailing ';' in a prepared statement. Most dialects don't care either
+    // way, but SQL Server's MERGE is a syntax error without one, so a dialect can opt
+    // out via keepsStatementTerminator() (see upsertInto() overrides for an example).
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
     if (!q.prepare(sql)) { setLastQuery(q); return false; }
 
     foreach (QString field , fields) {
@@ -347,7 +356,7 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
     if (q.exec()) {
         res = true;
         if (updateId) {
-            int id = newRowId(q);
+            int id = newRowId(q, info);
             if (id != 0 && model->id.get().toInt() != id)
                 model->id.set(id);
         }

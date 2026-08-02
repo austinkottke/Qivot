@@ -81,11 +81,18 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
     const QString driver = db.driverName();
     const bool sqlite = (driver == QLatin1String("QSQLITE"));
 
-    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL.
+    // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL, SQL Server (QODBC),
+    // Oracle (QOCI). This allow-list is deliberately separate from
+    // QiSqlStatement::forDriver()'s own driver-name dispatch — both must be kept
+    // in sync, or a new dialect either can't open a connection at all (rejected
+    // here first) or silently falls back to the SQLite statement generator
+    // (forDriver()'s fallback) despite this gate having let the driver through.
     if (!sqlite
         && driver != QLatin1String("QMYSQL")
         && driver != QLatin1String("QMARIADB")
-        && driver != QLatin1String("QPSQL")) {
+        && driver != QLatin1String("QPSQL")
+        && driver != QLatin1String("QODBC")
+        && driver != QLatin1String("QOCI")) {
         qWarning() << "Unsupported SQL driver:" << driver;
         setLastError(QiError(QiError::NotSupported,
                              QStringLiteral("Unsupported SQL driver: %1").arg(driver)));

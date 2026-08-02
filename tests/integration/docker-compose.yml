@@ -1,4 +1,4 @@
-# Spin up MySQL and Postgres for Qivot's integration tests:
+# Spin up MySQL, Postgres, and SQL Server for Qivot's integration tests:
 #   docker compose -f tests/integration/docker-compose.yml up -d
 # Then point the tests at them (see tests/integration/README.md), and:
 #   docker compose -f tests/integration/docker-compose.yml down
@@ -28,3 +28,24 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # SQL Server has no "just give it a database name" env var like the other two —
+  # qivot_test is created by hand once the server is up (see README.md). The SA
+  # password must meet SQL Server's complexity rules (8+ chars, 3 of 4 character
+  # classes) — the "qivot"/"qivot_test" passwords used above would be rejected here.
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Qivot_Test1"
+    ports:
+      - "1433:1433"
+    healthcheck:
+      # -C: trust the server's self-signed cert (mssql-tools18 defaults to requiring
+      # encryption; irrelevant for a local test container, but sqlcmd still needs to
+      # be told to skip verification, else even a healthy server fails this check).
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

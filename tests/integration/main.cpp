@@ -1,8 +1,9 @@
-/** Live integration test for the SQLite, MySQL and PostgreSQL backends.
+/** Live integration test for the SQLite, MySQL, PostgreSQL, and SQL Server backends.
 
     Runs a full round-trip against a real server and verifies the cross-dialect
     paths that the SQL-generation unit tests can't:
-      - auto-increment id returned after insert (Postgres lastval vs lastInsertId)
+      - auto-increment id returned after insert (Postgres lastval, SQL Server
+        SCOPE_IDENTITY, vs SQLite/MySQL lastInsertId)
       - long text stored without truncation (MySQL TEXT vs VARCHAR(255))
       - double / bool / JSON / QDate / QDateTime round-trip
       - batch insert (QiList::save) with a per-row id assigned to every model
@@ -11,9 +12,11 @@
       - the migration path (createTables twice is a safe no-op via portable columnNames)
       - upsert on a unique key updates in place instead of duplicating
 
-    Usage:  ./integration <sqlite|mysql|postgres>
+    Usage:  ./integration <sqlite|mysql|postgres|sqlserver>
     The `sqlite` backend uses an in-memory database and needs no server, so the whole
-    suite can be validated locally; `mysql`/`postgres` exercise the real dialects in CI.
+    suite can be validated locally; the others exercise the real dialects in CI.
+    (Oracle isn't wired in here yet — QOCI isn't reliably available in CI; see
+    src/qioraclestatement.h, which is covered by the unit tests instead.)
 
     If the driver plugin is missing or no server answers, it SKIPS (exit 0) rather than
     failing — unless QIVOT_REQUIRE_DB is set (as CI does), when it hard-fails instead.
@@ -23,6 +26,7 @@
 
 #include <qimysqlstatement.h>
 #include <qipgstatement.h>
+#include <qimssqlstatement.h>
 
 #include <QCoreApplication>
 #include <QSqlDatabase>
@@ -157,12 +161,12 @@ int main(int argc, char **argv) {
         return 0;
     };
 
-    if (backend == "print-mysql" || backend == "print-postgres") {
+    if (backend == "print-mysql" || backend == "print-postgres" || backend == "print-sqlserver") {
         // Print the generated SQL (no DB / driver needed) so it can be validated
-        // directly against a real server via psql / mariadb.
-        QiSqlStatement *s = (backend == "print-postgres")
-                              ? static_cast<QiSqlStatement*>(new QiPgStatement())
-                              : static_cast<QiSqlStatement*>(new QiMysqlStatement());
+        // directly against a real server via psql / mariadb / sqlcmd.
+        QiSqlStatement *s = (backend == "print-postgres")   ? static_cast<QiSqlStatement*>(new QiPgStatement())
+                          : (backend == "print-sqlserver")  ? static_cast<QiSqlStatement*>(new QiMsSqlStatement())
+                          :                                   static_cast<QiSqlStatement*>(new QiMysqlStatement());
         QiModelMetaInfo *info = qiMetaInfo<IntThing>();
         const QStringList cols = QStringList() << "name" << "code" << "score" << "active" << "meta" << "day" << "ts";
         std::printf("CREATE: %s\n", qPrintable(s->createTableIfNotExists(info)));
@@ -174,10 +178,12 @@ int main(int argc, char **argv) {
     QString driver, defUser, defPass;
     int defPort = 0;
     bool isSqlite = false;
-    if (backend == "sqlite")                             { driver = "QSQLITE"; isSqlite = true; }
-    else if (backend == "mysql" || backend == "mariadb") { driver = "QMYSQL"; defPort = 3306; defUser = "root";     defPass = "qivot"; }
-    else if (backend == "postgres" || backend == "pg")   { driver = "QPSQL";  defPort = 5432; defUser = "postgres"; defPass = "qivot"; }
-    else { qWarning().noquote() << "usage: integration <sqlite|mysql|postgres|print-mysql|print-postgres>"; return 2; }
+    bool isOdbc = false;
+    if (backend == "sqlite")                               { driver = "QSQLITE"; isSqlite = true; }
+    else if (backend == "mysql" || backend == "mariadb")   { driver = "QMYSQL"; defPort = 3306; defUser = "root";     defPass = "qivot"; }
+    else if (backend == "postgres" || backend == "pg")     { driver = "QPSQL";  defPort = 5432; defUser = "postgres"; defPass = "qivot"; }
+    else if (backend == "sqlserver" || backend == "mssql") { driver = "QODBC";  defPort = 1433; defUser = "sa"; defPass = "Qivot_Test1"; isOdbc = true; }
+    else { qWarning().noquote() << "usage: integration <sqlite|mysql|postgres|sqlserver|print-mysql|print-postgres|print-sqlserver>"; return 2; }
 
     if (!QSqlDatabase::drivers().contains(driver))
         return skipOrFail(driver + " driver plugin not available");
@@ -185,6 +191,20 @@ int main(int argc, char **argv) {
     QSqlDatabase db = QSqlDatabase::addDatabase(driver);
     if (isSqlite) {
         db.setDatabaseName(":memory:");
+    } else if (isOdbc) {
+        // QODBC wants a full ODBC connection string via setDatabaseName(), not the
+        // discrete setHostName()/setPort()/setUserName()/setPassword() sequence the
+        // other network drivers use. QIVOT_ODBC_DRIVER lets a different installed
+        // driver name be substituted (e.g. "ODBC Driver 17 for SQL Server").
+        const QString host = qEnvironmentVariable("QIVOT_HOST", "127.0.0.1");
+        const QString port = qEnvironmentVariable("QIVOT_PORT", QString::number(defPort));
+        const QString name = qEnvironmentVariable("QIVOT_NAME", "qivot_test");
+        const QString user = qEnvironmentVariable("QIVOT_USER", defUser);
+        const QString pass = qEnvironmentVariable("QIVOT_PASS", defPass);
+        const QString odbcDriver = qEnvironmentVariable("QIVOT_ODBC_DRIVER", "ODBC Driver 18 for SQL Server");
+        db.setDatabaseName(QString("Driver={%1};Server=%2,%3;Database=%4;Uid=%5;Pwd=%6;"
+                                    "TrustServerCertificate=yes;")
+                               .arg(odbcDriver, host, port, name, user, pass));
     } else {
         db.setHostName(qEnvironmentVariable("QIVOT_HOST", "127.0.0.1"));
         db.setPort(qEnvironmentVariable("QIVOT_PORT", QString::number(defPort)).toInt());
