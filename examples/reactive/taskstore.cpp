@@ -28,6 +28,6 @@ void TaskStore::toggle(int id) {
 
 void TaskStore::remove(int id) {
     Task task;
-    if (task.load(Task::col().id == id))
-        task.remove();
+    if (task.load(Task::col().id == id) && !task.remove())
+        qWarning("TaskStore::remove(%d) failed", id);
 }
