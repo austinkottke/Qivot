@@ -4425,11 +4425,11 @@ public:
     virtual QString lastInsertIdQuery() const { return QString(); }
 
     /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
-    /// dialects don't need this (Postgres's lastval()/SQL Server's SCOPE_IDENTITY()
-    /// are both session-scoped, not table-scoped) and can leave this at the default,
-    /// which just forwards to the no-arg overload above. Oracle overrides this one
-    /// instead, because its per-table companion sequence (see QiOracleStatement) can
-    /// only be named once the table is known.
+    /// dialects don't need this (Postgres's lastval()/SQL Server's @@IDENTITY are both
+    /// session-scoped, not table-scoped) and can leave this at the default, which just
+    /// forwards to the no-arg overload above. Oracle overrides this one instead, because
+    /// its per-table companion sequence (see QiOracleStatement) can only be named once
+    /// the table is known.
     virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
 
     /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's
@@ -4561,7 +4561,7 @@ public:
     Oracle's doesn't require a trailing ";"), no information_schema (needs
     user_tables), and — the one genuinely new problem versus every other dialect
     here — no session-scoped "id of the row I just inserted": Postgres's lastval()
-    and SQL Server's SCOPE_IDENTITY() both work because *any* insert in the session
+    and SQL Server's @@IDENTITY both work because *any* insert in the session
     counts, but Oracle only offers that via a sequence's CURRVAL, and CURRVAL needs
     to know *which* sequence. So every auto-increment table gets its own
     deterministically-named companion sequence ("<table>_id_seq"), created
@@ -7356,9 +7356,13 @@ QString QiMsSqlStatement::replaceInto(QiModelMetaInfo *info, QStringList fields)
 }
 
 QString QiMsSqlStatement::lastInsertIdQuery() const {
-    // SCOPE_IDENTITY() is scoped to the current session and stored procedure/batch
-    // (unlike @@IDENTITY, which would also report an identity inserted by a trigger).
-    return QStringLiteral("SELECT SCOPE_IDENTITY()");
+    // The new id is read in a SEPARATE query from the INSERT (QiSql::newRowId), i.e. a
+    // different batch. SCOPE_IDENTITY() is scoped to the batch that did the insert, so in
+    // that separate query it returns NULL — which is what made the id come back 0. Use
+    // @@IDENTITY: it's session-scoped and survives across batches on the same connection,
+    // like Postgres's lastval(). (Caveat: a trigger inserting into another identity table
+    // would shadow it — Qivot's own tables have no such triggers.)
+    return QStringLiteral("SELECT @@IDENTITY");
 }
 
 QString QiMsSqlStatement::select(QiSharedQuery query) {

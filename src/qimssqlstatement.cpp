@@ -160,9 +160,13 @@ QString QiMsSqlStatement::replaceInto(QiModelMetaInfo *info, QStringList fields)
 }
 
 QString QiMsSqlStatement::lastInsertIdQuery() const {
-    // SCOPE_IDENTITY() is scoped to the current session and stored procedure/batch
-    // (unlike @@IDENTITY, which would also report an identity inserted by a trigger).
-    return QStringLiteral("SELECT SCOPE_IDENTITY()");
+    // The new id is read in a SEPARATE query from the INSERT (QiSql::newRowId), i.e. a
+    // different batch. SCOPE_IDENTITY() is scoped to the batch that did the insert, so in
+    // that separate query it returns NULL — which is what made the id come back 0. Use
+    // @@IDENTITY: it's session-scoped and survives across batches on the same connection,
+    // like Postgres's lastval(). (Caveat: a trigger inserting into another identity table
+    // would shadow it — Qivot's own tables have no such triggers.)
+    return QStringLiteral("SELECT @@IDENTITY");
 }
 
 QString QiMsSqlStatement::select(QiSharedQuery query) {

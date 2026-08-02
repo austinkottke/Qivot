@@ -138,11 +138,11 @@ public:
     virtual QString lastInsertIdQuery() const { return QString(); }
 
     /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
-    /// dialects don't need this (Postgres's lastval()/SQL Server's SCOPE_IDENTITY()
-    /// are both session-scoped, not table-scoped) and can leave this at the default,
-    /// which just forwards to the no-arg overload above. Oracle overrides this one
-    /// instead, because its per-table companion sequence (see QiOracleStatement) can
-    /// only be named once the table is known.
+    /// dialects don't need this (Postgres's lastval()/SQL Server's @@IDENTITY are both
+    /// session-scoped, not table-scoped) and can leave this at the default, which just
+    /// forwards to the no-arg overload above. Oracle overrides this one instead, because
+    /// its per-table companion sequence (see QiOracleStatement) can only be named once
+    /// the table is known.
     virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
 
     /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's

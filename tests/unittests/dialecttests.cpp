@@ -253,8 +253,10 @@ void DialectTests::lastInsertIdStrategy() {
 
     // Postgres/SQL Server fetch the new id with a session-scoped follow-up query;
     // SQLite/MySQL use lastInsertId() instead (an empty lastInsertIdQuery() means that).
+    // NB: it must be session-scoped, since it runs in a SEPARATE query from the INSERT —
+    // SQL Server's SCOPE_IDENTITY() (scope-scoped) returns NULL there, so we use @@IDENTITY.
     QCOMPARE(pg.lastInsertIdQuery(),    QString("SELECT lastval()"));
-    QCOMPARE(mssql.lastInsertIdQuery(), QString("SELECT SCOPE_IDENTITY()"));
+    QCOMPARE(mssql.lastInsertIdQuery(), QString("SELECT @@IDENTITY"));
     QVERIFY(lite.lastInsertIdQuery().isEmpty());
     QVERIFY(my.lastInsertIdQuery().isEmpty());
 

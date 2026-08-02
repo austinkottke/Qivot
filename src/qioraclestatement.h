@@ -10,7 +10,7 @@
     Oracle's doesn't require a trailing ";"), no information_schema (needs
     user_tables), and — the one genuinely new problem versus every other dialect
     here — no session-scoped "id of the row I just inserted": Postgres's lastval()
-    and SQL Server's SCOPE_IDENTITY() both work because *any* insert in the session
+    and SQL Server's @@IDENTITY both work because *any* insert in the session
     counts, but Oracle only offers that via a sequence's CURRVAL, and CURRVAL needs
     to know *which* sequence. So every auto-increment table gets its own
     deterministically-named companion sequence ("<table>_id_seq"), created
