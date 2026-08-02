@@ -36,6 +36,7 @@ set(QIVOT_SOURCES
     src/qipgstatement.cpp
     src/qimssqlstatement.cpp
     src/qioraclestatement.cpp
+    src/qiduckdbstatement.cpp
     src/qiwhere.cpp
     src/qisql.cpp
     src/qifield.cpp
@@ -54,6 +55,7 @@ set(QIVOT_PUBLIC_HEADERS
     src/qierror.h src/qilog.h src/qiclause.h src/qimodelmetainfo.h src/qimodel.h
     src/qiconnection.h src/qibasefield.h src/qisqlstatement.h src/qisqlitestatement.h
     src/qimysqlstatement.h src/qipgstatement.h src/qimssqlstatement.h src/qioraclestatement.h
+    src/qiduckdbstatement.h
     src/qiwhere.h src/qisql.h src/qifield.h src/qiforeignkey.h src/qisharedquery.h
     src/qiquery.h src/qiqueryrules.h src/qiexpression.h src/qilist.h src/qiabstractmodel.h
     src/qisharedlist.h src/qiindex.h src/qistream.h src/qilistwriter.h src/qijoin.h

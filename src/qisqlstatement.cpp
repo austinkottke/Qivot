@@ -7,6 +7,7 @@
 #include "qipgstatement.h"
 #include "qimssqlstatement.h"
 #include "qioraclestatement.h"
+#include "qiduckdbstatement.h"
 #include "qiexpression.h"
 #include "qijoin.h"
 
@@ -25,6 +26,11 @@ QiSqlStatement *QiSqlStatement::forDriver(const QString &driverName){
         return new QiMsSqlStatement();
     if (driverName == QLatin1String("QOCI"))
         return new QiOracleStatement();
+    // DuckDB has no Qt-bundled driver; a QDUCKDB plugin around DuckDB's C API is the
+    // intended runtime (see docs). "DUCKDB" is accepted too for embedders that register
+    // the driver under the bare name.
+    if (driverName == QLatin1String("QDUCKDB") || driverName == QLatin1String("DUCKDB"))
+        return new QiDuckDbStatement();
     // QSQLITE and anything else fall back to SQLite.
     return new QiSqliteStatement();
 }

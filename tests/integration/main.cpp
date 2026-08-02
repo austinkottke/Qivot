@@ -28,6 +28,13 @@
 #include <qipgstatement.h>
 #include <qimssqlstatement.h>
 
+// DuckDB has no Qt-bundled driver; build with `qmake CONFIG+=duckdb DUCKDB_DIR=<path>`
+// to compile in the QDUCKDB driver (drivers/duckdb) and enable the `duckdb` backend.
+#ifdef QIVOT_DUCKDB
+#include <QSqlDriver>
+#include "duckdbdriver.h"
+#endif
+
 #include <QCoreApplication>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -152,6 +159,10 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     const QString backend = argc > 1 ? QString::fromLocal8Bit(argv[1]).toLower() : QString();
 
+#ifdef QIVOT_DUCKDB
+    QSqlDatabase::registerSqlDriver("QDUCKDB", new QSqlDriverCreator<DuckDbDriver>());
+#endif
+
     // With QIVOT_REQUIRE_DB set (as CI does), a missing driver or failed connection
     // is a hard failure; otherwise it's a graceful skip so the test is safe anywhere.
     const bool requireDb = qEnvironmentVariableIsSet("QIVOT_REQUIRE_DB");
@@ -183,7 +194,14 @@ int main(int argc, char **argv) {
     else if (backend == "mysql" || backend == "mariadb")   { driver = "QMYSQL"; defPort = 3306; defUser = "root";     defPass = "qivot"; }
     else if (backend == "postgres" || backend == "pg")     { driver = "QPSQL";  defPort = 5432; defUser = "postgres"; defPass = "qivot"; }
     else if (backend == "sqlserver" || backend == "mssql") { driver = "QODBC";  defPort = 1433; defUser = "sa"; defPass = "Qivot_Test1"; isOdbc = true; }
-    else { qWarning().noquote() << "usage: integration <sqlite|mysql|postgres|sqlserver|print-mysql|print-postgres|print-sqlserver>"; return 2; }
+    else if (backend == "duckdb") {
+#ifdef QIVOT_DUCKDB
+        driver = "QDUCKDB"; isSqlite = true;   // embedded + in-memory, like SQLite
+#else
+        return skipOrFail("built without DuckDB — rebuild with: qmake CONFIG+=duckdb DUCKDB_DIR=<path>");
+#endif
+    }
+    else { qWarning().noquote() << "usage: integration <sqlite|mysql|postgres|sqlserver|duckdb|print-mysql|print-postgres|print-sqlserver>"; return 2; }
 
     if (!QSqlDatabase::drivers().contains(driver))
         return skipOrFail(driver + " driver plugin not available");

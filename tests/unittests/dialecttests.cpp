@@ -9,6 +9,8 @@ void DialectTests::factory() {
     QScopedPointer<QiSqlStatement> pg(QiSqlStatement::forDriver("QPSQL"));
     QScopedPointer<QiSqlStatement> mssql(QiSqlStatement::forDriver("QODBC"));
     QScopedPointer<QiSqlStatement> ora(QiSqlStatement::forDriver("QOCI"));
+    QScopedPointer<QiSqlStatement> duck(QiSqlStatement::forDriver("QDUCKDB"));
+    QScopedPointer<QiSqlStatement> duck2(QiSqlStatement::forDriver("DUCKDB"));
     // QODBC is a real dialect now, so it can no longer stand in for "unknown driver".
     QScopedPointer<QiSqlStatement> unknown(QiSqlStatement::forDriver("QSOMETHINGELSE"));
 
@@ -18,6 +20,8 @@ void DialectTests::factory() {
     QCOMPARE(pg->driverName(),    QString("PSQL"));
     QCOMPARE(mssql->driverName(), QString("MSSQL"));
     QCOMPARE(ora->driverName(),   QString("ORACLE"));
+    QCOMPARE(duck->driverName(),  QString("DUCKDB"));
+    QCOMPARE(duck2->driverName(), QString("DUCKDB"));  // bare "DUCKDB" resolves too
     QCOMPARE(unknown->driverName(), QString("SQLITE")); // unknown driver -> SQLite fallback
 }
 
@@ -34,6 +38,9 @@ void DialectTests::columnTypes() {
     QCOMPARE(pg.columnTypeName(QMetaType::Int),   QString("INTEGER"));
     QCOMPARE(mssql.columnTypeName(QMetaType::Int),QString("INT"));
     QCOMPARE(ora.columnTypeName(QMetaType::Int),  QString("NUMBER(10)"));
+    QiDuckDbStatement duck;
+    QCOMPARE(duck.columnTypeName(QMetaType::Int),      QString("INTEGER"));
+    QCOMPARE(duck.columnTypeName(QMetaType::LongLong), QString("BIGINT"));
 
     // strings
     QCOMPARE(lite.columnTypeName(QMetaType::QString), QString("TEXT"));
@@ -41,6 +48,7 @@ void DialectTests::columnTypes() {
     QCOMPARE(pg.columnTypeName(QMetaType::QString),   QString("TEXT"));
     QCOMPARE(mssql.columnTypeName(QMetaType::QString),QString("NVARCHAR(MAX)"));
     QCOMPARE(ora.columnTypeName(QMetaType::QString),  QString("VARCHAR2(255)"));
+    QCOMPARE(duck.columnTypeName(QMetaType::QString), QString("VARCHAR"));
 
     // bool + blob
     QCOMPARE(my.columnTypeName(QMetaType::Bool),      QString("TINYINT(1)"));
@@ -50,6 +58,11 @@ void DialectTests::columnTypes() {
     QCOMPARE(mssql.columnTypeName(QMetaType::QByteArray),QString("VARBINARY(MAX)"));
     QCOMPARE(ora.columnTypeName(QMetaType::Bool),      QString("NUMBER(1)"));
     QCOMPARE(ora.columnTypeName(QMetaType::QByteArray),QString("BLOB"));
+    QCOMPARE(duck.columnTypeName(QMetaType::Bool),      QString("BOOLEAN"));
+    QCOMPARE(duck.columnTypeName(QMetaType::QByteArray),QString("BLOB"));
+    QCOMPARE(duck.columnTypeName(QMetaType::Double),    QString("DOUBLE"));
+    // DuckDB VARCHAR is indexable, so keyed strings need no special-casing (no override).
+    QCOMPARE(duck.columnTypeForField(QMetaType::QString, QiClause(QiClause::PRIMARY_KEY)), QString("VARCHAR"));
 }
 
 void DialectTests::mysqlStringTyping() {
@@ -129,6 +142,12 @@ void DialectTests::primaryKey() {
     // createTableIfNotExists() (which knows the table name) fills in — see createTable().
     QVERIFY(ora.primaryKeyClause("NUMBER(10)").contains("NEXTVAL PRIMARY KEY"));
     QCOMPARE(ora.primaryKeyClause("VARCHAR2(255)"), QString("PRIMARY KEY"));
+
+    // DuckDB is the same idea as Oracle: DEFAULT nextval('<seq placeholder>') PRIMARY KEY.
+    QiDuckDbStatement duck;
+    QVERIFY(duck.primaryKeyClause("INTEGER").contains("DEFAULT nextval("));
+    QVERIFY(duck.primaryKeyClause("INTEGER").contains("PRIMARY KEY"));
+    QCOMPARE(duck.primaryKeyClause("VARCHAR"), QString("PRIMARY KEY"));
 }
 
 void DialectTests::createTable() {
@@ -173,6 +192,16 @@ void DialectTests::createTable() {
     QVERIFY(!oraS.contains("IF NOT EXISTS"));
     QVERIFY(oraS.contains("NEXTVAL PRIMARY KEY"));
     QVERIFY(oraS.contains("CLOB"));             // plain (non-key) strings
+
+    // DuckDB: a CREATE SEQUENCE IF NOT EXISTS for the id column's companion sequence,
+    // then the CREATE TABLE, both in one ";"-separated string (DuckDB runs multi-statement).
+    QiDuckDbStatement duck;
+    const QString duckS = duck.createTableIfNotExists(info);
+    QVERIFY(duckS.contains("CREATE SEQUENCE IF NOT EXISTS \"model1_id_seq\""));
+    QVERIFY(duckS.contains("CREATE TABLE IF NOT EXISTS model1"));
+    QVERIFY(duckS.contains("DEFAULT nextval('model1_id_seq') PRIMARY KEY"));
+    QVERIFY(duckS.contains("VARCHAR"));         // plain strings, indexable, no truncation
+    QVERIFY(!duckS.contains("__QIVOT_DUCKDB_SEQ__"));  // placeholder fully substituted
 }
 
 void DialectTests::upsert() {
@@ -241,6 +270,16 @@ void DialectTests::upsert() {
     const QString oraFreshInsert = ora.replaceInto(info, freshInsertFields);
     QVERIFY(!oraFreshInsert.contains("source.id"));
     QVERIFY(oraFreshInsert.contains("ON (1 = 0)"));
+
+    // DuckDB inherits the base ON CONFLICT upsert (Postgres-style), and REPLACE INTO
+    // becomes an upsert on the primary key — just like Postgres.
+    QiDuckDbStatement duck;
+    const QString duckS = duck.upsertInto(info, fields, conflict);
+    QVERIFY(duckS.contains("ON CONFLICT(key)"));
+    QVERIFY(duckS.contains("value=excluded.value"));
+    const QString duckReplace = duck.replaceInto(info, fields);
+    QVERIFY(!duckReplace.contains("REPLACE"));
+    QVERIFY(duckReplace.contains("ON CONFLICT(id)"));
 }
 
 void DialectTests::lastInsertIdStrategy() {
@@ -265,6 +304,12 @@ void DialectTests::lastInsertIdStrategy() {
     QVERIFY(ora.lastInsertIdQuery().isEmpty());
     QCOMPARE(ora.lastInsertIdQuery(info), QString("SELECT \"model1_id_seq\".CURRVAL FROM DUAL"));
 
+    // DuckDB is the same shape as Oracle: currval() is per-sequence, so it uses the
+    // table-aware overload; the no-arg one is empty.
+    QiDuckDbStatement duck;
+    QVERIFY(duck.lastInsertIdQuery().isEmpty());
+    QCOMPARE(duck.lastInsertIdQuery(info), QString("SELECT currval('model1_id_seq')"));
+
     // Every other dialect's table-aware overload just forwards to its no-arg one —
     // exercised through the QiSqlStatement base pointer, the same way qisql.cpp always
     // calls it (a concrete instance's own scope hides one overload behind the other;
@@ -288,6 +333,8 @@ void DialectTests::tableExists() {
     QVERIFY(pg.exists(info).contains("information_schema"));
     QVERIFY(mssql.exists(info).contains("information_schema"));   // inherited default; SQL Server has it too
     QVERIFY(ora.exists(info).contains("user_tables"));            // no information_schema in Oracle
+    QiDuckDbStatement duck;
+    QVERIFY(duck.exists(info).contains("information_schema"));    // inherited default; DuckDB has it too
 }
 
 void DialectTests::statementTerminator() {
@@ -302,4 +349,6 @@ void DialectTests::statementTerminator() {
     QVERIFY(!pg.keepsStatementTerminator());
     QVERIFY(mssql.keepsStatementTerminator());   // MERGE is a syntax error without it
     QVERIFY(!ora.keepsStatementTerminator());    // Oracle's MERGE doesn't need one
+    QiDuckDbStatement duck;
+    QVERIFY(!duck.keepsStatementTerminator());   // Postgres-style upsert, no trailing ; needed
 }

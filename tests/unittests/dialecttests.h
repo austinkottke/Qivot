@@ -9,6 +9,7 @@
 #include <qipgstatement.h>
 #include <qimssqlstatement.h>
 #include <qioraclestatement.h>
+#include <qiduckdbstatement.h>
 #include <qimodelmetainfo.h>
 
 #include "model1.h"

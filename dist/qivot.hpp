@@ -1665,383 +1665,6 @@ Q_DECLARE_METATYPE(QiWhere)
 
 #endif // QiWHERE_H
 
-// ---- src/qiexpression.h ------------------------------------------
-#ifndef QiEXPRESSION_H
-#define QiEXPRESSION_H
-
-#include <QMap>
-#include <QSharedDataPointer>
-
-class QiExpressionPriv;
-
-/// Construct an expression based on QiWhere clause
-/**
-   @remarks It is a private class for implementation use. User should not use this class.
- */
-class QiExpression
-{
-public:
-    QiExpression();
-    QiExpression(const QiExpression& rhs);
-    QiExpression(QiWhere where);
-    QiExpression &operator=(const QiExpression &rhs);
-
-    ~QiExpression();
-
-    /// Get the expression in string
-    QString string();
-
-    /// A map of values to find with QSqlQuery
-    QMap<QString,QVariant> bindValues();
-
-    bool isNull();
-
-private:
-
-    QSharedDataPointer<QiExpressionPriv> d;
-};
-
-#endif // QiEXPRESSION_H
-
-// ---- src/qifield.h -----------------------------------------------
-#ifndef QiFIELD_H
-#define QiFIELD_H
-
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QMap>
-#include <QStringList>
-
-/// Database field
-/**
-    QiField store the value of a field in database model. The format is QVariant.
-    Therefore you may assign a QVariant to QiField direclty, and you may access
-    the stored QVariant by using operator-> or get() function.
-
-    @see QiModel
-    @see QiForeignKey
- */
-
-template <typename T>
-class QiField : public QiBaseField
-{
-public:
-    /// Default constructor
-    QiField(){
-    }
-
-    /// Return the QMetaType id of the field
-    static int type(){
-        return qMetaTypeId<T>();
-    }
-
-    /// Copy the value from a QVariant object
-    inline QVariant operator=(const QVariant &val){
-        set(val);
-        return val;
-    }
-
-    /// Compare with other QiField
-    inline bool operator==(const QiField& rhs) const {
-        return get() == rhs.get();
-    }
-
-    /// Compare with QVariant type
-    inline bool operator==(const QVariant &rhs) const {
-        return get() == rhs;
-    }
-
-    /// Compare with QVariant type
-    inline bool operator!=(const QVariant &rhs) const {
-        return get() != rhs;
-    }
-
-    /// Compare with its template type
-    inline bool operator==(const T& t) const {
-        return get() == t;
-    }
-
-    /// Compare with its template type
-    inline bool operator!=(const T& t) const {
-        return get() != t;
-    }
-
-    /// Compare with string type
-    inline bool operator==(const char *string) const {
-        return get() == QString(string);
-    }
-
-    /// Compare with string type
-    inline bool operator!=(const char *string) const {
-        return get() != QString(string);
-    }
-
-    /// Get the value of the field
-    inline QVariant get(bool convert = false) const {
-        return QiBaseField::get(convert);
-    }
-
-    /// Set the value of the field
-    inline bool set(QVariant value) {
-        return QiBaseField::set(value);
-    }
-
-    /// Cast it to the template type
-    inline operator T() const {
-        QVariant v = get();
-        return v.value<T>();
-    }
-
-};
-
-// The built-in structured-field specializations below are defined `inline` in
-// the header (not out-of-line in a .cpp) on purpose. get()/set() are virtual,
-// and MSVC does not reliably emit an out-of-line explicit specialization of a
-// virtual member unless the enclosing class template is instantiated in that
-// same translation unit — which it isn't. Defining them inline gives every TU
-// (and every compiler) the definition, matching the QI_DECLARE_CONVERTER pattern.
-
-namespace QiFieldDetail {
-
-/// Escape & and " so list items survive being joined with the separator.
-inline QString escapeStringListItem(QString value) {
-    QString result;
-    QMap<char, QString> map;
-    map['&'] = "&amp;";
-    map['"'] = "&quot;";
-
-    result.reserve(value.size() * 1.1);
-    int n = value.size();
-    for (int i = 0; i < n; i++) {
-        QChar c = value.at(i);
-        char l = c.toLatin1();
-        if (map.contains(l)) {
-            result += map[l];
-        } else {
-            result += c;
-        }
-    }
-    result.squeeze();
-    return result;
-}
-
-inline QString unescapeStringListItem(QString value) {
-    QMap<QString, char> map;
-    map["&amp;"] = '&';
-    map["&quot;"] = '"';
-
-    QString result;
-    result.reserve(value.size());
-
-    int n = value.size();
-    for (int i = 0; i < n; i++) {
-        QChar q = value.at(i);
-
-        if (q == '&') {
-            bool found = false;
-            QMap<QString, char>::const_iterator iter = map.constBegin();
-            while (iter != map.end()) {
-                QString key = iter.key();
-                int len = key.size();
-
-                QStringView ref = QStringView(value).mid(i, len);
-                if (ref == QStringView(key)) {
-                    q = iter.value();
-                    i += len - 1;
-                    found = true;
-                    break;
-                }
-                iter++;
-            }
-
-            if (!found) {
-                qWarning() << QString("Invalid escaped string : %1").arg(value);
-            }
-        }
-
-        result += q;
-    }
-
-    result.squeeze();
-    return result;
-}
-
-/// Separator for QStringList storage.
-inline const char *stringListSeparator() { return " & "; }
-
-} // namespace QiFieldDetail
-
-template <>
-inline bool QiField<QStringList>::set(QVariant value) {
-    if (value.userType() == QMetaType::QString) {
-        QString str = value.toString();
-        QStringList list = str.split(QiFieldDetail::stringListSeparator());
-        QStringList result;
-        foreach (str, list) {
-            result << QiFieldDetail::unescapeStringListItem(str);
-        }
-        value = result;
-    }
-    return QiBaseField::set(value);
-}
-
-template <>
-inline QVariant QiField<QStringList>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-
-    if (convert && val.userType() == QMetaType::QStringList) {
-        QStringList list = val.toStringList();
-        QStringList result;
-        QString str;
-        foreach (str, list) {
-            result << QiFieldDetail::escapeStringListItem(str);
-        }
-        val = result.join(QiFieldDetail::stringListSeparator());
-    }
-
-    return val;
-}
-
-// Structured JSON fields: hold a nested QJsonObject / QJsonArray in memory,
-// serialize to a JSON string only when persisted (convert = true).
-template <>
-inline bool QiField<QJsonObject>::set(QVariant value) {
-    if (value.userType() == QMetaType::QString)
-        value = QJsonDocument::fromJson(value.toString().toUtf8()).object();
-    return QiBaseField::set(value);
-}
-
-template <>
-inline QVariant QiField<QJsonObject>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-    if (convert && val.userType() == QMetaType::QJsonObject)
-        return QString::fromUtf8(QJsonDocument(val.toJsonObject()).toJson(QJsonDocument::Compact));
-    return val;
-}
-
-template <>
-inline bool QiField<QJsonArray>::set(QVariant value) {
-    if (value.userType() == QMetaType::QString)
-        value = QJsonDocument::fromJson(value.toString().toUtf8()).array();
-    return QiBaseField::set(value);
-}
-
-template <>
-inline QVariant QiField<QJsonArray>::get(bool convert) const {
-    QVariant val = QiBaseField::get(convert);
-    if (convert && val.userType() == QMetaType::QJsonArray)
-        return QString::fromUtf8(QJsonDocument(val.toJsonArray()).toJson(QJsonDocument::Compact));
-    return val;
-}
-
-/// Primary key field
-
-class QiPrimaryKey : public QiField<int> {
-public:
-    QiPrimaryKey();
-    static QiClause clause();
-
-    inline QVariant operator=(const QVariant &val){
-        set(val);
-        return val;
-    }
-};
-
-/// Store an arbitrary C++ value type in a column via a pair of conversion functions.
-/**
-  Teaches QiField how to persist a custom type `TYPE`. Provide two free/static
-  functions (by name — not inline lambdas, so the macro stays comma-safe):
-
-    - `TO_STORAGE_FN(const TYPE&) -> QVariant`   a value SQLite can store
-                                                 (int / double / QString / ...)
-    - `FROM_STORAGE_FN(const QVariant&) -> TYPE` rebuild the value when loading
-
-  `TYPE` must be registered with `Q_DECLARE_METATYPE(TYPE)`, and the column's SQL
-  type should be set with `QI_FIELD_AS(field, "TEXT")` (or INTEGER/REAL/…).
-
-\code
-    struct GeoPoint { double lat, lng; };
-    Q_DECLARE_METATYPE(GeoPoint)
-
-    static QVariant geoToStorage(const GeoPoint &p) {
-        return QStringLiteral("%1,%2").arg(p.lat).arg(p.lng);
-    }
-    static GeoPoint geoFromStorage(const QVariant &v) {
-        const QStringList s = v.toString().split(',');
-        return GeoPoint{ s.value(0).toDouble(), s.value(1).toDouble() };
-    }
-    QI_DECLARE_CONVERTER(GeoPoint, geoToStorage, geoFromStorage)
-
-    // in the model:  QI_FIELD_AS(location, "TEXT")
-\endcode
-
-  Place the macro (and the two functions) before any model that uses
-  `QiField<TYPE>`.
- */
-#define QI_DECLARE_CONVERTER(TYPE, TO_STORAGE_FN, FROM_STORAGE_FN)          \
-    template <> inline bool QiField<TYPE>::set(QVariant value) {            \
-        if (value.isValid() && !value.isNull()                             \
-                && value.userType() != qMetaTypeId<TYPE>())                \
-            value = QVariant::fromValue<TYPE>( FROM_STORAGE_FN(value) );    \
-        return QiBaseField::set(value);                                     \
-    }                                                                       \
-    template <> inline QVariant QiField<TYPE>::get(bool convert) const {    \
-        QVariant _v = QiBaseField::get(convert);                           \
-        if (convert && _v.userType() == qMetaTypeId<TYPE>())               \
-            return QVariant( TO_STORAGE_FN( _v.value<TYPE>() ) );          \
-        return _v;                                                          \
-    }
-
-#endif // QiFIELD_H
-
-// ---- src/qifieldref.h --------------------------------------------
-#ifndef QiFIELDREF_H
-#define QiFIELDREF_H
-
-#include <cstddef>
-
-/// A type-safe, refactor-proof reference to a model field, as a QiWhere.
-/**
-  Instead of hardcoding a column-name string, pass a pointer-to-member. The
-  compiler checks the member exists, and renaming the field is caught at compile
-  time instead of silently breaking a query at runtime.
-
-\code
-    User user;
-    user.load( qiField(&User::userId) == "anonymous" );          // no "userId" string
-
-    auto top = User::objects()
-                 .filter( qiField(&User::karma) > 100 )
-                 .orderBy("karma desc")
-                 .all();
-\endcode
-
-  Works for any field you declare on the model. For the built-in primary key,
-  use `QiWhere("id")` (or the explicit form `qiField<User>(&User::id)`), because
-  `id` is inherited from QiModel.
-
-  @param member A pointer to a QiField member of model T (e.g. `&User::userId`).
-  @return A QiWhere field for use with the comparison operators, or a null
-          QiWhere if the member is not a registered field.
- */
-template <typename T, typename M>
-inline QiWhere qiField(M T::* member) {
-    T probe;
-    const size_t offset = reinterpret_cast<size_t>(&(probe.*member))
-                        - reinterpret_cast<size_t>(&probe);
-
-    QiModelMetaInfo *info = qiMetaInfo<T>();
-    const int n = info->size();
-    for (int i = 0; i < n; i++) {
-        if (static_cast<size_t>(info->at(i)->offset) == offset)
-            return QiWhere(info->at(i)->name);
-    }
-    return QiWhere();
-}
-
-#endif // QiFIELDREF_H
-
 // ---- src/qijoin.h ------------------------------------------------
 #ifndef QiJOIN_H
 #define QiJOIN_H
@@ -2501,6 +2124,672 @@ private:
 };
 
 #endif // QiSHAREDQUERY_H
+
+// ---- src/qiexpression.h ------------------------------------------
+#ifndef QiEXPRESSION_H
+#define QiEXPRESSION_H
+
+#include <QMap>
+#include <QSharedDataPointer>
+
+class QiExpressionPriv;
+
+/// Construct an expression based on QiWhere clause
+/**
+   @remarks It is a private class for implementation use. User should not use this class.
+ */
+class QiExpression
+{
+public:
+    QiExpression();
+    QiExpression(const QiExpression& rhs);
+    QiExpression(QiWhere where);
+    QiExpression &operator=(const QiExpression &rhs);
+
+    ~QiExpression();
+
+    /// Get the expression in string
+    QString string();
+
+    /// A map of values to find with QSqlQuery
+    QMap<QString,QVariant> bindValues();
+
+    bool isNull();
+
+private:
+
+    QSharedDataPointer<QiExpressionPriv> d;
+};
+
+#endif // QiEXPRESSION_H
+
+// ---- src/qiqueryrules.h ------------------------------------------
+#ifndef QiQUERYRULES_H
+#define QiQUERYRULES_H
+
+#include <QSharedDataPointer>
+
+/// QiQueryRules represent the rules/clauses set for QiSharedQuery.
+
+/** QiSharedQuery/QiQuery do not provide any interface to get the rules / clause set for query.
+  Instead it should use QiQueryRules to retrieve the information. Normally user do not need to
+  retreive the rules set for a query, it is useful for implement custom select sql or unit tests
+ */
+
+class QiQueryRules
+{
+public:
+    QiQueryRules();
+    QiQueryRules(const QiQueryRules &);
+    QiQueryRules &operator=(const QiQueryRules &);
+    QiQueryRules &operator=(const QiSharedQuery &);
+    ~QiQueryRules();
+
+    /// Get the limit of query
+    int limit();
+
+    /// Get the offset of query
+    int offset();
+
+    QiExpression expression();
+
+    /// Get the GROUP BY terms
+    QStringList groupBy();
+
+    /// Get the HAVING expression
+    QiExpression having();
+
+    /// Get the func that should be applied on result column
+    QString func();
+
+    /// Get the QiModelMetaInfo instance of the query model
+    QiModelMetaInfo *metaInfo();
+
+    /// Get the field for result column
+    QStringList fields();
+
+    /// Get the field for orderBy
+    QStringList orderBy();
+
+    /// Get the JOIN clauses of the query
+    QList<QiBaseJoin> joins();
+
+    /// TRUE if the query should emit SELECT DISTINCT
+    bool distinct();
+
+private:
+    QSharedDataPointer<QiSharedQueryPriv> data;
+};
+
+#endif // QiQUERYRULES_H
+
+// ---- src/qisqlstatement.h ----------------------------------------
+#ifndef QiSQLSTATEMENT_H
+#define QiSQLSTATEMENT_H
+
+#include <QString>
+
+
+class QiSharedQuery;
+class QiQueryRules;
+
+/// Sql Statement generator abstract interface
+
+class QiSqlStatement
+{
+public:
+    /// Default constructor
+    QiSqlStatement();
+
+    virtual ~QiSqlStatement() {}
+
+    /// Get the supported driver name
+    virtual QString driverName() = 0;
+
+    /// Build the statement generator for a Qt SQL driver name: "QSQLITE",
+    /// "QMYSQL"/"QMARIADB", "QPSQL", "QODBC" (SQL Server), or "QOCI" (Oracle).
+    /// Unknown drivers fall back to SQLite.
+    static QiSqlStatement *forDriver(const QString &driverName);
+
+    /// "CREATE TABLE IF NOT EXISTS" statement
+    template <typename T>
+    QString createTableIfNotExists() {
+        QiModelMetaInfo *info = qiMetaInfo<T>();
+        return _createTableIfNotExists(info);
+    }
+
+    /// "CREATE TABLE IF NOT EXISTS" statement
+    virtual QString createTableIfNotExists(QiModelMetaInfo *info);
+
+    /// "DROP TABLE" statement
+    template <typename T>
+    QString dropTable() {
+        QiModelMetaInfo *info = qiMetaInfo<T>();
+        return dropTable(info);
+    }
+
+    /// Drop table statement
+    virtual QString dropTable(QiModelMetaInfo *info);
+
+    /// "ALTER TABLE ... ADD COLUMN" statement for a single field (migrations)
+    virtual QString addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field);
+
+    /// Rename a column (SQLite 3.25+): ALTER TABLE ... RENAME COLUMN a TO b
+    virtual QString renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to);
+
+    /// Drop a column (SQLite 3.35+): ALTER TABLE ... DROP COLUMN name
+    virtual QString dropColumn(QiModelMetaInfo *info, const QString &name);
+
+    /// Create index statement
+    virtual QString createIndexIfNotExists(const QiBaseIndex& index);
+
+    /// Drop the index
+    virtual QString dropIndexIfExists(QString name);
+
+    /// Statements that create an FTS5 index (virtual table + sync triggers + rebuild)
+    virtual QStringList createFtsIndex(const QiBaseFtsIndex &index);
+
+    /// Statements that drop an FTS5 index (its triggers + virtual table)
+    virtual QStringList dropFtsIndex(QString name);
+
+    /// Insert into statement
+    /**
+      @param with_id TRUE if the "id" field should be included.
+     */
+    virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
+
+    /// Replace into statement
+    /**
+      @param with_id TRUE if the "id" field should be included.
+     */
+    virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
+
+    /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
+    /**
+      A non-destructive upsert: insert the row, or if it collides on the given
+      conflict column(s), update the other columns in place (keeping the row's
+      primary key). Requires SQLite 3.24 or newer.
+
+      @param fields The columns to insert.
+      @param conflictColumns The unique/primary column(s) that identify an
+             existing row (the ON CONFLICT target).
+     */
+    virtual QString upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns);
+
+    /// Select statement
+    virtual QString select(QiSharedQuery query);
+
+    /// Delete from statement
+    virtual QString deleteFrom(QiSharedQuery query);
+
+    /// Update statement: UPDATE <table> SET <field> = :set_<field> ... WHERE ...
+    /** The value for each field is bound under the placeholder ":set_<field>". */
+    virtual QString update(QiSharedQuery query, const QStringList &fields);
+
+    /// Returns a string representation of the QVariant for SQL statement
+    virtual QString formatValue(QVariant value,bool trimStrings = false);
+
+    // --- dialect hooks (overridden per database) ------------------------------
+
+    /// Map a QMetaType id to this dialect's column type (INTEGER / INT / VARCHAR(255) / …).
+    /// Returns a null string for an unsupported type.
+    virtual QString columnTypeName(int type);
+
+    /// Like columnTypeName(), but may adapt the type to the column's clause — e.g. MySQL
+    /// needs a bounded VARCHAR for a keyed string but wants TEXT for free text. The default
+    /// ignores the clause and returns columnTypeName(type).
+    virtual QString columnTypeForField(int type, QiClause clause);
+
+    /// Build a column's constraint text: NOT NULL / UNIQUE / DEFAULT / CHECK / PRIMARY KEY.
+    virtual QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
+
+    /// The PRIMARY KEY clause for a column, including auto-increment where the dialect wants it.
+    virtual QString primaryKeyClause(const QString &typeName);
+
+    /// Text appended right after the closing ")" of CREATE TABLE (WITHOUT ROWID, ENGINE=…, …).
+    virtual QString tableSuffix(QiModelMetaInfo *info);
+
+    /// A query that returns at least one row iff the given table already exists.
+    virtual QString exists(QiModelMetaInfo *info);
+
+    /// An optional query that returns the id of the row just inserted, for drivers whose
+    /// QSqlQuery::lastInsertId() doesn't report it (Postgres → "SELECT lastval()"). An empty
+    /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
+    virtual QString lastInsertIdQuery() const { return QString(); }
+
+    /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
+    /// dialects don't need this (Postgres's lastval()/SQL Server's @@IDENTITY are both
+    /// session-scoped, not table-scoped) and can leave this at the default, which just
+    /// forwards to the no-arg overload above. Oracle overrides this one instead, because
+    /// its per-table companion sequence (see QiOracleStatement) can only be named once
+    /// the table is known.
+    virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
+
+    /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's
+    /// MERGE statement is a syntax error without one, unlike every other statement shape
+    /// every other dialect emits. Everything else is fine either way, hence the default.
+    virtual bool keepsStatementTerminator() const { return false; }
+
+protected:
+    /// The real function for create table if not exists. The base implementation is a
+    /// portable generator that calls the dialect hooks above; SQLite overrides it.
+    virtual QString _createTableIfNotExists(QiModelMetaInfo *info);
+
+    /// The real function for "insert into / replace into" statement
+    virtual QString _insertInto(QiModelMetaInfo *info ,QString type, QStringList fields);
+
+    virtual QString selectCore(QiQueryRules rules);
+
+    virtual QString selectResultColumn(QiQueryRules rules);
+
+    /// Generate the JOIN clauses (e.g. "INNER JOIN friendship ON ...")
+    virtual QString joinClause(QiQueryRules rules);
+
+    virtual QString limitAndOffset(int limit, int offset = 0);
+
+    virtual QString orderBy(QiQueryRules rules);
+
+};
+
+
+#endif // QiSQLSTATEMENT_H
+
+// ---- src/qiduckdbstatement.h -------------------------------------
+#ifndef QIDUCKDBSTATEMENT_H
+#define QIDUCKDBSTATEMENT_H
+
+#include <QVariant>
+
+/// DuckDB SQL statement generator (embedded OLAP database; Qt driver "QDUCKDB").
+/**
+    DuckDB is embedded like SQLite but speaks a Postgres-flavoured SQL, so most of this
+    dialect is inherited from the base QiSqlStatement — the `ON CONFLICT ... DO UPDATE`
+    upsert and the `information_schema` table check come for free (exactly as Postgres
+    uses them). What's DuckDB-specific:
+
+      - No AUTO_INCREMENT/SERIAL/IDENTITY keyword: an auto id column DEFAULTs to
+        `nextval()` of a per-table companion sequence ("<table>_id_seq"), created next
+        to the table (see createTableIfNotExists()) — the same shape as the Oracle
+        dialect, but with `CREATE SEQUENCE IF NOT EXISTS` instead of a PL/SQL block.
+      - The new id is read back with `currval('<table>_id_seq')`, which is connection-
+        scoped once nextval has run in the session (like Oracle's CURRVAL / Postgres's
+        lastval()), so the table-aware lastInsertIdQuery(info) names that sequence.
+      - No `REPLACE INTO`: translated to an upsert on the primary key (like Postgres).
+
+    The companion `CREATE SEQUENCE` is emitted in the same ";"-separated statement string
+    as the `CREATE TABLE`; DuckDB executes multiple statements per query natively, which
+    the QDUCKDB driver relies on.
+
+    Full-text search (FTS) is SQLite-only for now.
+
+    @remarks Stateless / thread-safe, like every QiSqlStatement.
+ */
+class QiDuckDbStatement : public QiSqlStatement
+{
+public:
+    QiDuckDbStatement();
+
+    QString driverName() override;
+
+    QString columnTypeName(int type) override;
+    QString primaryKeyClause(const QString &typeName) override;
+
+    QString createTableIfNotExists(QiModelMetaInfo *info) override;
+
+    QString replaceInto(QiModelMetaInfo *info, QStringList fields) override;
+
+    // Un-hides QiSqlStatement::lastInsertIdQuery() — see the identical comment in
+    // qimssqlstatement.h for why this is needed.
+    using QiSqlStatement::lastInsertIdQuery;
+    QString lastInsertIdQuery(QiModelMetaInfo *info) const override;
+
+    QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
+    QStringList dropFtsIndex(QString name) override;
+
+private:
+    static QString sequenceName(QiModelMetaInfo *info);
+};
+
+#endif // QIDUCKDBSTATEMENT_H
+
+// ---- src/qifield.h -----------------------------------------------
+#ifndef QiFIELD_H
+#define QiFIELD_H
+
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QMap>
+#include <QStringList>
+
+/// Database field
+/**
+    QiField store the value of a field in database model. The format is QVariant.
+    Therefore you may assign a QVariant to QiField direclty, and you may access
+    the stored QVariant by using operator-> or get() function.
+
+    @see QiModel
+    @see QiForeignKey
+ */
+
+template <typename T>
+class QiField : public QiBaseField
+{
+public:
+    /// Default constructor
+    QiField(){
+    }
+
+    /// Return the QMetaType id of the field
+    static int type(){
+        return qMetaTypeId<T>();
+    }
+
+    /// Copy the value from a QVariant object
+    inline QVariant operator=(const QVariant &val){
+        set(val);
+        return val;
+    }
+
+    /// Compare with other QiField
+    inline bool operator==(const QiField& rhs) const {
+        return get() == rhs.get();
+    }
+
+    /// Compare with QVariant type
+    inline bool operator==(const QVariant &rhs) const {
+        return get() == rhs;
+    }
+
+    /// Compare with QVariant type
+    inline bool operator!=(const QVariant &rhs) const {
+        return get() != rhs;
+    }
+
+    /// Compare with its template type
+    inline bool operator==(const T& t) const {
+        return get() == t;
+    }
+
+    /// Compare with its template type
+    inline bool operator!=(const T& t) const {
+        return get() != t;
+    }
+
+    /// Compare with string type
+    inline bool operator==(const char *string) const {
+        return get() == QString(string);
+    }
+
+    /// Compare with string type
+    inline bool operator!=(const char *string) const {
+        return get() != QString(string);
+    }
+
+    /// Get the value of the field
+    inline QVariant get(bool convert = false) const {
+        return QiBaseField::get(convert);
+    }
+
+    /// Set the value of the field
+    inline bool set(QVariant value) {
+        return QiBaseField::set(value);
+    }
+
+    /// Cast it to the template type
+    inline operator T() const {
+        QVariant v = get();
+        return v.value<T>();
+    }
+
+};
+
+// The built-in structured-field specializations below are defined `inline` in
+// the header (not out-of-line in a .cpp) on purpose. get()/set() are virtual,
+// and MSVC does not reliably emit an out-of-line explicit specialization of a
+// virtual member unless the enclosing class template is instantiated in that
+// same translation unit — which it isn't. Defining them inline gives every TU
+// (and every compiler) the definition, matching the QI_DECLARE_CONVERTER pattern.
+
+namespace QiFieldDetail {
+
+/// Escape & and " so list items survive being joined with the separator.
+inline QString escapeStringListItem(QString value) {
+    QString result;
+    QMap<char, QString> map;
+    map['&'] = "&amp;";
+    map['"'] = "&quot;";
+
+    result.reserve(value.size() * 1.1);
+    int n = value.size();
+    for (int i = 0; i < n; i++) {
+        QChar c = value.at(i);
+        char l = c.toLatin1();
+        if (map.contains(l)) {
+            result += map[l];
+        } else {
+            result += c;
+        }
+    }
+    result.squeeze();
+    return result;
+}
+
+inline QString unescapeStringListItem(QString value) {
+    QMap<QString, char> map;
+    map["&amp;"] = '&';
+    map["&quot;"] = '"';
+
+    QString result;
+    result.reserve(value.size());
+
+    int n = value.size();
+    for (int i = 0; i < n; i++) {
+        QChar q = value.at(i);
+
+        if (q == '&') {
+            bool found = false;
+            QMap<QString, char>::const_iterator iter = map.constBegin();
+            while (iter != map.end()) {
+                QString key = iter.key();
+                int len = key.size();
+
+                QStringView ref = QStringView(value).mid(i, len);
+                if (ref == QStringView(key)) {
+                    q = iter.value();
+                    i += len - 1;
+                    found = true;
+                    break;
+                }
+                iter++;
+            }
+
+            if (!found) {
+                qWarning() << QString("Invalid escaped string : %1").arg(value);
+            }
+        }
+
+        result += q;
+    }
+
+    result.squeeze();
+    return result;
+}
+
+/// Separator for QStringList storage.
+inline const char *stringListSeparator() { return " & "; }
+
+} // namespace QiFieldDetail
+
+template <>
+inline bool QiField<QStringList>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString) {
+        QString str = value.toString();
+        QStringList list = str.split(QiFieldDetail::stringListSeparator());
+        QStringList result;
+        foreach (str, list) {
+            result << QiFieldDetail::unescapeStringListItem(str);
+        }
+        value = result;
+    }
+    return QiBaseField::set(value);
+}
+
+template <>
+inline QVariant QiField<QStringList>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+
+    if (convert && val.userType() == QMetaType::QStringList) {
+        QStringList list = val.toStringList();
+        QStringList result;
+        QString str;
+        foreach (str, list) {
+            result << QiFieldDetail::escapeStringListItem(str);
+        }
+        val = result.join(QiFieldDetail::stringListSeparator());
+    }
+
+    return val;
+}
+
+// Structured JSON fields: hold a nested QJsonObject / QJsonArray in memory,
+// serialize to a JSON string only when persisted (convert = true).
+template <>
+inline bool QiField<QJsonObject>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString)
+        value = QJsonDocument::fromJson(value.toString().toUtf8()).object();
+    return QiBaseField::set(value);
+}
+
+template <>
+inline QVariant QiField<QJsonObject>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+    if (convert && val.userType() == QMetaType::QJsonObject)
+        return QString::fromUtf8(QJsonDocument(val.toJsonObject()).toJson(QJsonDocument::Compact));
+    return val;
+}
+
+template <>
+inline bool QiField<QJsonArray>::set(QVariant value) {
+    if (value.userType() == QMetaType::QString)
+        value = QJsonDocument::fromJson(value.toString().toUtf8()).array();
+    return QiBaseField::set(value);
+}
+
+template <>
+inline QVariant QiField<QJsonArray>::get(bool convert) const {
+    QVariant val = QiBaseField::get(convert);
+    if (convert && val.userType() == QMetaType::QJsonArray)
+        return QString::fromUtf8(QJsonDocument(val.toJsonArray()).toJson(QJsonDocument::Compact));
+    return val;
+}
+
+/// Primary key field
+
+class QiPrimaryKey : public QiField<int> {
+public:
+    QiPrimaryKey();
+    static QiClause clause();
+
+    inline QVariant operator=(const QVariant &val){
+        set(val);
+        return val;
+    }
+};
+
+/// Store an arbitrary C++ value type in a column via a pair of conversion functions.
+/**
+  Teaches QiField how to persist a custom type `TYPE`. Provide two free/static
+  functions (by name — not inline lambdas, so the macro stays comma-safe):
+
+    - `TO_STORAGE_FN(const TYPE&) -> QVariant`   a value SQLite can store
+                                                 (int / double / QString / ...)
+    - `FROM_STORAGE_FN(const QVariant&) -> TYPE` rebuild the value when loading
+
+  `TYPE` must be registered with `Q_DECLARE_METATYPE(TYPE)`, and the column's SQL
+  type should be set with `QI_FIELD_AS(field, "TEXT")` (or INTEGER/REAL/…).
+
+\code
+    struct GeoPoint { double lat, lng; };
+    Q_DECLARE_METATYPE(GeoPoint)
+
+    static QVariant geoToStorage(const GeoPoint &p) {
+        return QStringLiteral("%1,%2").arg(p.lat).arg(p.lng);
+    }
+    static GeoPoint geoFromStorage(const QVariant &v) {
+        const QStringList s = v.toString().split(',');
+        return GeoPoint{ s.value(0).toDouble(), s.value(1).toDouble() };
+    }
+    QI_DECLARE_CONVERTER(GeoPoint, geoToStorage, geoFromStorage)
+
+    // in the model:  QI_FIELD_AS(location, "TEXT")
+\endcode
+
+  Place the macro (and the two functions) before any model that uses
+  `QiField<TYPE>`.
+ */
+#define QI_DECLARE_CONVERTER(TYPE, TO_STORAGE_FN, FROM_STORAGE_FN)          \
+    template <> inline bool QiField<TYPE>::set(QVariant value) {            \
+        if (value.isValid() && !value.isNull()                             \
+                && value.userType() != qMetaTypeId<TYPE>())                \
+            value = QVariant::fromValue<TYPE>( FROM_STORAGE_FN(value) );    \
+        return QiBaseField::set(value);                                     \
+    }                                                                       \
+    template <> inline QVariant QiField<TYPE>::get(bool convert) const {    \
+        QVariant _v = QiBaseField::get(convert);                           \
+        if (convert && _v.userType() == qMetaTypeId<TYPE>())               \
+            return QVariant( TO_STORAGE_FN( _v.value<TYPE>() ) );          \
+        return _v;                                                          \
+    }
+
+#endif // QiFIELD_H
+
+// ---- src/qifieldref.h --------------------------------------------
+#ifndef QiFIELDREF_H
+#define QiFIELDREF_H
+
+#include <cstddef>
+
+/// A type-safe, refactor-proof reference to a model field, as a QiWhere.
+/**
+  Instead of hardcoding a column-name string, pass a pointer-to-member. The
+  compiler checks the member exists, and renaming the field is caught at compile
+  time instead of silently breaking a query at runtime.
+
+\code
+    User user;
+    user.load( qiField(&User::userId) == "anonymous" );          // no "userId" string
+
+    auto top = User::objects()
+                 .filter( qiField(&User::karma) > 100 )
+                 .orderBy("karma desc")
+                 .all();
+\endcode
+
+  Works for any field you declare on the model. For the built-in primary key,
+  use `QiWhere("id")` (or the explicit form `qiField<User>(&User::id)`), because
+  `id` is inherited from QiModel.
+
+  @param member A pointer to a QiField member of model T (e.g. `&User::userId`).
+  @return A QiWhere field for use with the comparison operators, or a null
+          QiWhere if the member is not a registered field.
+ */
+template <typename T, typename M>
+inline QiWhere qiField(M T::* member) {
+    T probe;
+    const size_t offset = reinterpret_cast<size_t>(&(probe.*member))
+                        - reinterpret_cast<size_t>(&probe);
+
+    QiModelMetaInfo *info = qiMetaInfo<T>();
+    const int n = info->size();
+    for (int i = 0; i < n; i++) {
+        if (static_cast<size_t>(info->at(i)->offset) == offset)
+            return QiWhere(info->at(i)->name);
+    }
+    return QiWhere();
+}
+
+#endif // QiFIELDREF_H
 
 // ---- src/qilist.h ------------------------------------------------
 #ifndef QiLIST_H
@@ -4230,237 +4519,6 @@ private:
 
 #endif // QiMIGRATOR_H
 
-// ---- src/qiqueryrules.h ------------------------------------------
-#ifndef QiQUERYRULES_H
-#define QiQUERYRULES_H
-
-#include <QSharedDataPointer>
-
-/// QiQueryRules represent the rules/clauses set for QiSharedQuery.
-
-/** QiSharedQuery/QiQuery do not provide any interface to get the rules / clause set for query.
-  Instead it should use QiQueryRules to retrieve the information. Normally user do not need to
-  retreive the rules set for a query, it is useful for implement custom select sql or unit tests
- */
-
-class QiQueryRules
-{
-public:
-    QiQueryRules();
-    QiQueryRules(const QiQueryRules &);
-    QiQueryRules &operator=(const QiQueryRules &);
-    QiQueryRules &operator=(const QiSharedQuery &);
-    ~QiQueryRules();
-
-    /// Get the limit of query
-    int limit();
-
-    /// Get the offset of query
-    int offset();
-
-    QiExpression expression();
-
-    /// Get the GROUP BY terms
-    QStringList groupBy();
-
-    /// Get the HAVING expression
-    QiExpression having();
-
-    /// Get the func that should be applied on result column
-    QString func();
-
-    /// Get the QiModelMetaInfo instance of the query model
-    QiModelMetaInfo *metaInfo();
-
-    /// Get the field for result column
-    QStringList fields();
-
-    /// Get the field for orderBy
-    QStringList orderBy();
-
-    /// Get the JOIN clauses of the query
-    QList<QiBaseJoin> joins();
-
-    /// TRUE if the query should emit SELECT DISTINCT
-    bool distinct();
-
-private:
-    QSharedDataPointer<QiSharedQueryPriv> data;
-};
-
-#endif // QiQUERYRULES_H
-
-// ---- src/qisqlstatement.h ----------------------------------------
-#ifndef QiSQLSTATEMENT_H
-#define QiSQLSTATEMENT_H
-
-#include <QString>
-
-
-class QiSharedQuery;
-class QiQueryRules;
-
-/// Sql Statement generator abstract interface
-
-class QiSqlStatement
-{
-public:
-    /// Default constructor
-    QiSqlStatement();
-
-    virtual ~QiSqlStatement() {}
-
-    /// Get the supported driver name
-    virtual QString driverName() = 0;
-
-    /// Build the statement generator for a Qt SQL driver name: "QSQLITE",
-    /// "QMYSQL"/"QMARIADB", "QPSQL", "QODBC" (SQL Server), or "QOCI" (Oracle).
-    /// Unknown drivers fall back to SQLite.
-    static QiSqlStatement *forDriver(const QString &driverName);
-
-    /// "CREATE TABLE IF NOT EXISTS" statement
-    template <typename T>
-    QString createTableIfNotExists() {
-        QiModelMetaInfo *info = qiMetaInfo<T>();
-        return _createTableIfNotExists(info);
-    }
-
-    /// "CREATE TABLE IF NOT EXISTS" statement
-    virtual QString createTableIfNotExists(QiModelMetaInfo *info);
-
-    /// "DROP TABLE" statement
-    template <typename T>
-    QString dropTable() {
-        QiModelMetaInfo *info = qiMetaInfo<T>();
-        return dropTable(info);
-    }
-
-    /// Drop table statement
-    virtual QString dropTable(QiModelMetaInfo *info);
-
-    /// "ALTER TABLE ... ADD COLUMN" statement for a single field (migrations)
-    virtual QString addColumn(QiModelMetaInfo *info, const QiModelMetaInfoField *field);
-
-    /// Rename a column (SQLite 3.25+): ALTER TABLE ... RENAME COLUMN a TO b
-    virtual QString renameColumn(QiModelMetaInfo *info, const QString &from, const QString &to);
-
-    /// Drop a column (SQLite 3.35+): ALTER TABLE ... DROP COLUMN name
-    virtual QString dropColumn(QiModelMetaInfo *info, const QString &name);
-
-    /// Create index statement
-    virtual QString createIndexIfNotExists(const QiBaseIndex& index);
-
-    /// Drop the index
-    virtual QString dropIndexIfExists(QString name);
-
-    /// Statements that create an FTS5 index (virtual table + sync triggers + rebuild)
-    virtual QStringList createFtsIndex(const QiBaseFtsIndex &index);
-
-    /// Statements that drop an FTS5 index (its triggers + virtual table)
-    virtual QStringList dropFtsIndex(QString name);
-
-    /// Insert into statement
-    /**
-      @param with_id TRUE if the "id" field should be included.
-     */
-    virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
-
-    /// Replace into statement
-    /**
-      @param with_id TRUE if the "id" field should be included.
-     */
-    virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
-
-    /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
-    /**
-      A non-destructive upsert: insert the row, or if it collides on the given
-      conflict column(s), update the other columns in place (keeping the row's
-      primary key). Requires SQLite 3.24 or newer.
-
-      @param fields The columns to insert.
-      @param conflictColumns The unique/primary column(s) that identify an
-             existing row (the ON CONFLICT target).
-     */
-    virtual QString upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns);
-
-    /// Select statement
-    virtual QString select(QiSharedQuery query);
-
-    /// Delete from statement
-    virtual QString deleteFrom(QiSharedQuery query);
-
-    /// Update statement: UPDATE <table> SET <field> = :set_<field> ... WHERE ...
-    /** The value for each field is bound under the placeholder ":set_<field>". */
-    virtual QString update(QiSharedQuery query, const QStringList &fields);
-
-    /// Returns a string representation of the QVariant for SQL statement
-    virtual QString formatValue(QVariant value,bool trimStrings = false);
-
-    // --- dialect hooks (overridden per database) ------------------------------
-
-    /// Map a QMetaType id to this dialect's column type (INTEGER / INT / VARCHAR(255) / …).
-    /// Returns a null string for an unsupported type.
-    virtual QString columnTypeName(int type);
-
-    /// Like columnTypeName(), but may adapt the type to the column's clause — e.g. MySQL
-    /// needs a bounded VARCHAR for a keyed string but wants TEXT for free text. The default
-    /// ignores the clause and returns columnTypeName(type).
-    virtual QString columnTypeForField(int type, QiClause clause);
-
-    /// Build a column's constraint text: NOT NULL / UNIQUE / DEFAULT / CHECK / PRIMARY KEY.
-    virtual QString columnConstraint(QiClause clause, const QString &typeName, bool emitPrimaryKey = true);
-
-    /// The PRIMARY KEY clause for a column, including auto-increment where the dialect wants it.
-    virtual QString primaryKeyClause(const QString &typeName);
-
-    /// Text appended right after the closing ")" of CREATE TABLE (WITHOUT ROWID, ENGINE=…, …).
-    virtual QString tableSuffix(QiModelMetaInfo *info);
-
-    /// A query that returns at least one row iff the given table already exists.
-    virtual QString exists(QiModelMetaInfo *info);
-
-    /// An optional query that returns the id of the row just inserted, for drivers whose
-    /// QSqlQuery::lastInsertId() doesn't report it (Postgres → "SELECT lastval()"). An empty
-    /// string (the default) means use QSqlQuery::lastInsertId() (SQLite / MySQL).
-    virtual QString lastInsertIdQuery() const { return QString(); }
-
-    /// Like lastInsertIdQuery(), but told which table was just inserted into. Most
-    /// dialects don't need this (Postgres's lastval()/SQL Server's @@IDENTITY are both
-    /// session-scoped, not table-scoped) and can leave this at the default, which just
-    /// forwards to the no-arg overload above. Oracle overrides this one instead, because
-    /// its per-table companion sequence (see QiOracleStatement) can only be named once
-    /// the table is known.
-    virtual QString lastInsertIdQuery(QiModelMetaInfo *info) const { Q_UNUSED(info); return lastInsertIdQuery(); }
-
-    /// True if this dialect's prepared statements must keep a trailing ";" — SQL Server's
-    /// MERGE statement is a syntax error without one, unlike every other statement shape
-    /// every other dialect emits. Everything else is fine either way, hence the default.
-    virtual bool keepsStatementTerminator() const { return false; }
-
-protected:
-    /// The real function for create table if not exists. The base implementation is a
-    /// portable generator that calls the dialect hooks above; SQLite overrides it.
-    virtual QString _createTableIfNotExists(QiModelMetaInfo *info);
-
-    /// The real function for "insert into / replace into" statement
-    virtual QString _insertInto(QiModelMetaInfo *info ,QString type, QStringList fields);
-
-    virtual QString selectCore(QiQueryRules rules);
-
-    virtual QString selectResultColumn(QiQueryRules rules);
-
-    /// Generate the JOIN clauses (e.g. "INNER JOIN friendship ON ...")
-    virtual QString joinClause(QiQueryRules rules);
-
-    virtual QString limitAndOffset(int limit, int offset = 0);
-
-    virtual QString orderBy(QiQueryRules rules);
-
-};
-
-
-#endif // QiSQLSTATEMENT_H
-
 // ---- src/qimssqlstatement.h --------------------------------------
 #ifndef QIMSSQLSTATEMENT_H
 #define QIMSSQLSTATEMENT_H
@@ -5723,7 +5781,8 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
     const bool sqlite = (driver == QLatin1String("QSQLITE"));
 
     // Supported drivers: SQLite, MySQL/MariaDB, PostgreSQL, SQL Server (QODBC),
-    // Oracle (QOCI). This allow-list is deliberately separate from
+    // Oracle (QOCI), and DuckDB (a QDUCKDB driver an embedder registers around
+    // DuckDB's C API — Qt ships none). This allow-list is deliberately separate from
     // QiSqlStatement::forDriver()'s own driver-name dispatch — both must be kept
     // in sync, or a new dialect either can't open a connection at all (rejected
     // here first) or silently falls back to the SQLite statement generator
@@ -5733,7 +5792,9 @@ bool QiConnection::open(QSqlDatabase db, bool asDefault){
         && driver != QLatin1String("QMARIADB")
         && driver != QLatin1String("QPSQL")
         && driver != QLatin1String("QODBC")
-        && driver != QLatin1String("QOCI")) {
+        && driver != QLatin1String("QOCI")
+        && driver != QLatin1String("QDUCKDB")
+        && driver != QLatin1String("DUCKDB")) {
         qWarning() << "Unsupported SQL driver:" << driver;
         setLastError(QiError(QiError::NotSupported,
                              QStringLiteral("Unsupported SQL driver: %1").arg(driver)));
@@ -6066,6 +6127,103 @@ QSqlQuery QiConnection::lastQuery(){
     d->mutex.unlock();
 
     return query;
+}
+
+// ---- src/qiduckdbstatement.cpp -----------------------------------
+#include <QStringList>
+#include <QDebug>
+
+
+// Stands in for the real "<table>_id_seq" name inside createTableIfNotExists() — the only
+// hook that knows the table name; primaryKeyClause() only sees the column's type.
+static const QString kDuckSeqToken = QStringLiteral("__QIVOT_DUCKDB_SEQ__");
+
+QiDuckDbStatement::QiDuckDbStatement()
+{
+}
+
+QString QiDuckDbStatement::driverName(){
+    return QStringLiteral("DUCKDB");
+}
+
+QString QiDuckDbStatement::columnTypeName(int type){
+    switch (type){
+    case QMetaType::Int:
+    case QMetaType::UInt:          return QStringLiteral("INTEGER");
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:     return QStringLiteral("BIGINT");
+    case QMetaType::Float:         return QStringLiteral("FLOAT");
+    case QMetaType::Double:        return QStringLiteral("DOUBLE");
+    // DuckDB's VARCHAR is unlimited *and* indexable, so — unlike MySQL/Oracle — plain and
+    // keyed strings share one type and no columnTypeForField() override is needed. JSON is
+    // stored as text (a serialized string), matching every other dialect.
+    case QMetaType::QString:
+    case QMetaType::QStringList:
+    case QMetaType::QJsonObject:
+    case QMetaType::QJsonArray:
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:  return QStringLiteral("VARCHAR");
+    case QMetaType::QDateTime:     return QStringLiteral("TIMESTAMP");
+    case QMetaType::QDate:         return QStringLiteral("DATE");
+    case QMetaType::QTime:         return QStringLiteral("TIME");
+    case QMetaType::QByteArray:    return QStringLiteral("BLOB");
+    case QMetaType::Bool:          return QStringLiteral("BOOLEAN");
+    default: break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QMetaType(type).flags() & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#else
+    if (QMetaType::typeFlags(static_cast<QMetaType::Type>(type)) & QMetaType::IsEnumeration) return QStringLiteral("INTEGER");
+#endif
+    return QString();
+}
+
+QString QiDuckDbStatement::primaryKeyClause(const QString &typeName){
+    // No IDENTITY/SERIAL keyword — an integer key DEFAULTs to the next value of the
+    // table's companion sequence. kDuckSeqToken is filled in by createTableIfNotExists().
+    if (typeName == QLatin1String("INTEGER") || typeName == QLatin1String("BIGINT"))
+        return QString("DEFAULT nextval('%1') PRIMARY KEY").arg(kDuckSeqToken);
+    return QStringLiteral("PRIMARY KEY");
+}
+
+QString QiDuckDbStatement::sequenceName(QiModelMetaInfo *info){
+    return info->name() + QStringLiteral("_id_seq");
+}
+
+QString QiDuckDbStatement::createTableIfNotExists(QiModelMetaInfo *info){
+    // An auto-increment table needs its companion sequence to exist first. DuckDB has
+    // both CREATE SEQUENCE IF NOT EXISTS and CREATE TABLE IF NOT EXISTS and runs multiple
+    // ";"-separated statements per query, so both go in one idempotent string.
+    const QString seq = sequenceName(info);
+    QString ddl = _createTableIfNotExists(info);
+    ddl.replace(kDuckSeqToken, seq);
+    return QString("CREATE SEQUENCE IF NOT EXISTS \"%1\";\n%2").arg(seq, ddl);
+}
+
+QString QiDuckDbStatement::replaceInto(QiModelMetaInfo *info, QStringList fields){
+    // DuckDB has no REPLACE INTO — same translation Postgres uses: an upsert whose
+    // conflict target is the primary key.
+    QString pk = info->primaryKeyName();
+    if (pk.isEmpty()) pk = QStringLiteral("id");
+    return upsertInto(info, fields, QStringList() << pk);
+}
+
+QString QiDuckDbStatement::lastInsertIdQuery(QiModelMetaInfo *info) const {
+    // currval() is connection-scoped once nextval has run in the session (like Oracle's
+    // CURRVAL / Postgres's lastval()), so it survives the separate id query — but it
+    // needs to know which sequence, hence this table-aware overload.
+    return QString("SELECT currval('%1')").arg(sequenceName(info));
+}
+
+QStringList QiDuckDbStatement::createFtsIndex(const QiBaseFtsIndex &index){
+    Q_UNUSED(index);
+    qWarning() << "QiDuckDbStatement: full-text search (FTS) is not supported on DuckDB yet; skipping.";
+    return QStringList();
+}
+
+QStringList QiDuckDbStatement::dropFtsIndex(QString name){
+    Q_UNUSED(name);
+    return QStringList();
 }
 
 // ---- src/qiexpression.cpp ----------------------------------------
@@ -8962,6 +9120,11 @@ QiSqlStatement *QiSqlStatement::forDriver(const QString &driverName){
         return new QiMsSqlStatement();
     if (driverName == QLatin1String("QOCI"))
         return new QiOracleStatement();
+    // DuckDB has no Qt-bundled driver; a QDUCKDB plugin around DuckDB's C API is the
+    // intended runtime (see docs). "DUCKDB" is accepted too for embedders that register
+    // the driver under the bare name.
+    if (driverName == QLatin1String("QDUCKDB") || driverName == QLatin1String("DUCKDB"))
+        return new QiDuckDbStatement();
     // QSQLITE and anything else fall back to SQLite.
     return new QiSqliteStatement();
 }

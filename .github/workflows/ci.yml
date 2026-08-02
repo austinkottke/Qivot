@@ -215,6 +215,45 @@ jobs:
           QIVOT_PASS: "Qivot_Test1"
         run: ./integration sqlserver
 
+  # DuckDB is embedded, so this needs no service container — just qtbase plus the
+  # libduckdb C API bundle. Qt ships no DuckDB driver, so the test build compiles the
+  # bundled QDUCKDB driver (drivers/duckdb) against libduckdb and runs the same
+  # integration round-trip in-process. Pinned to the DuckDB version the driver was
+  # validated against (bump deliberately).
+  duckdb:
+    name: db-integration · DuckDB (embedded)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DUCKDB_VERSION: v1.5.5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qmake6 qt6-base-dev curl unzip
+
+      - name: Fetch the libduckdb C API bundle
+        run: |
+          curl -sSL -o libduckdb.zip \
+            "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-linux-amd64.zip"
+          mkdir -p "$GITHUB_WORKSPACE/duckdblib"
+          unzip -o libduckdb.zip -d "$GITHUB_WORKSPACE/duckdblib"
+
+      - name: Build the integration test with DuckDB
+        working-directory: tests/integration
+        run: |
+          qmake6 CONFIG+=duckdb DUCKDB_DIR="$GITHUB_WORKSPACE/duckdblib"
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run against DuckDB (in-memory)
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+          LD_LIBRARY_PATH: ${{ github.workspace }}/duckdblib
+        run: ./integration duckdb
+
   windows:
     name: windows-latest (msvc)
     runs-on: windows-latest
