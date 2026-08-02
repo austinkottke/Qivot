@@ -5,9 +5,18 @@
 <p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white" alt="C++17">
   <img src="https://img.shields.io/badge/Qt-5.15%20%7C%206-41CD52?logo=qt&logoColor=white" alt="Qt 5.15 or 6">
-  <img src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
   <a href="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
+<p align="center">
+  <!-- Live per-backend integration status. Each database runs in its own workflow, so a
+       red badge points at the exact dialect that broke. Oracle is generation-only (unit tests). -->
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml/badge.svg" alt="SQLite"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-mysql.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-mysql.yml/badge.svg" alt="MySQL / MariaDB"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-postgres.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-postgres.yml/badge.svg" alt="PostgreSQL"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlserver.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlserver.yml/badge.svg" alt="SQL Server"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-duckdb.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-duckdb.yml/badge.svg" alt="DuckDB"></a>
 </p>
 
 <p align="center">
@@ -39,15 +48,20 @@
   <em><a href="examples/fluxo">Fluxo example</a> — a flow-field particle recorder that batch-writes <strong>every particle, every frame</strong> to SQLite. Above: the live app sustaining <strong>113,286 writes/sec</strong> (2.9M rows recorded) on WAL, and never dropping a frame. Drag the timeline to <strong>replay any past moment straight from the database</strong>.</em>
 </p>
 
-Qivot is a modern **C++17 ORM for Qt and SQLite**. Declare your models as plain
-C++/Qt classes — no SQL, no `QObject` — then query, join, and full-text search
-them through a typed C++ API. And where a plain ORM stops, Qivot keeps going: it
+Qivot is a modern **C++17 ORM for Qt** that runs one set of models on **six SQL
+databases** — SQLite, MySQL/MariaDB, PostgreSQL, SQL Server, Oracle, and DuckDB.
+Declare your models as plain C++/Qt classes — no SQL, no `QObject` — then query,
+join, and full-text search them through a typed C++ API. And where a plain ORM
+stops, Qivot keeps going: it
 **maps a JSON schema straight into your models** and **pulls a REST/JSON API over
 HTTP on a worker thread**, writing the results into your database.
 
 ## ✨ Highlights
 
 - 🧩 **Plain-C++ models** — declare a class, get a table. No SQL, no `QObject`.
+- 🗄️ **[Six SQL backends](#-databases)** — the same models run on SQLite,
+  MySQL/MariaDB, PostgreSQL, SQL Server, Oracle, and DuckDB; Qivot generates each
+  dialect. Five are round-trip tested against real servers in CI.
 - 🔑 **[Flexible primary keys](#custom-primary-keys-string-ids-no-auto-id)** — an
   auto-increment `id` by default, or key the table on your own string id (a ULID,
   a `userId`) or a composite key with `QiPrimary`; foreign keys reference it and
@@ -79,6 +93,28 @@ HTTP on a worker thread**, writing the results into your database.
 - 📦 **[Header-only option](#install)** — drop in a single generated
   [`dist/qivot.hpp`](dist/qivot.hpp); no library to build. (Or use qmake / CMake
   as a static lib.)
+
+## 🗄️ Databases
+
+The same models run on any of **six SQL backends** — Qivot emits the right dialect for
+each (types, auto-increment keys, upserts, `information_schema` vs `PRAGMA`, paging, …).
+Every backend except Oracle is verified by a **live round-trip in CI** — real servers as
+service containers, DuckDB in-process — and each one runs in **its own workflow**, so the
+badge points at the exact dialect that broke. Oracle's SQL generation is unit-tested (its
+`QOCI` plugin isn't packaged for CI yet).
+
+| Database | Qt driver | Auto-increment id | Upsert | Live status |
+|---|---|---|---|---|
+| **SQLite** | `QSQLITE` (bundled) | `AUTOINCREMENT` | `ON CONFLICT` | [![SQLite](https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml/badge.svg)](https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml) |
+| **MySQL / MariaDB** | `QMYSQL` | `AUTO_INCREMENT` | `ON DUPLICATE KEY` | [![MySQL / MariaDB](https://github.com/austinkottke/Qivot/actions/workflows/db-mysql.yml/badge.svg)](https://github.com/austinkottke/Qivot/actions/workflows/db-mysql.yml) |
+| **PostgreSQL** | `QPSQL` | `IDENTITY` | `ON CONFLICT` | [![PostgreSQL](https://github.com/austinkottke/Qivot/actions/workflows/db-postgres.yml/badge.svg)](https://github.com/austinkottke/Qivot/actions/workflows/db-postgres.yml) |
+| **SQL Server** | `QODBC` | `IDENTITY` (`@@IDENTITY`) | `MERGE` | [![SQL Server](https://github.com/austinkottke/Qivot/actions/workflows/db-sqlserver.yml/badge.svg)](https://github.com/austinkottke/Qivot/actions/workflows/db-sqlserver.yml) |
+| **DuckDB** | `QDUCKDB` ([bundled driver](drivers/duckdb)) | sequence · `nextval` / `currval` | `ON CONFLICT` | [![DuckDB](https://github.com/austinkottke/Qivot/actions/workflows/db-duckdb.yml/badge.svg)](https://github.com/austinkottke/Qivot/actions/workflows/db-duckdb.yml) |
+| **Oracle** | `QOCI` | sequence · `NEXTVAL` / `CURRVAL` | `MERGE` | 🧪 unit-tested (SQL generation) |
+
+> DuckDB has no Qt-bundled driver, so Qivot ships a small `QSqlDriver` for it in
+> [`drivers/duckdb`](drivers/duckdb) (compiled against DuckDB's C API). Switching backends is
+> just the connection — `QSqlDatabase::addDatabase("QPSQL")` and the models are unchanged.
 
 ## 🆕 What's new
 

@@ -1,0 +1,35 @@
+name: SQLite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: db-sqlite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: integration · SQLite (in-memory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 + SQLite driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qmake6 qt6-base-dev libqt6sql6-sqlite
+
+      - name: Build the integration test
+        working-directory: tests/integration
+        run: |
+          qmake6
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run against SQLite
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+        run: ./integration sqlite

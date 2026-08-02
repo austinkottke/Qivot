@@ -1,0 +1,66 @@
+name: SQL Server
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: db-sqlserver-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: integration · SQL Server (live)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      # SQL Server has no "just give it a database name" env var like the other backends —
+      # qivot_test is created by hand below. The SA password must meet SQL Server's
+      # complexity rules (8+ chars, 3 of 4 classes).
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Qivot_Test1"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $MSSQL_SA_PASSWORD -C -Q 'SELECT 1' || exit 1"
+          --health-interval=10s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 + SQL Server ODBC driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qmake6 qt6-base-dev libqt6sql6-sqlite libqt6sql6-odbc unixodbc unixodbc-dev curl gnupg
+          # Debian/Ubuntu's Qt6 ODBC plugin links against unixODBC (the standard driver
+          # manager on Linux), which is what Microsoft's msodbcsql18 supports. Microsoft's
+          # driver isn't in Ubuntu's repos, so add Microsoft's own apt repo (their documented
+          # install path: learn.microsoft.com/sql/connect/odbc/linux-mac).
+          curl -sSL -O https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 mssql-tools18
+
+      - name: Create the qivot_test database
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -P "Qivot_Test1" -C \
+            -Q "IF DB_ID('qivot_test') IS NULL CREATE DATABASE qivot_test;"
+
+      - name: Build the integration test
+        working-directory: tests/integration
+        run: |
+          qmake6
+          make -j"$(getconf _NPROCESSORS_ONLN)"
+
+      - name: Run against SQL Server
+        working-directory: tests/integration
+        env:
+          QIVOT_REQUIRE_DB: '1'
+          QIVOT_USER: sa
+          QIVOT_PASS: "Qivot_Test1"
+        run: ./integration sqlserver
