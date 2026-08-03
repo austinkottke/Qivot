@@ -19,6 +19,12 @@ ApplicationWindow {
 
     property int tab: 0     // 0 Overview, 1 Projects, 2 Visualization, 3 Utilization, 4 Ledger
 
+    // Drive the responsive breakpoint from the viewport width. On WebAssembly the
+    // window fills the browser canvas, so this tracks the device/browser width —
+    // phones fall under ~720px and every component switches to its compact layout.
+    onWidthChanged: Theme.compact = width < 720
+    Component.onCompleted: Theme.compact = width < 720
+
     // gradient backdrop
     background: Rectangle {
         gradient: Gradient {

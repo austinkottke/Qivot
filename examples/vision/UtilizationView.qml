@@ -26,6 +26,7 @@ Item {
             Repeater {
                 model: store.staff
                 Rectangle {
+                    id: card
                     width: parent.width; height: 64; radius: 12; color: Theme.field
                     Row {
                         anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
@@ -35,7 +36,9 @@ Item {
                                     Text { anchors.centerIn: parent; text: Theme.initials(modelData.name)
                                            color: "white"; font.pixelSize: 15; font.bold: true } }
                         Column {
-                            anchors.verticalCenter: parent.verticalCenter; spacing: 2; width: 200
+                            anchors.verticalCenter: parent.verticalCenter; spacing: 2
+                            // on phones the hours+gauge block is hidden, so the name gets the room
+                            width: Theme.compact ? (card.width - 152) : 200
                             Text { text: modelData.name; color: Theme.ink; font.pixelSize: 14; font.bold: true }
                             Text { text: modelData.title + " · " + modelData.employee; color: Theme.muted; font.pixelSize: 11 }
                         }
@@ -45,6 +48,7 @@ Item {
                         anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                         spacing: 18
                         Column {
+                            visible: !Theme.compact          // hidden on phones — the % chip carries it
                             anchors.verticalCenter: parent.verticalCenter; spacing: 1
                             Text { horizontalAlignment: Text.AlignRight; width: 160
                                    text: modelData.billableHrs.toFixed(0) + " billable · " + modelData.totalHrs.toFixed(0) + " total"

@@ -6,8 +6,8 @@ import QtQuick.Controls 2.15
 Dialog {
     id: dlg
     modal: true
-    width: 440
     anchors.centerIn: Overlay.overlay
+    width: Math.min(440, (Overlay.overlay ? Overlay.overlay.width : 440) - 24)
     title: "Post labor entry"
 
     background: Rectangle { radius: 14; color: Theme.card; border.width: 1; border.color: Theme.border }

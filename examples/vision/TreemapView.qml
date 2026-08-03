@@ -21,8 +21,10 @@ Item {
         return Qt.rgba(r, g, b, 0.94);
     }
 
-    // org columns (width ∝ org compensation), tiles stacked within (height ∝ compensation)
-    function computeCells(W, H, tiles) {
+    // Wide: org COLUMNS (width ∝ compensation), tiles stacked vertically within.
+    // Compact (phone): org ROWS (height ∝ compensation), tiles laid out horizontally
+    // within each band — reads far better in portrait than three thin columns.
+    function computeCells(W, H, tiles, compact) {
         if (!tiles || tiles.length === 0 || W <= 0 || H <= 0) return [];
         var order = [], byOrg = {}, orgSize = {}, total = 0;
         for (var i = 0; i < tiles.length; i++) {
@@ -30,21 +32,41 @@ Item {
             if (byOrg[t.org] === undefined) { byOrg[t.org] = []; orgSize[t.org] = 0; order.push(t.org); }
             byOrg[t.org].push(t); orgSize[t.org] += t.size; total += t.size;
         }
-        var out = [], pad = 6, headerH = 26, x = 0;
-        for (var o = 0; o < order.length; o++) {
-            var org = order[o];
-            var colW = W * (orgSize[org] / total);
-            out.push({ header: true, org: org, x: x, y: 0, w: colW, h: headerH });
-            var y = headerH, innerH = H - headerH, list = byOrg[org];
-            for (var j = 0; j < list.length; j++) {
-                var c = list[j];
-                var th = innerH * (c.size / orgSize[org]);
-                out.push({ header: false, x: x + pad / 2, y: y + pad / 2,
-                           w: Math.max(0, colW - pad), h: Math.max(0, th - pad),
-                           name: c.name, wbs1: c.wbs1, profit: c.profit, revenue: c.revenue, heat: c.heat });
-                y += th;
+        var out = [], pad = 6, headerH = 24, o, org, list, j, c;
+        if (!compact) {
+            var x = 0;
+            for (o = 0; o < order.length; o++) {
+                org = order[o];
+                var colW = W * (orgSize[org] / total);
+                out.push({ header: true, org: org, x: x, y: 0, w: colW, h: headerH });
+                var y = headerH, innerHc = H - headerH; list = byOrg[org];
+                for (j = 0; j < list.length; j++) {
+                    c = list[j];
+                    var th = innerHc * (c.size / orgSize[org]);
+                    out.push({ header: false, x: x + pad / 2, y: y + pad / 2,
+                               w: Math.max(0, colW - pad), h: Math.max(0, th - pad),
+                               name: c.name, wbs1: c.wbs1, profit: c.profit, revenue: c.revenue, heat: c.heat });
+                    y += th;
+                }
+                x += colW;
             }
-            x += colW;
+        } else {
+            var yy = 0;
+            for (o = 0; o < order.length; o++) {
+                org = order[o];
+                var rowH = H * (orgSize[org] / total);
+                out.push({ header: true, org: org, x: 0, y: yy, w: W, h: headerH });
+                var xx = 0, innerY = yy + headerH, innerHr = rowH - headerH; list = byOrg[org];
+                for (j = 0; j < list.length; j++) {
+                    c = list[j];
+                    var tw = W * (c.size / orgSize[org]);
+                    out.push({ header: false, x: xx + pad / 2, y: innerY + pad / 2,
+                               w: Math.max(0, tw - pad), h: Math.max(0, innerHr - pad),
+                               name: c.name, wbs1: c.wbs1, profit: c.profit, revenue: c.revenue, heat: c.heat });
+                    xx += tw;
+                }
+                yy += rowH;
+            }
         }
         return out;
     }
@@ -58,11 +80,12 @@ Item {
         Row {
             width: parent.width
             Column {
-                width: parent.width - 520; spacing: 2
-                Text { text: "Company Project Visualization"; color: Theme.ink; font.pixelSize: 20; font.bold: true }
+                width: Theme.compact ? parent.width : parent.width - 520; spacing: 2
+                Text { text: "Company Project Visualization"; color: Theme.ink; font.pixelSize: Theme.compact ? 17 : 20; font.bold: true }
                 Text { text: "Every active project, grouped by organization."; color: Theme.muted; font.pixelSize: 12 }
             }
             Row {
+                visible: !Theme.compact          // the Color/Size/Grouping selectors don't fit a phone
                 width: 520; height: 44; spacing: 10; layoutDirection: Qt.LeftToRight
                 Repeater {
                     model: [ { k: "Color", v: "JTD Profit" }, { k: "Size", v: "Compensation" }, { k: "Grouping", v: "Organization" } ]
@@ -86,7 +109,7 @@ Item {
             Item {
                 id: plane
                 anchors.fill: parent; anchors.margins: 12
-                property var cells: root.computeCells(width, height, store.treemap)
+                property var cells: root.computeCells(width, height, store.treemap, Theme.compact)
 
                 Repeater {
                     model: plane.cells
@@ -129,7 +152,7 @@ Item {
             Text { text: "Profit:"; color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
             Text { text: "low"; color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
             Rectangle {
-                width: 220; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
+                width: Theme.compact ? 130 : 220; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: root.heatColor(0) }
@@ -138,7 +161,7 @@ Item {
                 }
             }
             Text { text: "high"; color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: "· tile size = compensation (direct labor cost)"; color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+            Text { visible: !Theme.compact; text: "· tile size = compensation (direct labor cost)"; color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
         }
     }
 }

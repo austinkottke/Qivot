@@ -212,6 +212,10 @@ int main(int argc, char **argv) {
         const QString base = qEnvironmentVariable("QIVOT_SHOT");
         QObject *root = engine.rootObjects().first();
         QQuickWindow *w = qobject_cast<QQuickWindow *>(root);
+        if (qEnvironmentVariableIsSet("QIVOT_W")) {   // e.g. QIVOT_W=390 QIVOT_H=844 for a phone
+            root->setProperty("width", qEnvironmentVariable("QIVOT_W").toInt());
+            root->setProperty("height", qEnvironmentVariable("QIVOT_H", "844").toInt());
+        }
         auto grab = [w](const QString &path) { QImage i = w->grabWindow(); if (!i.isNull()) i.save(path); };
         const char *names[] = { "overview", "projects", "visualization", "utilization", "ledger" };
         int t = 1000;

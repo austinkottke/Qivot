@@ -33,12 +33,12 @@ Item {
             // header
             Row {
                 width: parent.width; spacing: 0; height: 20
-                Text { width: parent.width * 0.32; text: "PROJECT"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
-                Text { width: parent.width * 0.16; text: "PRINCIPAL / PM"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
-                Text { width: parent.width * 0.13; horizontalAlignment: Text.AlignRight; text: "FEE"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
-                Text { width: parent.width * 0.13; horizontalAlignment: Text.AlignRight; text: "REVENUE"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
-                Text { width: parent.width * 0.12; horizontalAlignment: Text.AlignRight; text: "COMP"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
-                Text { width: parent.width * 0.14; horizontalAlignment: Text.AlignRight; text: "PROFIT"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { width: parent.width * (Theme.compact ? 0.46 : 0.32); text: "PROJECT"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { visible: !Theme.compact; width: parent.width * (Theme.compact ? 0 : 0.16); text: "PRINCIPAL / PM"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { visible: !Theme.compact; width: parent.width * (Theme.compact ? 0 : 0.13); horizontalAlignment: Text.AlignRight; text: "FEE"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { width: parent.width * (Theme.compact ? 0.27 : 0.13); horizontalAlignment: Text.AlignRight; text: "REVENUE"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { visible: !Theme.compact; width: parent.width * (Theme.compact ? 0 : 0.12); horizontalAlignment: Text.AlignRight; text: "COMP"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
+                Text { width: parent.width * (Theme.compact ? 0.27 : 0.14); horizontalAlignment: Text.AlignRight; text: "PROFIT"; color: Theme.muted; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1 }
             }
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
@@ -57,7 +57,7 @@ Item {
                             spacing: 8
                             Rectangle { width: 4; height: 18; radius: 2; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
                             Text { text: modelData.org; color: Theme.ink; font.pixelSize: 14; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
-                            Text { visible: oi !== null
+                            Text { visible: oi !== null && !Theme.compact
                                    text: oi ? "· " + oi.count + " projects · " + oi.multiplier.toFixed(2) + "× multiplier" : ""
                                    color: Theme.muted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
                         }
@@ -72,13 +72,13 @@ Item {
                     Row {
                         width: parent.width; height: 46; spacing: 0
                         Row {
-                            width: parent.width * 0.32; height: parent.height; spacing: 10
+                            width: parent.width * (Theme.compact ? 0.46 : 0.32); height: parent.height; spacing: 10
                             Rectangle { width: 30; height: 30; radius: 8; anchors.verticalCenter: parent.verticalCenter
                                         color: Theme.keyColor(modelData.wbs1)
                                         Text { anchors.centerIn: parent; text: "◱"; color: "white"; font.pixelSize: 13 } }
                             Column {
                                 anchors.verticalCenter: parent.verticalCenter; spacing: 1
-                                Text { text: modelData.name; color: Theme.ink; font.pixelSize: 13; font.bold: true; elide: Text.ElideRight; width: parent.parent.parent.width * 0.32 - 40 }
+                                Text { text: modelData.name; color: Theme.ink; font.pixelSize: 13; font.bold: true; elide: Text.ElideRight; width: parent.parent.parent.width * (Theme.compact ? 0.46 : 0.32) - 40 }
                                 Row { spacing: 6
                                     Text { text: modelData.wbs1; color: Theme.muted; font.pixelSize: 10 }
                                     Rectangle { width: st.width + 12; height: 15; radius: 7; anchors.verticalCenter: parent.verticalCenter; color: Theme.chip
@@ -88,19 +88,20 @@ Item {
                             }
                         }
                         Column {
-                            width: parent.width * 0.16; height: parent.height; spacing: 1
+                            visible: !Theme.compact
+                            width: parent.width * (Theme.compact ? 0 : 0.16); height: parent.height; spacing: 1
                             anchors.verticalCenter: parent.verticalCenter
                             Text { text: modelData.principal; color: Theme.ink; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width }
                             Text { text: "PM: " + modelData.manager; color: Theme.muted; font.pixelSize: 10; elide: Text.ElideRight; width: parent.width }
                         }
-                        Text { width: parent.width * 0.13; height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
+                        Text { visible: !Theme.compact; width: parent.width * (Theme.compact ? 0 : 0.13); height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
                                text: store.money(modelData.fee); color: Theme.muted; font.pixelSize: 13 }
-                        Text { width: parent.width * 0.13; height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
+                        Text { width: parent.width * (Theme.compact ? 0.27 : 0.13); height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
                                text: store.money(modelData.revenue); color: Theme.ink; font.pixelSize: 13 }
-                        Text { width: parent.width * 0.12; height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
+                        Text { visible: !Theme.compact; width: parent.width * (Theme.compact ? 0 : 0.12); height: parent.height; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight
                                text: store.money(modelData.compensation); color: Theme.muted; font.pixelSize: 13 }
                         Column {
-                            width: parent.width * 0.14; height: parent.height; spacing: 1
+                            width: parent.width * (Theme.compact ? 0.27 : 0.14); height: parent.height; spacing: 1
                             Text { width: parent.width; horizontalAlignment: Text.AlignRight
                                    text: store.money(modelData.profit); color: Theme.good; font.pixelSize: 13; font.bold: true }
                             Text { width: parent.width; horizontalAlignment: Text.AlignRight

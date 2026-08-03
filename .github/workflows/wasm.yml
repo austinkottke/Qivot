@@ -1,7 +1,9 @@
 name: WASM demo
 
-# Builds the clinic example (Qivot Clinic EHR) for Qt for WebAssembly and publishes it
-# to GitHub Pages, so the live "try it in your browser" link stays current automatically.
+# Builds the Qivot browser demos for Qt for WebAssembly and publishes them to
+# GitHub Pages, so the live "try it in your browser" links stay current:
+#   clinic  ->  https://<user>.github.io/Qivot/          (root, unchanged)
+#   vision  ->  https://<user>.github.io/Qivot/vision/
 #
 # The two version pins below MUST agree with each other — each Qt release is built
 # against exactly one Emscripten version. If you bump QT_VERSION, update EMSDK_VERSION
@@ -10,7 +12,7 @@ name: WASM demo
 on:
   push:
     branches: [ main ]
-    paths: [ "examples/clinic/**", "src/**", ".github/workflows/wasm.yml" ]
+    paths: [ "examples/clinic/**", "examples/vision/**", "src/**", ".github/workflows/wasm.yml" ]
   workflow_dispatch:
 
 permissions:
@@ -59,21 +61,35 @@ jobs:
           arch: wasm_singlethread
           cache: true
 
-      - name: Build the demo (wasm)
+      - name: Build the clinic demo (wasm)
         working-directory: examples/clinic
         run: |
           "$QT_ROOT_DIR/bin/qmake"      # wasm qmake; finds host tools via QT_HOST_PATH
           make -j"$(nproc)"
 
-      - name: Stage the site
-        working-directory: examples/clinic
+      - name: Build the vision demo (wasm)
+        working-directory: examples/vision
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/_site"
-          # Copy whatever the build produced (a .data file only exists if assets are bundled).
+          "$QT_ROOT_DIR/bin/qmake"
+          make -j"$(nproc)"
+
+      - name: Stage the site
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/_site" "$GITHUB_WORKSPACE/_site/vision"
+          # clinic at the site root (its custom index.html shell) — unchanged.
+          cd "$GITHUB_WORKSPACE/examples/clinic"
           for f in index.html qtloader.js clinic.js clinic.wasm clinic.data; do
             [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/_site/"
           done
-          ls -la "$GITHUB_WORKSPACE/_site/"
+          # vision under /vision/ — Qt emits vision.html; serve it as index.html so
+          # the clean URL .../Qivot/vision/ loads the app. (.data only exists if assets
+          # are bundled; vision keeps everything in the wasm via qrc, so it's optional.)
+          cd "$GITHUB_WORKSPACE/examples/vision"
+          cp vision.html "$GITHUB_WORKSPACE/_site/vision/index.html"
+          for f in qtloader.js vision.js vision.wasm qtlogo.svg vision.data; do
+            [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/_site/vision/"
+          done
+          echo "---- staged site ----"; ls -R "$GITHUB_WORKSPACE/_site"
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -10,7 +10,10 @@
 /// re-evaluate the moment the theme flips.
 class Theme : public QObject {
     Q_OBJECT
-    Q_PROPERTY(bool   dark   READ dark WRITE setDark NOTIFY changed)
+    Q_PROPERTY(bool   dark    READ dark WRITE setDark NOTIFY changed)
+    // Responsive breakpoint: main.qml sets this from the window width so every
+    // component can adapt (phone-narrow layouts) by reading Theme.compact.
+    Q_PROPERTY(bool   compact READ compact WRITE setCompact NOTIFY changed)
     Q_PROPERTY(QColor bg     READ bg     NOTIFY changed)
     Q_PROPERTY(QColor bg2    READ bg2    NOTIFY changed)   // gradient second stop
     Q_PROPERTY(QColor card   READ card   NOTIFY changed)
@@ -31,6 +34,9 @@ public:
     bool dark() const { return m_dark; }
     void setDark(bool d) { if (m_dark == d) return; m_dark = d; emit changed(); }
     Q_INVOKABLE void toggle() { setDark(!m_dark); }
+
+    bool compact() const { return m_compact; }
+    void setCompact(bool c) { if (m_compact == c) return; m_compact = c; emit changed(); }
 
     QColor bg()     const { return m_dark ? QColor("#0B0E14") : QColor("#EEF1F6"); }
     QColor bg2()    const { return m_dark ? QColor("#0E1522") : QColor("#E7ECF3"); }
@@ -65,6 +71,7 @@ signals:
 
 private:
     bool m_dark = true;   // dark by default — this demo is meant to look good in the dark
+    bool m_compact = false;
 };
 
 #endif // THEME_H

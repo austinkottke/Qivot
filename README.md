@@ -31,6 +31,17 @@
 </p>
 
 <p align="center">
+  <strong>▶ <a href="https://austinkottke.github.io/Qivot/vision/" target="_blank" rel="noopener">Try the Vision project-accounting demo in your browser</a></strong> — a Deltek-Vision-style
+  A/E/C dashboard, compiled to WebAssembly with an in-browser SQLite database (<a href="examples/vision">source</a>).
+</p>
+
+<p align="center">
+  <a href="examples/vision"><img src="examples/vision/media/vision_desktop.gif" alt="Qivot · Vision — project earnings, employee utilization, and a company profitability treemap" width="820"></a>
+  <br>
+  <em><a href="examples/vision">Qivot · Vision</a> — a Deltek-Vision-style project-accounting demo over five tables (natural-key masters + labor &amp; billing ledgers): a Key Financial Metrics panel, project earnings by organization, a company profitability treemap, and a live labor ledger. The same models run on SQLite, SQL Server, Postgres, and more. <strong>Synthetic data — not a real Vision database.</strong></em>
+</p>
+
+<p align="center">
   <a href="examples/erp"><img src="examples/erp/screenshot.png" alt="Qivot ERP — a CRM/PSA dashboard: KPIs, revenue by month, pipeline by stage, AR aging, and top clients" width="820"></a>
   <br>
   <em><a href="examples/erp">Qivot ERP</a> — a CRM/PSA over <strong>eight related models</strong>, using every relation shape Qivot has: <code>QiForeignKey</code> (auto-loading), <code>QI_HAS_MANY</code>, and <code>QI_MANY_TO_MANY</code> (a toggleable project-staffing roster). The fullest relations walkthrough in the repo.</em>
@@ -171,6 +182,11 @@ step-by-step example:
   patient **chart**, and a day-calendar **scheduler** with conflict-checked booking (a
   transaction that refuses to double-book). Plus **FTS5 note search** and add
   patient/note/vitals — with slick QML transitions. → [`examples/clinic`](examples/clinic)
+- 📐 **Project-accounting dashboard** — [`examples/vision`](examples/vision) is a
+  Deltek-Vision-style A/E/C demo: a **Key Financial Metrics** panel, **earnings by
+  organization** (`GROUP BY` aggregates), a **profitability treemap**, and a **live
+  labor ledger**. Natural-key models that map onto a real Vision SQL Server schema;
+  runs on the desktop and in the browser (WASM). → [`examples/vision`](examples/vision)
 
 See the full, runnable set — most as tutorials — in
 **[`examples/`](examples/README.md)**.
