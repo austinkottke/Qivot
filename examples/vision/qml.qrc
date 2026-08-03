@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>TopBar.qml</file>
+        <file>KpiCard.qml</file>
+        <file>SectionCard.qml</file>
+        <file>OverviewView.qml</file>
+        <file>ProjectsView.qml</file>
+        <file>TreemapView.qml</file>
+        <file>UtilizationView.qml</file>
+        <file>LedgerView.qml</file>
+        <file>PostLaborDialog.qml</file>
+    </qresource>
+</RCC>

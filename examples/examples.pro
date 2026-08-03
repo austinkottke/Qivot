@@ -33,4 +33,5 @@ SUBDIRS += \
     erp \
     contacts \
     multidb \
+    vision \
     index
