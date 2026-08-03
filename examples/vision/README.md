@@ -1,6 +1,6 @@
 # vision — a Deltek-Vision-style project-accounting demo, on Qivot
 
-![Qivot · Vision — desktop walkthrough](media/vision_desktop.gif)
+![Qivot · Vision — project-accounting dashboard](media/vision.png)
 
 **▶ [Try it live in your browser](https://austinkottke.github.io/Qivot/vision/)** — the full app,
 compiled to WebAssembly and served from GitHub Pages. No install; it runs entirely client-side,
@@ -312,10 +312,7 @@ all running in the browser. On every push to `main` that touches this example,
 **<https://austinkottke.github.io/Qivot/vision/>**, so the live link at the top stays current.
 
 The layout is responsive, so the browser build works on phones too — the nav collapses to a
-scrollable strip, the KPI cards stack, and the treemap re-flows into vertical org bands:
-
-<img src="media/vision_mobile.gif" alt="Qivot · Vision — responsive mobile layout" width="320">
-
+scrollable strip, the KPI cards stack, and the treemap re-flows into vertical org bands.
 
 **Build it yourself with Docker** (no local Qt-wasm toolchain needed):
 
@@ -373,7 +370,7 @@ vision/
 │                        TreemapView, UtilizationView, LedgerView, PostLaborDialog
 ├── vision.pro        qmake project (adds `wasm: QTPLUGIN += qsqlite` for the browser build)
 ├── wasm/             Docker-based WebAssembly build (Dockerfile + build.sh)
-└── media/            README graphics (desktop + mobile walkthrough GIFs)
+└── media/            README graphics (vision.png hero screenshot)
 ```
 
 ### What this example demonstrates about Qivot

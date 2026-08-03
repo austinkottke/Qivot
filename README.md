@@ -36,7 +36,7 @@
 </p>
 
 <p align="center">
-  <a href="examples/vision"><img src="examples/vision/media/vision_desktop.gif" alt="Qivot · Vision — project earnings, employee utilization, and a company profitability treemap" width="820"></a>
+  <a href="examples/vision"><img src="examples/vision/media/vision.png" alt="Qivot · Vision — project earnings, employee utilization, and a company profitability treemap" width="820"></a>
   <br>
   <em><a href="examples/vision">Qivot · Vision</a> — a Deltek-Vision-style project-accounting demo over five tables (natural-key masters + labor &amp; billing ledgers): a Key Financial Metrics panel, project earnings by organization, a company profitability treemap, and a live labor ledger. The same models run on SQLite, SQL Server, Postgres, and more. <strong>Synthetic data — not a real Vision database.</strong></em>
 </p>
