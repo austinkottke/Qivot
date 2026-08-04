@@ -175,11 +175,91 @@ jobs:
 
           echo "✓ Phase 3 validation tests passed"
 
-      - name: Test qivot-gen with Real Schema (clinic.db)
+      - name: Test qivot-gen with Clinic Schema (7 tables, FTS filtering)
         run: |
-          # Test against the clinic example database
+          # Create clinic schema (healthcare management system)
+          python3 << 'EOF'
+          import sqlite3
+          conn = sqlite3.connect('clinic.db')
+          conn.executescript("""
+            CREATE TABLE appointment (
+              id INTEGER PRIMARY KEY,
+              patient_id INTEGER NOT NULL,
+              provider_id INTEGER NOT NULL,
+              day TEXT,
+              minute INTEGER,
+              duration_min INTEGER,
+              reason TEXT,
+              status INTEGER
+            );
+
+            CREATE TABLE medication (
+              id INTEGER PRIMARY KEY,
+              patient_id INTEGER NOT NULL,
+              name TEXT,
+              dose TEXT,
+              frequency TEXT,
+              active BOOLEAN
+            );
+
+            CREATE TABLE note (
+              id INTEGER PRIMARY KEY,
+              patient_id INTEGER NOT NULL,
+              provider_id INTEGER NOT NULL,
+              date TEXT,
+              kind INTEGER,
+              body TEXT
+            );
+
+            CREATE TABLE patient (
+              id INTEGER PRIMARY KEY,
+              mrn TEXT,
+              first_name TEXT,
+              last_name TEXT,
+              dob TEXT,
+              sex TEXT,
+              phone TEXT,
+              blood_type TEXT,
+              allergies TEXT
+            );
+
+            CREATE TABLE problem (
+              id INTEGER PRIMARY KEY,
+              patient_id INTEGER NOT NULL,
+              name TEXT,
+              status INTEGER,
+              onset TEXT
+            );
+
+            CREATE TABLE provider (
+              id INTEGER PRIMARY KEY,
+              name TEXT,
+              specialty TEXT,
+              color TEXT
+            );
+
+            CREATE TABLE vital (
+              id INTEGER PRIMARY KEY,
+              patient_id INTEGER NOT NULL,
+              taken_on TEXT,
+              systolic INTEGER,
+              diastolic INTEGER,
+              heart_rate INTEGER,
+              temp_c REAL,
+              weight_kg REAL,
+              height_cm INTEGER,
+              spo2 INTEGER
+            );
+
+            -- FTS5 tables (should be skipped)
+            CREATE VIRTUAL TABLE note_fts USING fts5(body);
+          """)
+          conn.close()
+          EOF
+
+          # Generate models
           python3 tools/qivot-gen.py \
-            --db sqlite:examples/clinic/clinic.db \
+            --db sqlite:clinic.db \
             --output clinic_models.h
 
           if [ ! -f clinic_models.h ]; then
@@ -187,7 +267,8 @@ jobs:
             exit 1
           fi
 
-          # Verify clinic models
+          # Verify clinic models (7 real tables, FTS tables skipped)
+          echo "Checking generated clinic models..."
           for model in Appointment Medication Note Patient Problem Provider Vital; do
             if ! grep -q "class $model" clinic_models.h; then
               echo "ERROR: $model class not found in clinic_models.h"
@@ -195,13 +276,13 @@ jobs:
             fi
           done
 
-          # Verify FTS tables were skipped
+          # Verify FTS tables were skipped (should not generate models)
           if grep -q "class NoteFts" clinic_models.h; then
-            echo "ERROR: FTS table should have been skipped"
+            echo "ERROR: FTS tables should have been skipped"
             exit 1
           fi
 
-          echo "✓ Real schema test (clinic.db) successful"
+          echo "✓ Clinic schema test successful (7 models, FTS tables skipped)"
 
       - name: Test Error Handling
         run: |
