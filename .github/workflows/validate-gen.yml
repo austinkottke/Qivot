@@ -286,27 +286,29 @@ jobs:
 
       - name: Test Error Handling
         run: |
-          # Test invalid database path (should fail gracefully)
-          python3 tools/qivot-gen.py \
+          # Test invalid database path (should fail gracefully with exit code 1)
+          output=$(python3 tools/qivot-gen.py \
             --db sqlite:/nonexistent/path.db \
-            --output /tmp/out.h 2>&1 | grep -q "No tables found"
+            --output /tmp/out.h 2>&1)
+          exit_code=$?
 
-          if [ $? -eq 0 ]; then
-            echo "✓ Handles nonexistent database gracefully"
+          if [ $exit_code -eq 1 ]; then
+            echo "✓ Fails gracefully on nonexistent database (exit code 1)"
           else
-            echo "ERROR: Should fail gracefully on nonexistent database"
+            echo "ERROR: Should return exit code 1 for nonexistent database"
             exit 1
           fi
 
           # Test unsupported database type
-          python3 tools/qivot-gen.py \
+          output=$(python3 tools/qivot-gen.py \
             --db invalid://connection \
-            --output /tmp/out.h 2>&1 | grep -q "Unsupported database"
+            --output /tmp/out.h 2>&1)
+          exit_code=$?
 
-          if [ $? -eq 0 ]; then
-            echo "✓ Rejects unsupported database types"
+          if [ $exit_code -eq 1 ]; then
+            echo "✓ Rejects unsupported database types (exit code 1)"
           else
-            echo "ERROR: Should reject unsupported database type"
+            echo "ERROR: Should return exit code 1 for unsupported database"
             exit 1
           fi
 
@@ -325,7 +327,6 @@ jobs:
         uses: jurplel/install-qt-action@v3
         with:
           version: ${{ matrix.qt-version }}
-          modules: 'qml'
           cache: true
 
       - name: Test CMake template (console)
