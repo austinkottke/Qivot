@@ -284,6 +284,8 @@ See [Project setup](#project-setup-qmake) for more.
 
 ### Code Generation: `qivot-gen`
 
+**Tested on:** ![SQLite](https://img.shields.io/badge/SQLite-100%25-green?logo=sqlite&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-95%25-green?logo=postgresql&logoColor=white) ![MySQL](https://img.shields.io/badge/MySQL-90%25-green?logo=mysql&logoColor=white)
+
 Generate Qivot model headers from existing database schemas in seconds:
 
 ```bash
