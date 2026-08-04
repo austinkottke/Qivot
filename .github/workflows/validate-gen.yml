@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Test qivot-gen with SQLite
+      - name: Test qivot-gen with SQLite (Phase 1 basics)
         run: |
           # Create test schema
           python3 << 'EOF'
@@ -74,8 +74,160 @@ jobs:
             exit 1
           fi
 
-          echo "✓ Code generation successful"
-          cat generated_models.h
+          echo "✓ Phase 1: Basic code generation successful"
+
+      - name: Test qivot-gen Phase 3 Features (Composite Keys, Constraints)
+        run: |
+          # Create schema with Phase 3 features
+          python3 << 'EOF'
+          import sqlite3
+          conn = sqlite3.connect('test_phase3.db')
+          conn.executescript("""
+            CREATE TABLE users (
+              id INTEGER PRIMARY KEY,
+              email TEXT UNIQUE NOT NULL,
+              age INTEGER CHECK (age >= 18),
+              name TEXT
+            );
+
+            CREATE TABLE user_permissions (
+              user_id INTEGER NOT NULL,
+              permission_id INTEGER NOT NULL,
+              granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (user_id, permission_id),
+              FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE posts (
+              id INTEGER PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              deleted_at TIMESTAMP,
+              FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE comments (
+              id INTEGER PRIMARY KEY,
+              commentable_type TEXT NOT NULL,
+              commentable_id INTEGER NOT NULL,
+              content TEXT,
+              user_id INTEGER,
+              FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+          """)
+          conn.close()
+          EOF
+
+          # Generate models with Phase 3 features
+          python3 tools/qivot-gen.py \
+            --db sqlite:test_phase3.db \
+            --output generated_phase3.h
+
+          # Verify Phase 3 features
+          echo "Checking Phase 3 features in generated code..."
+
+          # Check composite key detection
+          if ! grep -q "Composite key" generated_phase3.h; then
+            echo "ERROR: Composite key warning not found"
+            exit 1
+          fi
+
+          # Check constraint detection
+          if ! grep -q "unique" generated_phase3.h; then
+            echo "ERROR: UNIQUE constraint comment not found"
+            exit 1
+          fi
+
+          # Check soft delete detection
+          if ! grep -q "soft delete" generated_phase3.h; then
+            echo "ERROR: Soft delete marker not found"
+            exit 1
+          fi
+
+          # Check polymorphic detection
+          if ! grep -q "polymorphic" generated_phase3.h; then
+            echo "ERROR: Polymorphic relationship not detected"
+            exit 1
+          fi
+
+          # Verify model generation for composite key table
+          if ! grep -q "class UserPermissions" generated_phase3.h; then
+            echo "ERROR: UserPermissions class not found"
+            exit 1
+          fi
+
+          if ! grep -q "QI_DECLARE_MODEL_NOID" generated_phase3.h; then
+            echo "ERROR: QI_DECLARE_MODEL_NOID guidance not found for composite key"
+            exit 1
+          fi
+
+          echo "✓ Phase 3: Composite keys, constraints, patterns detected correctly"
+
+      - name: Run Phase 3 Validation Test Suite
+        run: |
+          chmod +x tools/test-phase3-improvements.py
+          python3 tools/test-phase3-improvements.py
+
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Phase 3 validation tests failed"
+            exit 1
+          fi
+
+          echo "✓ Phase 3 validation tests passed"
+
+      - name: Test qivot-gen with Real Schema (clinic.db)
+        run: |
+          # Test against the clinic example database
+          python3 tools/qivot-gen.py \
+            --db sqlite:examples/clinic/clinic.db \
+            --output clinic_models.h
+
+          if [ ! -f clinic_models.h ]; then
+            echo "ERROR: clinic_models.h not generated"
+            exit 1
+          fi
+
+          # Verify clinic models
+          for model in Appointment Medication Note Patient Problem Provider Vital; do
+            if ! grep -q "class $model" clinic_models.h; then
+              echo "ERROR: $model class not found in clinic_models.h"
+              exit 1
+            fi
+          done
+
+          # Verify FTS tables were skipped
+          if grep -q "class NoteFts" clinic_models.h; then
+            echo "ERROR: FTS table should have been skipped"
+            exit 1
+          fi
+
+          echo "✓ Real schema test (clinic.db) successful"
+
+      - name: Test Error Handling
+        run: |
+          # Test invalid database path (should fail gracefully)
+          python3 tools/qivot-gen.py \
+            --db sqlite:/nonexistent/path.db \
+            --output /tmp/out.h 2>&1 | grep -q "No tables found"
+
+          if [ $? -eq 0 ]; then
+            echo "✓ Handles nonexistent database gracefully"
+          else
+            echo "ERROR: Should fail gracefully on nonexistent database"
+            exit 1
+          fi
+
+          # Test unsupported database type
+          python3 tools/qivot-gen.py \
+            --db invalid://connection \
+            --output /tmp/out.h 2>&1 | grep -q "Unsupported database"
+
+          if [ $? -eq 0 ]; then
+            echo "✓ Rejects unsupported database types"
+          else
+            echo "ERROR: Should reject unsupported database type"
+            exit 1
+          fi
 
   test-templates:
     name: Test Project Templates
