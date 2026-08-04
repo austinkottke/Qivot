@@ -306,12 +306,16 @@ jobs:
             exit 1
           fi
 
-          # Test nonexistent SQLite file (graceful failure)
+          # Test empty database handling (exit code 1 when no tables found is expected)
           python3 tools/qivot-gen.py \
-            --db sqlite:/tmp/test_nonexistent_$RANDOM.db \
-            --output /tmp/out_test.h 2>&1 > /dev/null
-          # This creates an empty database, which is OK - it should handle it gracefully
-          echo "✓ Handles empty/new databases gracefully"
+            --db sqlite:/tmp/test_empty_$RANDOM.db \
+            --output /tmp/out_test.h 2>&1 | grep -q "No tables found"
+          if [ $? -eq 0 ]; then
+            echo "✓ Handles empty databases with clear error message"
+          else
+            echo "ERROR: Should report when no tables found"
+            exit 1
+          fi
 
   test-scripts:
     name: Test Generator Scripts
