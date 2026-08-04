@@ -278,9 +278,13 @@ class SqliteParser(SchemaParser):
         self.cursor.execute(f"PRAGMA foreign_key_list({table_name})")
         fk_info = {row[3]: (row[2], row[4]) for row in self.cursor.fetchall()}
 
+        # Get UNIQUE constraints from sqlite_master schema
+        unique_cols = self._get_unique_constraints(table_name)
+
         for col_id, col_name, col_type, not_null, default_val, pk in col_info:
             is_pk = pk > 0
             is_fk = col_name in fk_info
+            is_unique = col_name in unique_cols
 
             cpp_type, needs_converter, converter_hint = self.map_sql_type_to_cpp(col_type)
 
@@ -289,6 +293,7 @@ class SqliteParser(SchemaParser):
                 original_sql_type=col_type,
                 cxx_type=cpp_type,
                 is_primary_key=is_pk,
+                is_unique=is_unique,
                 is_not_null=bool(not_null),
                 has_default=default_val is not None,
                 default_value=str(default_val) if default_val else "",
@@ -303,6 +308,32 @@ class SqliteParser(SchemaParser):
             columns.append(col)
 
         return columns
+
+    def _get_unique_constraints(self, table_name: str) -> Set[str]:
+        """Extract UNIQUE constraints from CREATE TABLE statement."""
+        unique_cols = set()
+
+        try:
+            # Get the CREATE TABLE statement from sqlite_master
+            self.cursor.execute(
+                f"SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            )
+            result = self.cursor.fetchone()
+
+            if result and result[0]:
+                sql = result[0].upper()
+                # Look for column definitions with UNIQUE keyword
+                import re
+                # Match: COLUMN_NAME TYPE ... UNIQUE
+                pattern = r'(\w+)\s+(TEXT|INTEGER|VARCHAR|REAL|BLOB|DATE|DATETIME|TIMESTAMP|NUMERIC|DECIMAL|BOOLEAN|BOOL|BIT|NVARCHAR|NCHAR|CLOB)\s+([A-Z\s]*?)UNIQUE'
+                for match in re.finditer(pattern, sql):
+                    col_name = match.group(1).lower()
+                    unique_cols.add(col_name)
+        except Exception:
+            pass
+
+        return unique_cols
 
 
 class PostgresParser(SchemaParser):
