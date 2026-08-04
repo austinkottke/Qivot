@@ -1,0 +1,28 @@
+{
+  "name": "qivot",
+  "version": "1.0.0",
+  "description": "Qt ORM with JSON-over-HTTP — declare models in C++, query them, and pull REST APIs straight into SQLite",
+  "homepage": "https://github.com/austinkottke/Qivot",
+  "documentation": "https://austinkottke.github.io/Qivot/",
+  "license": "MIT",
+  "maintainers": [
+    "Austin Kottke <austinkottke@gmail.com>"
+  ],
+  "dependencies": [
+    {
+      "name": "qt",
+      "version>=": "5.15"
+    }
+  ],
+  "features": {
+    "network": {
+      "description": "Enable JSON-over-HTTP loader (requires QtNetwork)",
+      "dependencies": [
+        {
+          "name": "qt",
+          "features": [ "network" ]
+        }
+      ]
+    }
+  }
+}

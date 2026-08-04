@@ -278,6 +278,61 @@ compiled build for those.
 
 See [Project setup](#project-setup-qmake) for more.
 
+## 🛠️ Developer Tools & Templates
+
+**Accelerate development with code generation and IDE support.**
+
+### Code Generation: `qivot-gen`
+
+Generate Qivot model headers from existing database schemas in seconds:
+
+```bash
+python3 tools/qivot-gen.py --db sqlite:mydb.db --output src/models.h
+python3 tools/qivot-gen.py --db postgresql://user:pass@host/dbname --output src/models.h
+python3 tools/qivot-gen.py --db mysql://user:pass@host/dbname --output src/models.h
+```
+
+Outputs a complete C++ header with model classes, `QiField` declarations, foreign keys,
+and `QI_DECLARE_MODEL` macros — ready to customize. Supports SQLite, PostgreSQL, MySQL, and SQL Server.
+
+### Project Templates: `create-qivot-project.sh`
+
+Scaffold a new Qivot project in one command:
+
+```bash
+./tools/create-qivot-project.sh MyApp              # CMake console app
+./tools/create-qivot-project.sh MyApp --cmake --qml  # CMake + Qt Quick
+./tools/create-qivot-project.sh MyApp --qmake      # qmake console app
+```
+
+Templates include:
+- Pre-configured CMakeLists.txt or .pro
+- Example models and main()
+- Qt Quick/QML UI and store controller (with --qml)
+- Build & run instructions
+
+### IDE Support
+
+**VS Code:** Install the [Qivot snippets extension](editors/vscode/qivot.code-snippets)
+for instant model, query, and transaction templates (triggers: `qmodel`, `qquery`, `qtx`, etc).
+
+**CLion:** Import [CLion live templates](editors/clion/qivot-templates.xml) via
+Settings → Editor → Live Templates → Import.
+
+### Package Managers
+
+**vcpkg:**
+```bash
+vcpkg install qivot
+vcpkg install qivot[network]  # with JSON-over-HTTP support
+```
+
+**Conan:**
+```bash
+conan install --requires=qivot/1.0.0
+conan install --requires=qivot/1.0.0 -o qivot/*:with_network=True
+```
+
 ## Guide
 
 Every snippet assumes an open connection. Runnable programs live in

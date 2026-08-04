@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templateSet group="Qivot">
+
+  <template name="qmodel" value="class $NAME : public QiModel {&#10;    QI_MODEL&#10;public:&#10;    $FIELDS&#10;};&#10;QI_DECLARE_MODEL($NAME, &quot;$TABLE&quot;,&#10;                 QI_FIELD($FIELD));" description="Qivot model class" toReformat="true" toShortenFQNames="true">
+    <variable name="NAME" expression="capitalize(complete())" defaultValue="ModelName" alwaysStopAt="true"/>
+    <variable name="TABLE" expression="decapitalize(NAME)" defaultValue="table_name" alwaysStopAt="true"/>
+    <variable name="FIELDS" expression="" defaultValue="" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_DECLARATION" value="true"/>
+    </context>
+  </template>
+
+  <template name="qfield" value="QiField&lt;$TYPE&gt; $NAME;" description="Qivot field declaration" toReformat="true" toShortenFQNames="true">
+    <variable name="TYPE" expression="" defaultValue="QString" alwaysStopAt="true"/>
+    <variable name="NAME" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_DECLARATION" value="true"/>
+    </context>
+  </template>
+
+  <template name="qfk" value="QiForeignKey&lt;$FK_CLASS&gt; $NAME;" description="Qivot foreign key" toReformat="true" toShortenFQNames="true">
+    <variable name="FK_CLASS" expression="" defaultValue="OtherModel" alwaysStopAt="true"/>
+    <variable name="NAME" expression="" defaultValue="relationName" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_DECLARATION" value="true"/>
+    </context>
+  </template>
+
+  <template name="qsave" value="$MODEL $OBJ;&#10;$OBJ.$FIELD = $VALUE;&#10;&#10;if (!$OBJ.save()) {&#10;    qCritical() &lt;&lt; &quot;Error:&quot; &lt;&lt; $OBJ.lastError().text();&#10;}" description="Qivot save with error handling" toReformat="true" toShortenFQNames="true">
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="OBJ" expression="" defaultValue="obj" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <variable name="VALUE" expression="" defaultValue="value" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qload" value="$MODEL $OBJ;&#10;if ($OBJ.load($MODEL::col().$FIELD == $VALUE)) {&#10;    // Object loaded&#10;    $END&#10;} else {&#10;    qWarning() &lt;&lt; &quot;Not found&quot;;&#10;}" description="Qivot load with check" toReformat="true" toShortenFQNames="true">
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="OBJ" expression="" defaultValue="obj" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="id" alwaysStopAt="true"/>
+    <variable name="VALUE" expression="" defaultValue="value" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qdelete" value="$MODEL $OBJ;&#10;if ($OBJ.load($MODEL::col().$FIELD == $VALUE)) {&#10;    if (!$OBJ.remove()) {&#10;        qCritical() &lt;&lt; &quot;Error:&quot; &lt;&lt; $OBJ.lastError().text();&#10;    }&#10;}" description="Qivot delete pattern" toReformat="true" toShortenFQNames="true">
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="OBJ" expression="" defaultValue="obj" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="id" alwaysStopAt="true"/>
+    <variable name="VALUE" expression="" defaultValue="value" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qquery" value="auto $RESULT = $MODEL::objects()&#10;    .filter($MODEL::col().$FIELD == $VALUE)&#10;    .all();" description="Qivot query with filter" toReformat="true" toShortenFQNames="true">
+    <variable name="RESULT" expression="" defaultValue="results" alwaysStopAt="true"/>
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <variable name="VALUE" expression="" defaultValue="value" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qtx" value="QiTransaction tx;&#10;&#10;// ... operations ...&#10;$END&#10;&#10;tx.commit();" description="Qivot transaction" toReformat="true" toShortenFQNames="true">
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qindex" value="QiIndex&lt;$MODEL&gt; $IDX(&quot;$IDX_NAME&quot;);&#10;$IDX &lt;&lt; &quot;$FIELD&quot;;&#10;connection.createIndex($IDX);" description="Qivot index creation" toReformat="true" toShortenFQNames="true">
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="IDX" expression="" defaultValue="idx" alwaysStopAt="true"/>
+    <variable name="IDX_NAME" expression="" defaultValue="idx_name" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qfts" value="QiFtsIndex&lt;$MODEL&gt; fts(&quot;$FTS_TABLE&quot;);&#10;fts &lt;&lt; &quot;$FIELD1&quot; &lt;&lt; &quot;$FIELD2&quot;;&#10;connection.createFtsIndex(fts);&#10;&#10;// Search:&#10;auto results = QiQuery&lt;$MODEL&gt;()&#10;    .search(&quot;$FTS_TABLE&quot;, &quot;$QUERY&quot;)&#10;    .all();" description="Qivot FTS index and search" toReformat="true" toShortenFQNames="true">
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <variable name="FTS_TABLE" expression="" defaultValue="model_fts" alwaysStopAt="true"/>
+    <variable name="FIELD1" expression="" defaultValue="title" alwaysStopAt="true"/>
+    <variable name="FIELD2" expression="" defaultValue="content" alwaysStopAt="true"/>
+    <variable name="QUERY" expression="" defaultValue="search_query" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qconn" value="QSqlDatabase db = QSqlDatabase::addDatabase(&quot;QSQLITE&quot;);&#10;db.setDatabaseName(&quot;$DB_PATH&quot;);&#10;db.open();&#10;&#10;QiConnection connection;&#10;connection.open(db);&#10;connection.addModel&lt;$MODEL&gt;();&#10;connection.createTables();" description="Qivot connection setup" toReformat="true" toShortenFQNames="true">
+    <variable name="DB_PATH" expression="" defaultValue=":memory:" alwaysStopAt="true"/>
+    <variable name="MODEL" expression="" defaultValue="Model" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_STATEMENT" value="true"/>
+    </context>
+  </template>
+
+  <template name="qgadget" value="class $NAME : public QiModel {&#10;    Q_GADGET&#10;    QI_MODEL&#10;public:&#10;    QI_QML_FIELD($TYPE, $FIELD)&#10;};&#10;QI_DECLARE_MODEL($NAME, &quot;$TABLE&quot;,&#10;                 QI_FIELD($FIELD));&#10;Q_DECLARE_METATYPE($NAME)" description="Qivot model with Q_GADGET for QML" toReformat="true" toShortenFQNames="true">
+    <variable name="NAME" expression="" defaultValue="ModelName" alwaysStopAt="true"/>
+    <variable name="TABLE" expression="" defaultValue="table_name" alwaysStopAt="true"/>
+    <variable name="TYPE" expression="" defaultValue="QString" alwaysStopAt="true"/>
+    <variable name="FIELD" expression="" defaultValue="fieldName" alwaysStopAt="true"/>
+    <context>
+      <option name="CPP_DECLARATION" value="true"/>
+    </context>
+  </template>
+
+</templateSet>

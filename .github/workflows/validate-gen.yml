@@ -1,0 +1,173 @@
+name: Validate Code Generation & Templates
+
+on:
+  push:
+    paths:
+      - 'tools/qivot-gen.py'
+      - 'tools/create-qivot-project.sh'
+      - 'templates/**'
+      - '.github/workflows/validate-gen.yml'
+  pull_request:
+    paths:
+      - 'tools/qivot-gen.py'
+      - 'tools/create-qivot-project.sh'
+      - 'templates/**'
+
+jobs:
+  test-codegen:
+    name: Test Code Generation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Test qivot-gen with SQLite
+        run: |
+          # Create test schema
+          python3 << 'EOF'
+          import sqlite3
+          conn = sqlite3.connect('test.db')
+          conn.executescript("""
+            CREATE TABLE users (
+              id INTEGER PRIMARY KEY,
+              email TEXT UNIQUE NOT NULL,
+              name TEXT
+            );
+            CREATE TABLE posts (
+              id INTEGER PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+          """)
+          conn.close()
+          EOF
+
+          # Generate models
+          python3 tools/qivot-gen.py \
+            --db sqlite:test.db \
+            --output generated_models.h
+
+          # Verify output exists and contains expected content
+          if [ ! -f generated_models.h ]; then
+            echo "ERROR: Output file not generated"
+            exit 1
+          fi
+
+          if ! grep -q "class Users" generated_models.h; then
+            echo "ERROR: Users class not found in generated code"
+            exit 1
+          fi
+
+          if ! grep -q "class Posts" generated_models.h; then
+            echo "ERROR: Posts class not found in generated code"
+            exit 1
+          fi
+
+          if ! grep -q "QiForeignKey<Users>" generated_models.h; then
+            echo "ERROR: Foreign key not found in generated code"
+            exit 1
+          fi
+
+          echo "✓ Code generation successful"
+          cat generated_models.h
+
+  test-templates:
+    name: Test Project Templates
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        qt-version: ['6.5.0']
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ matrix.qt-version }}
+          modules: 'qml'
+          cache: true
+
+      - name: Test CMake template (console)
+        run: |
+          # Copy template
+          mkdir test-cmake-app
+          cp -r templates/cmake/MyQivotProject/* test-cmake-app/
+
+          # Create build directory
+          mkdir test-cmake-app/build
+          cd test-cmake-app/build
+
+          # Configure (adjust Qt path)
+          cmake .. -DCMAKE_PREFIX_PATH=$Qt6_DIR
+
+          echo "✓ CMake configuration successful"
+
+      - name: Test CMake template (QML)
+        run: |
+          # Copy template
+          mkdir test-qml-app
+          cp -r templates/cmake/MyQivotQmlApp/* test-qml-app/
+
+          # Create build directory
+          mkdir test-qml-app/build
+          cd test-qml-app/build
+
+          # Configure
+          cmake .. -DCMAKE_PREFIX_PATH=$Qt6_DIR
+
+          echo "✓ QML template CMake configuration successful"
+
+  test-scripts:
+    name: Test Generator Scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Test create-qivot-project.sh
+        run: |
+          # Make script executable
+          chmod +x tools/create-qivot-project.sh
+
+          # Test CMake project creation
+          tools/create-qivot-project.sh TestApp --cmake
+          if [ ! -d TestApp ]; then
+            echo "ERROR: Project directory not created"
+            exit 1
+          fi
+          if [ ! -f TestApp/CMakeLists.txt ]; then
+            echo "ERROR: CMakeLists.txt not created"
+            exit 1
+          fi
+          if [ ! -f TestApp/src/main.cpp ]; then
+            echo "ERROR: main.cpp not created"
+            exit 1
+          fi
+
+          # Test qmake project creation
+          tools/create-qivot-project.sh TestAppQmake --qmake
+          if [ ! -f TestAppQmake/TestAppQmake.pro ]; then
+            echo "ERROR: .pro file not created"
+            exit 1
+          fi
+
+          # Test QML variant
+          tools/create-qivot-project.sh TestQmlApp --cmake --qml
+          if [ ! -f TestQmlApp/qml/main.qml ]; then
+            echo "ERROR: main.qml not created"
+            exit 1
+          fi
+          if [ ! -f TestQmlApp/src/store.h ]; then
+            echo "ERROR: store.h not created"
+            exit 1
+          fi
+
+          echo "✓ Project generator script tests passed"

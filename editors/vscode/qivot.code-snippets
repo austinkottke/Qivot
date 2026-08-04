@@ -1,0 +1,205 @@
+{
+  "Qivot Model": {
+    "prefix": "qmodel",
+    "body": [
+      "class ${1:ModelName} : public QiModel {",
+      "    QI_MODEL",
+      "public:",
+      "    ${2:// Add QiField declarations here}",
+      "};",
+      "QI_DECLARE_MODEL(${1:ModelName}, \"${3:table_name}\",",
+      "                 QI_FIELD(${4:fieldName}));",
+      ""
+    ],
+    "description": "Qivot model class template with QI_MODEL and QI_DECLARE_MODEL"
+  },
+
+  "Qivot Field": {
+    "prefix": "qfield",
+    "body": "QiField<${1:QString}> ${2:fieldName};",
+    "description": "Qivot field declaration (QiField<T>)"
+  },
+
+  "Qivot Field with Constraint": {
+    "prefix": "qfield_",
+    "body": "QiField<${1:QString}> ${2:fieldName};  // QI_FIELD(${2:fieldName}, ${3:QiNotNull})",
+    "description": "Qivot field with comment showing constraint example"
+  },
+
+  "Qivot Foreign Key": {
+    "prefix": "qfk",
+    "body": "QiForeignKey<${1:OtherModel}> ${2:relationName};",
+    "description": "Qivot foreign key (references another model)"
+  },
+
+  "Qivot Query": {
+    "prefix": "qquery",
+    "body": [
+      "auto ${1:result} = ${2:Model}::objects()",
+      "    .filter(${2:Model}::col().${3:fieldName} == ${4:value})",
+      "    .all();"
+    ],
+    "description": "Qivot query with filter and all()"
+  },
+
+  "Qivot Query with Order": {
+    "prefix": "qquery_order",
+    "body": [
+      "auto ${1:result} = ${2:Model}::objects()",
+      "    .filter(${2:Model}::col().${3:fieldName} == ${4:value})",
+      "    .orderBy(${2:Model}::col().${5:fieldName}.${6:desc}())",
+      "    .limit(${7:10})",
+      "    .all();"
+    ],
+    "description": "Qivot query with filter, ordering, and limit"
+  },
+
+  "Qivot Save": {
+    "prefix": "qsave",
+    "body": [
+      "${1:Model} ${2:obj};",
+      "${2:obj}.${3:fieldName} = ${4:value};",
+      "",
+      "if (!${2:obj}.save()) {",
+      "    qCritical() << \"Error:\" << ${2:obj}.lastError().text();",
+      "}"
+    ],
+    "description": "Qivot model save with error handling"
+  },
+
+  "Qivot Transaction": {
+    "prefix": "qtx",
+    "body": [
+      "QiTransaction tx;",
+      "",
+      "// ... operations ...",
+      "${1:// model.save()}",
+      "",
+      "tx.commit();"
+    ],
+    "description": "Qivot transaction block"
+  },
+
+  "Qivot Index": {
+    "prefix": "qindex",
+    "body": [
+      "QiIndex<${1:Model}> ${2:idx}(\"${3:idx_name}\");",
+      "${2:idx} << \"${4:field1}\" << \"${5:field2}\";",
+      "connection.createIndex(${2:idx});"
+    ],
+    "description": "Qivot index creation"
+  },
+
+  "Qivot FTS (Full-Text Search)": {
+    "prefix": "qfts",
+    "body": [
+      "QiFtsIndex<${1:Model}> fts(\"${2:model_fts}\");",
+      "fts << \"${3:title}\" << \"${4:content}\";",
+      "connection.createFtsIndex(fts);",
+      "",
+      "// Search:",
+      "auto ${5:results} = QiQuery<${1:Model}>()",
+      "    .search(\"${2:model_fts}\", \"${6:search_query}\")",
+      "    .all();"
+    ],
+    "description": "Qivot full-text search (FTS5) index"
+  },
+
+  "Qivot Connection": {
+    "prefix": "qconn",
+    "body": [
+      "QSqlDatabase db = QSqlDatabase::addDatabase(\"QSQLITE\");",
+      "db.setDatabaseName(\"${1::memory:}\");",
+      "db.open();",
+      "",
+      "QiConnection connection;",
+      "connection.open(db);",
+      "connection.addModel<${2:Model}>();",
+      "connection.createTables();"
+    ],
+    "description": "Qivot connection setup with SQLite"
+  },
+
+  "Qivot Gadget Model": {
+    "prefix": "qmodel_gadget",
+    "body": [
+      "class ${1:ModelName} : public QiModel {",
+      "    Q_GADGET",
+      "    QI_MODEL",
+      "public:",
+      "    QI_QML_FIELD(${2:QString}, ${3:fieldName})",
+      "};",
+      "QI_DECLARE_MODEL(${1:ModelName}, \"${4:table_name}\",",
+      "                 QI_FIELD(${3:fieldName}));",
+      "Q_DECLARE_METATYPE(${1:ModelName})"
+    ],
+    "description": "Qivot model with Q_GADGET for QML binding"
+  },
+
+  "Qivot Load": {
+    "prefix": "qload",
+    "body": [
+      "${1:Model} ${2:obj};",
+      "if (${2:obj}.load(${1:Model}::col().${3:id} == ${4:value})) {",
+      "    // Object loaded successfully",
+      "    ${5:// use ${2:obj}}",
+      "} else {",
+      "    qWarning() << \"Not found\";",
+      "}"
+    ],
+    "description": "Qivot model load with existence check"
+  },
+
+  "Qivot Update": {
+    "prefix": "qupdate",
+    "body": [
+      "${1:Model} ${2:obj};",
+      "if (${2:obj}.load(${1:Model}::col().${3:id} == ${4:value})) {",
+      "    ${2:obj}.${5:fieldName} = ${6:newValue};",
+      "    if (!${2:obj}.save()) {",
+      "        qCritical() << \"Error:\" << ${2:obj}.lastError().text();",
+      "    }",
+      "}"
+    ],
+    "description": "Qivot model update pattern"
+  },
+
+  "Qivot Delete": {
+    "prefix": "qdelete",
+    "body": [
+      "${1:Model} ${2:obj};",
+      "if (${2:obj}.load(${1:Model}::col().${3:id} == ${4:value})) {",
+      "    if (!${2:obj}.remove()) {",
+      "        qCritical() << \"Error:\" << ${2:obj}.lastError().text();",
+      "    }",
+      "}"
+    ],
+    "description": "Qivot model delete pattern"
+  },
+
+  "Qivot Join": {
+    "prefix": "qjoin",
+    "body": [
+      "auto ${1:results} = ${2:Model}::objects()",
+      "    .join(QiJoin<${3:JoinModel}>(QiWhere(\"${4:joinModel.fkColumn}\") == QiWhere(\"${2:model}.id\")))",
+      "    .filter(QiWhere(\"${4:joinModel.fkColumn}\") == ${5:value})",
+      "    .all();"
+    ],
+    "description": "Qivot JOIN query pattern"
+  },
+
+  "Qivot Async Query": {
+    "prefix": "qasync",
+    "body": [
+      "auto future = QiAsync::run([](QiConnection &c) {",
+      "    return ${1:Model}::objects().all();",
+      "});",
+      "",
+      "// Connect to future to get results when ready:",
+      "QtConcurrent::onFinished(future, [this](auto ${2:result}) {",
+      "    // Handle results",
+      "});"
+    ],
+    "description": "Qivot async query on worker thread"
+  }
+}
