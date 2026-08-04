@@ -129,8 +129,14 @@ fi
 # Rename executable in CMakeLists.txt if needed
 if [[ "$BUILD_SYSTEM" == "cmake" ]]; then
     if [[ -f "$PROJECT_NAME/CMakeLists.txt" ]]; then
-        sed -i '' "s/project(MyQivot[^ ]*/project($PROJECT_NAME/" "$PROJECT_NAME/CMakeLists.txt"
-        sed -i '' "s/myapp/$PROJECT_NAME/" "$PROJECT_NAME/CMakeLists.txt"
+        # Use perl-compatible regex with different delimiter to avoid conflicts
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|project(MyQivot.*)|project($PROJECT_NAME)|" "$PROJECT_NAME/CMakeLists.txt"
+            sed -i '' "s|myapp|$PROJECT_NAME|g" "$PROJECT_NAME/CMakeLists.txt"
+        else
+            sed -i "s|project(MyQivot.*)|project($PROJECT_NAME)|" "$PROJECT_NAME/CMakeLists.txt"
+            sed -i "s|myapp|$PROJECT_NAME|g" "$PROJECT_NAME/CMakeLists.txt"
+        fi
     fi
 fi
 
@@ -138,7 +144,11 @@ fi
 if [[ "$BUILD_SYSTEM" == "qmake" ]]; then
     if [[ -f "$PROJECT_NAME/MyQivotProject.pro" ]]; then
         mv "$PROJECT_NAME/MyQivotProject.pro" "$PROJECT_NAME/$PROJECT_NAME.pro"
-        sed -i '' "s/myapp/$PROJECT_NAME/" "$PROJECT_NAME/$PROJECT_NAME.pro"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|myapp|$PROJECT_NAME|g" "$PROJECT_NAME/$PROJECT_NAME.pro"
+        else
+            sed -i "s|myapp|$PROJECT_NAME|g" "$PROJECT_NAME/$PROJECT_NAME.pro"
+        fi
     fi
 fi
 
