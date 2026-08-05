@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload generated models
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sqlserver-models
           path: /tmp/sqlserver_models.h
