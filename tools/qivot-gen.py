@@ -7,12 +7,13 @@ Usage:
     python3 qivot-gen.py --db sqlite:mydb.db --output src/models.h
     python3 qivot-gen.py --db postgresql://user:pass@localhost/dbname --output src/models.h
     python3 qivot-gen.py --db mysql://user:pass@localhost/dbname --output src/models.h
+    python3 qivot-gen.py --db mssql+pyodbc://user:password@server/dbname --output src/models.h
 
 Supported databases:
     - SQLite: sqlite:path/to/db.db
     - PostgreSQL: postgresql://[user[:password]@][host[:port]]/dbname
     - MySQL: mysql://[user[:password]@][host[:port]]/dbname
-    - SQL Server: mssql+pyodbc://user:password@dsn_name
+    - SQL Server: mssql+pyodbc://user:password@server/dbname or mssql://...
 """
 
 import sys
@@ -657,6 +658,226 @@ class MysqlParser(SchemaParser):
         return columns
 
 
+class SqlServerParser(SchemaParser):
+    """Parser for SQL Server databases."""
+
+    def __init__(self):
+        super().__init__()
+        self.conn = None
+        self.cursor = None
+
+    def connect(self, connection_string: str) -> None:
+        """Connect to SQL Server database."""
+        try:
+            import pyodbc
+        except ImportError:
+            raise ImportError("pyodbc not installed. Install with: pip install pyodbc")
+
+        try:
+            # SQL Server connection string format: mssql+pyodbc://user:password@server/database?driver=ODBC+Driver+17+for+SQL+Server
+            # Or: mssql://user:password@server:port/database
+            self.conn = pyodbc.connect(connection_string)
+            self.cursor = self.conn.cursor()
+        except Exception as e:
+            raise Exception(f"Failed to connect to SQL Server: {e}")
+
+    def disconnect(self) -> None:
+        """Disconnect from SQL Server database."""
+        if self.conn:
+            self.conn.close()
+
+    def get_tables(self) -> List[Table]:
+        """Get all tables from SQL Server database."""
+        tables = []
+
+        try:
+            self.cursor.execute("""
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_TYPE = 'BASE TABLE'
+                ORDER BY TABLE_NAME
+            """)
+            table_names = [row[0] for row in self.cursor.fetchall()]
+        except Exception as e:
+            self.warnings.append(f"Failed to get table list: {e}")
+            return tables
+
+        for table_name in table_names:
+            if self.should_skip_table(table_name):
+                continue
+
+            columns = self._get_columns(table_name)
+            table = Table(name=table_name, columns=columns)
+
+            # Set pk_columns for composite key detection
+            table.pk_columns = [col.name for col in columns if col.is_primary_key]
+
+            # Warn about composite keys
+            if table.has_composite_key:
+                table.warnings.append(
+                    f"⚠️  Composite primary key detected: {table.pk_columns} "
+                    f"— use QI_DECLARE_MODEL_NOID"
+                )
+
+            table.detect_polymorphic_relationships()
+            table.detect_soft_deletes()
+            self.warnings.extend(table.warnings)
+            tables.append(table)
+
+        return tables
+
+    def _get_columns(self, table_name: str) -> List[Column]:
+        """Get columns for a specific SQL Server table."""
+        columns = []
+
+        try:
+            self.cursor.execute(f"""
+                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            """, (table_name,))
+
+            col_info = self.cursor.fetchall()
+        except Exception as e:
+            self.warnings.append(f"Failed to get columns for {table_name}: {e}")
+            return columns
+
+        pk_cols = self._get_primary_keys(table_name)
+        fk_info = self._get_foreign_keys(table_name)
+        unique_cols = self._get_unique_constraints(table_name)
+        check_info = self._get_check_constraints(table_name)
+
+        for col_name, data_type, is_nullable, default_val in col_info:
+            is_pk = col_name in pk_cols
+            is_fk = col_name in fk_info
+            is_unique = col_name in unique_cols
+
+            cpp_type, needs_converter, converter_hint = self.map_sql_type_to_cpp(data_type)
+
+            col = Column(
+                name=col_name,
+                original_sql_type=data_type,
+                cxx_type=cpp_type,
+                is_primary_key=is_pk,
+                is_unique=is_unique,
+                is_not_null=is_nullable == 'NO',
+                has_default=default_val is not None,
+                default_value=str(default_val) if default_val else "",
+                needs_converter=needs_converter,
+                converter_hint=converter_hint,
+            )
+
+            if is_fk:
+                col.is_foreign_key = True
+                col.fk_table, col.fk_column = fk_info[col_name]
+
+            if col_name in check_info:
+                col.check_expression, col.constraint_name = check_info[col_name]
+
+            columns.append(col)
+
+        return columns
+
+    def _get_primary_keys(self, table_name: str) -> Set[str]:
+        """Get primary key columns using sys tables."""
+        pk_cols = set()
+
+        try:
+            self.cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_NAME = ? AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+            """, (table_name,))
+
+            pk_cols = {row[0] for row in self.cursor.fetchall()}
+        except Exception:
+            pass
+
+        return pk_cols
+
+    def _get_foreign_keys(self, table_name: str) -> Dict[str, Tuple[str, str]]:
+        """Get foreign key info using sys.foreign_keys."""
+        fk_dict = {}
+
+        try:
+            self.cursor.execute("""
+                SELECT
+                    c.name as fk_column,
+                    r.referenced_object_id,
+                    cr.name as referenced_column
+                FROM sys.foreign_key_columns as fkc
+                INNER JOIN sys.columns as c ON fkc.parent_object_id = OBJECT_ID(?)
+                    AND fkc.parent_column_id = c.column_id
+                INNER JOIN sys.columns as cr ON fkc.referenced_object_id = cr.object_id
+                    AND fkc.referenced_column_id = cr.column_id
+                INNER JOIN sys.tables as r ON fkc.referenced_object_id = r.object_id
+            """, (table_name,))
+
+            for col_name, ref_obj_id, ref_col in self.cursor.fetchall():
+                # Get referenced table name
+                self.cursor.execute("SELECT name FROM sys.tables WHERE object_id = ?", (ref_obj_id,))
+                ref_table_row = self.cursor.fetchone()
+                if ref_table_row:
+                    ref_table = ref_table_row[0]
+                    fk_dict[col_name] = (ref_table, ref_col)
+        except Exception:
+            # Fallback to INFORMATION_SCHEMA
+            try:
+                self.cursor.execute("""
+                    SELECT KCU.COLUMN_NAME, CCU.TABLE_NAME, CCU.COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE KCU
+                    INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS RC
+                        ON KCU.CONSTRAINT_NAME = RC.CONSTRAINT_NAME
+                    INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE CCU
+                        ON RC.UNIQUE_CONSTRAINT_NAME = CCU.CONSTRAINT_NAME
+                    WHERE KCU.TABLE_NAME = ?
+                """, (table_name,))
+
+                for col_name, fk_table, fk_col in self.cursor.fetchall():
+                    fk_dict[col_name] = (fk_table, fk_col)
+            except Exception:
+                pass
+
+        return fk_dict
+
+    def _get_unique_constraints(self, table_name: str) -> Set[str]:
+        """Get unique constraint columns."""
+        unique_cols = set()
+
+        try:
+            self.cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_NAME = ? AND CONSTRAINT_TYPE = 'UNIQUE'
+            """, (table_name,))
+
+            unique_cols = {row[0] for row in self.cursor.fetchall()}
+        except Exception:
+            pass
+
+        return unique_cols
+
+    def _get_check_constraints(self, table_name: str) -> Dict[str, Tuple[str, str]]:
+        """Get CHECK constraints with their expressions."""
+        check_dict = {}
+
+        try:
+            self.cursor.execute("""
+                SELECT cc.CHECK_CLAUSE, kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+                INNER JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
+                    ON cc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+                INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                    ON cc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                WHERE ccu.TABLE_NAME = ?
+            """, (table_name,))
+
+            for check_expr, col_name in self.cursor.fetchall():
+                check_dict[col_name] = (check_expr, "CHECK")
+        except Exception:
+            pass
+
+        return check_dict
+
+
 class CodeGenerator:
     """Generates C++ Qivot model code from tables."""
 
@@ -790,6 +1011,8 @@ def get_parser(connection_string: str) -> SchemaParser:
         return PostgresParser()
     elif connection_string.startswith("mysql://"):
         return MysqlParser()
+    elif connection_string.startswith("mssql") or connection_string.startswith("sqlserver"):
+        return SqlServerParser()
     else:
         raise ValueError(f"Unsupported database: {connection_string}")
 

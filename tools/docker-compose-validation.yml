@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Mastodon-like schema (social media platform)
+  postgres-mastodon:
+    image: postgres:15-alpine
+    container_name: qivot-test-mastodon
+    environment:
+      POSTGRES_DB: mastodon
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./schemas/mastodon-schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  # Discourse-like schema (forum platform)
+  postgres-discourse:
+    image: postgres:15-alpine
+    container_name: qivot-test-discourse
+    environment:
+      POSTGRES_DB: discourse
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./schemas/discourse-schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  # GitLab-like schema (DevOps platform)
+  postgres-gitlab:
+    image: postgres:15-alpine
+    container_name: qivot-test-gitlab
+    environment:
+      POSTGRES_DB: gitlab
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./schemas/gitlab-schema.sql:/docker-entrypoint-initdb.d/schema.sql

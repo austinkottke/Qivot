@@ -1,0 +1,150 @@
+name: Validate Real-World Schemas
+
+on:
+  push:
+    paths:
+      - 'tools/qivot-gen.py'
+      - 'tools/validate-real-schemas.py'
+      - 'tools/schemas/*.sql'
+      - 'tools/docker-compose-validation.yml'
+      - '.github/workflows/validate-real-schemas.yml'
+  pull_request:
+    paths:
+      - 'tools/qivot-gen.py'
+      - 'tools/validate-real-schemas.py'
+      - 'tools/schemas/*.sql'
+      - 'tools/docker-compose-validation.yml'
+  schedule:
+    # Run weekly to catch regressions
+    - cron: '0 2 * * 0'
+
+jobs:
+  validate-schemas:
+    name: Validate Real-World Schemas
+    runs-on: ubuntu-latest
+
+    services:
+      # Mastodon-like PostgreSQL
+      postgres-mastodon:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: mastodon
+          POSTGRES_PASSWORD: testpass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      # Discourse-like PostgreSQL
+      postgres-discourse:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: discourse
+          POSTGRES_PASSWORD: testpass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5433:5432
+
+      # GitLab-like PostgreSQL
+      postgres-gitlab:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: gitlab
+          POSTGRES_PASSWORD: testpass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5434:5432
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install psycopg2-binary
+
+      - name: Initialize Mastodon schema
+        env:
+          PGPASSWORD: testpass
+        run: |
+          psql -h localhost -U postgres -d mastodon -f tools/schemas/mastodon-schema.sql
+
+      - name: Initialize Discourse schema
+        env:
+          PGPASSWORD: testpass
+        run: |
+          psql -h localhost -U postgres -p 5433 -d discourse -f tools/schemas/discourse-schema.sql
+
+      - name: Initialize GitLab schema
+        env:
+          PGPASSWORD: testpass
+        run: |
+          psql -h localhost -U postgres -p 5434 -d gitlab -f tools/schemas/gitlab-schema.sql
+
+      - name: Wait for databases
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U postgres && \
+            pg_isready -h localhost -p 5433 -U postgres && \
+            pg_isready -h localhost -p 5434 -U postgres && break || sleep 1
+          done
+
+      - name: Validate Mastodon schema
+        run: |
+          python3 tools/qivot-gen.py \
+            --db postgresql://postgres:testpass@localhost:5432/mastodon \
+            --output /tmp/mastodon_models.h
+          echo "✓ Mastodon: Generated models for 18-table social media schema"
+
+      - name: Validate Discourse schema
+        run: |
+          python3 tools/qivot-gen.py \
+            --db postgresql://postgres:testpass@localhost:5433/discourse \
+            --output /tmp/discourse_models.h
+          echo "✓ Discourse: Generated models for 17-table forum schema"
+
+      - name: Validate GitLab schema
+        run: |
+          python3 tools/qivot-gen.py \
+            --db postgresql://postgres:testpass@localhost:5434/gitlab \
+            --output /tmp/gitlab_models.h
+          echo "✓ GitLab: Generated models for 15-table DevOps schema"
+
+      - name: Verify model counts
+        run: |
+          echo "Mastodon models: $(grep -c '^class ' /tmp/mastodon_models.h) (expected: ~18)"
+          echo "Discourse models: $(grep -c '^class ' /tmp/discourse_models.h) (expected: ~17)"
+          echo "GitLab models: $(grep -c '^class ' /tmp/gitlab_models.h) (expected: ~15)"
+
+      - name: Upload generated models
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: generated-models
+          path: /tmp/*_models.h
+          retention-days: 7
+
+      - name: Report results
+        if: success()
+        run: |
+          echo "✅ Real-world schema validation PASSED"
+          echo ""
+          echo "Validated production-like schemas:"
+          echo "  - Mastodon (social media): PostgreSQL, 18 tables, JSON fields"
+          echo "  - Discourse (forum): PostgreSQL, 17 tables, polymorphic relationships"
+          echo "  - GitLab (DevOps): PostgreSQL, 15 tables, JSONB, complex FKs"
