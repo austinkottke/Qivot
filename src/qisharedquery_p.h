@@ -36,6 +36,15 @@ public:
 
     QiExpression expression;
 
+    /// The accumulated filter, so chained filter() calls can be AND-ed.
+    /**
+      expression is the compiled form and cannot be read back apart, so the
+      clause it was built from is kept here as well. Without it filter() had
+      nothing to combine against and could only overwrite -- see the note on
+      QiSharedQuery::filter.
+     */
+    QiWhere filterWhere;
+
     /// select(fields)
     QStringList fields;
 

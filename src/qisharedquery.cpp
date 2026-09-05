@@ -58,7 +58,27 @@ QiSharedQuery QiSharedQuery::select(QString field) {
 
 QiSharedQuery QiSharedQuery::filter(QiWhere where) {
     QiSharedQuery query(*this);
-    query.data->expression = QiExpression(where);
+    // CHAINED FILTERS AND TOGETHER; they do not replace one another.
+    /*
+      This assigned the expression outright, so of
+
+          objects().filter(instrument == sym).filter(periodSec == n)
+
+      only the LAST clause survived and the first was silently dropped. Every
+      row of every other instrument came back, from a query that reads as
+      though it scopes -- the failure is invisible until a second value exists
+      in the column, which is why it can sit in a schema for a long time and
+      then surface all at once as another instrument's data.
+
+      AND is what a reader of a chain expects and what the ORMs this API
+      follows do. A single filter() on a fresh query is unchanged, which is
+      every call that was already correct.
+     */
+    if (query.data->filterWhere.isNull())
+        query.data->filterWhere = where;
+    else
+        query.data->filterWhere = query.data->filterWhere && where;
+    query.data->expression = QiExpression(query.data->filterWhere);
     return query;
 }
 
