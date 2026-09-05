@@ -282,6 +282,21 @@ int QiConnection::beginScope() {
     bool ok;
     if (depth == 1) {
         ok = d->m_sql.transaction();                 // outermost: real BEGIN
+
+        // The counter said no transaction was open and SQLite disagreed, so an
+        // earlier COMMIT or ROLLBACK failed and left one behind. Clear the stray
+        // one and take the BEGIN again: without this the connection refuses
+        // every transaction for the rest of the process's life, and a caller
+        // whose only symptom is "insert failed" has no way to see why.
+        //
+        // Gated on the message rather than run for any failure, because a BEGIN
+        // also fails on a plain lock — and rolling back on THAT would throw away
+        // a transaction somebody else is still filling.
+        if (!ok && d->m_sql.database().lastError().text()
+                       .contains(QStringLiteral("within a transaction"))) {
+            d->m_sql.rollback();
+            ok = d->m_sql.transaction();
+        }
     } else {
         QSqlQuery q = d->m_sql.query();              // nested: SAVEPOINT
         ok = q.exec(QStringLiteral("SAVEPOINT qi_sp_%1").arg(depth));
@@ -298,9 +313,32 @@ bool QiConnection::commitScope(int depth) {
     bool ok;
     if (depth == 1) {
         ok = d->m_sql.commit();
+
+        // A COMMIT THAT FAILS LEAVES THE TRANSACTION OPEN.
+        /*
+          The depth is about to drop to 0 either way — the scope is over and its
+          owner is gone. If SQLite is still holding a transaction at that point,
+          the next scope believes it is the outermost, issues a real BEGIN, and
+          gets "cannot start a transaction within a transaction" — and so does
+          every scope after it, forever, because nothing ever closes the stray.
+          One failed commit under lock contention was enough to stop a running
+          process writing for good.
+
+          So force the connection into the state the counter is about to claim.
+          The work is lost regardless: the commit is what failed.
+         */
+        if (!ok)
+            d->m_sql.rollback();
     } else {
         QSqlQuery q = d->m_sql.query();
         ok = q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+
+        // Same reasoning one level in: a RELEASE that fails leaves the savepoint
+        // on the stack, and the name is reused by the next scope at this depth.
+        if (!ok) {
+            q.exec(QStringLiteral("ROLLBACK TO qi_sp_%1").arg(depth));
+            q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+        }
     }
     if (d->txnDepth == depth)
         d->txnDepth = depth - 1;
@@ -314,9 +352,12 @@ bool QiConnection::rollbackScope(int depth) {
     if (depth == 1) {
         ok = d->m_sql.rollback();
     } else {
+        // RELEASE even if the ROLLBACK TO failed. The two used to be chained
+        // with &&, which skipped the RELEASE on exactly the occasions the
+        // savepoint most needed taking off the stack.
         QSqlQuery q = d->m_sql.query();
-        ok = q.exec(QStringLiteral("ROLLBACK TO qi_sp_%1").arg(depth))
-          && q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth));
+        ok = q.exec(QStringLiteral("ROLLBACK TO qi_sp_%1").arg(depth));
+        ok = q.exec(QStringLiteral("RELEASE qi_sp_%1").arg(depth)) && ok;
     }
     if (d->txnDepth == depth)
         d->txnDepth = depth - 1;
