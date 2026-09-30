@@ -20,8 +20,12 @@ By the end you'll understand:
 > qmake && make
 > ./contacts
 > ```
-> `contacts.db` is dropped and re-seeded on every launch. Set `QIVOT_LOG=1` to
-> print every SQL statement and watch the paging happen.
+> The first launch seeds 10,000 contacts into `contacts.db`; after that your adds
+> and deletes persist. Set `QIVOT_LOG=1` to print every SQL statement and watch
+> the paging happen.
+>
+> It also runs on **iOS and Android** (Qt 6.8+): build with that platform's
+> `qmake` as usual. On a phone the database lives in the app's data directory.
 
 ---
 
@@ -203,14 +207,18 @@ void ContactStore::add(const QString &f, const QString &l, const QString &p) {
 |---|---|
 | `contact.h` | The `Contact` model — `firstName`, `lastName`, `phone`. |
 | `contactstore.h` / `.cpp` | QML controller: windowed model, search filter, `indexForLetter`, add/remove. |
-| `main.cpp` | Opens the DB, seeds 10,000 unique contacts, loads the QML. |
-| `main.qml` | The iOS-style UI: header, search, sectioned `ListView`, A–Z rail, HUD, add dialog. |
+| `main.cpp` | Opens the DB, seeds 10,000 unique contacts on first launch, loads the QML. |
+| `main.qml` | The list screen: collapsing large title, search, sectioned `ListView` with swipe-to-delete, A–Z rail, HUD. |
+| `ContactDetail.qml` | The card a row opens: avatar, message / call, phone, delete with confirmation. |
+| `AddSheet.qml` | "New Contact" bottom sheet with a live monogram. |
+| `Avatar.qml` | Gradient monogram avatar, colored per name. |
+| `safearea.h` / `safearea_ios.mm` | iOS only: reads the status-bar / home-indicator insets from UIKit. |
 
 ## Environment variables
 
 - `QIVOT_LOG=1` — print every SQL statement (see the paging happen).
-- `QIVOT_SEED=<n>` — seed a different number of contacts (capped at the number of
-  unique first×last pairs, 10,000).
+- `QIVOT_SEED=<n>` — wipe and re-seed with a different number of contacts (capped
+  at the number of unique first×last pairs, 10,000).
 - `QIVOT_SELFTEST=1` — run a scripted add / search / jump and quit, for headless
   checks (`QT_QPA_PLATFORM=offscreen ./contacts`).
 

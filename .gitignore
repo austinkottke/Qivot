@@ -1,5 +1,7 @@
 # Build output
 build/
+# tools/run-mobile-tests.sh
+build-mobile/
 *.o
 *.obj
 *.a

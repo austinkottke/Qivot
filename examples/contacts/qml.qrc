@@ -1,5 +1,8 @@
 <RCC>
     <qresource prefix="/">
         <file>main.qml</file>
+        <file>Avatar.qml</file>
+        <file>ContactDetail.qml</file>
+        <file>AddSheet.qml</file>
     </qresource>
 </RCC>

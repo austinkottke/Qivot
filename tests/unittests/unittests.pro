@@ -8,10 +8,13 @@ QT       += core
 QT       += testlib
 QT       += concurrent
 QT       -= gui
+# Phone apps start through Qt's platform plugin, which needs gui even with no UI
+# (iOS: the qt_main_wrapper entry point; Android: the qtforandroid launcher).
+ios|android: QT += gui
 
 TARGET = unittests
 CONFIG   += console
-CONFIG   -= app_bundle
+!ios: CONFIG -= app_bundle   # iOS only runs apps packaged as bundles
 
 TEMPLATE = app
 

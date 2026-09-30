@@ -1,0 +1,73 @@
+name: iOS
+
+# Builds Qivot for the iOS simulator with Qt 6, runs the unit test suite there,
+# and smoke-tests the Contacts example (it must start with no QML errors).
+# The steps live in tools/run-mobile-tests.sh so a local run matches CI exactly
+# — see docs/Mobile.md.
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "src/**", "tests/**", "examples/contacts/**",
+             "tools/run-mobile-tests.sh", ".github/workflows/mobile-ios.yml" ]
+  pull_request:
+    paths: [ "src/**", "tests/**", "examples/contacts/**",
+             "tools/run-mobile-tests.sh", ".github/workflows/mobile-ios.yml" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: 6.8.3
+
+jobs:
+  ios:
+    name: ios · Qt 6.8 · simulator
+    # Pinned rather than macos-latest: Qt 6.8's iOS libraries have no arm64
+    # simulator slice, so the app is built for an x86_64 simulator and runs under
+    # Rosetta — which needs Xcode 16's Rosetta simulator support.
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rosetta
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      # Host Qt — moc/rcc run on the host.
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+      - name: Remember host path
+        run: |
+          echo "QT_HOST=$QT_ROOT_DIR"      >> "$GITHUB_ENV"
+          echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install iOS Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: ios
+          arch: ios
+          cache: true
+      - name: Remember target path
+        run: echo "QT_MOBILE=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build and run on the simulator
+        run: tools/run-mobile-tests.sh ios
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-logs
+          if-no-files-found: ignore
+          path: build-mobile/ios/*.log

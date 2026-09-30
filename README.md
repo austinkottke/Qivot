@@ -7,6 +7,8 @@
   <img src="https://img.shields.io/badge/Qt-5.15%20%7C%206-41CD52?logo=qt&logoColor=white" alt="Qt 5.15 or 6">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
   <a href="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/mobile-ios.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/mobile-ios.yml/badge.svg" alt="iOS"></a>
+  <a href="https://github.com/austinkottke/Qivot/actions/workflows/mobile-android.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/mobile-android.yml/badge.svg" alt="Android"></a>
 </p>
 
 <p align="center">
@@ -1788,6 +1790,9 @@ It's ~200 lines of QML over a ~60-line store — the ORM does the rest.
 - **Qt 5.15 and Qt 6** from a single codebase — no `QT_VERSION` guards. Minimum
   Qt 5.10 (for `QStringView`). Verified building and passing the test suite on Qt 5.15.
 - **C++17** (`CONFIG += c++17`, set in `qivot.pri`).
+- **iOS and Android** with Qt 6.8+. The test suite runs on the iOS simulator and an
+  Android emulator in CI. See the [mobile guide](docs/Mobile.md) for setup, the few
+  app-side changes a phone needs, and troubleshooting.
 - **SQLite** — a few features want a recent build (all standard in Qt's bundled SQLite):
   `upsert()` needs ≥ 3.24 · `RIGHT`/`FULL OUTER` joins need ≥ 3.39 · full-text search needs the FTS5 module.
 
