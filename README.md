@@ -12,6 +12,16 @@
 </p>
 
 <p align="center">
+  <!-- Where Qivot runs. iOS/Android link to the mobile guide; WebAssembly to the live demo. -->
+  <img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" alt="Linux">
+  <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/Windows-0078D6" alt="Windows">
+  <a href="docs/Mobile.md"><img src="https://img.shields.io/badge/iOS-000000?logo=apple&logoColor=white" alt="iOS"></a>
+  <a href="docs/Mobile.md"><img src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white" alt="Android"></a>
+  <a href="https://austinkottke.github.io/Qivot/"><img src="https://img.shields.io/badge/WebAssembly-654FF0?logo=webassembly&logoColor=white" alt="WebAssembly"></a>
+</p>
+
+<p align="center">
   <!-- Live per-backend integration status. Each database runs in its own workflow, so a
        red badge points at the exact dialect that broke. Oracle is generation-only (unit tests). -->
   <a href="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml"><img src="https://github.com/austinkottke/Qivot/actions/workflows/db-sqlite.yml/badge.svg" alt="SQLite"></a>
@@ -33,6 +43,18 @@
 </p>
 
 <p align="center">
+  <strong>📱 Runs on iOS and Android</strong> — the same models, the same SQLite, the same QML.
+  The full test suite runs on an iPhone simulator and an Android emulator in CI
+  (<a href="docs/Mobile.md">mobile guide</a>).
+</p>
+
+<p align="center">
+  <a href="examples/contacts"><img src="docs/contacts-mobile.png" alt="Qivot Contacts on iOS and Android — a 10,000-contact list, a contact card and the New Contact sheet" width="820"></a>
+  <br>
+  <em><a href="examples/contacts">Qivot Contacts</a> on iOS and Android — 10,000 live records through a windowed model: a collapsing large title, live search, an A–Z jump index, swipe-to-delete, a contact card, and a New Contact sheet whose monogram fills in as you type. One QML codebase, persisted in SQLite on the phone.</em>
+</p>
+
+<p align="center">
   <strong>▶ <a href="https://austinkottke.github.io/Qivot/vision/" target="_blank" rel="noopener">Try the Vision project-accounting demo in your browser</a></strong> — a Deltek-Vision-style
   A/E/C dashboard, compiled to WebAssembly with an in-browser SQLite database (<a href="examples/vision">source</a>).
 </p>
@@ -47,12 +69,6 @@
   <a href="examples/erp"><img src="examples/erp/screenshot.png" alt="Qivot ERP — a CRM/PSA dashboard: KPIs, revenue by month, pipeline by stage, AR aging, and top clients" width="820"></a>
   <br>
   <em><a href="examples/erp">Qivot ERP</a> — a CRM/PSA over <strong>eight related models</strong>, using every relation shape Qivot has: <code>QiForeignKey</code> (auto-loading), <code>QI_HAS_MANY</code>, and <code>QI_MANY_TO_MANY</code> (a toggleable project-staffing roster). The fullest relations walkthrough in the repo.</em>
-</p>
-
-<p align="center">
-  <img src="docs/contacts-hero.png" alt="Qivot Contacts example — an iOS-style address book over 10,000 records" width="460">
-  <br>
-  <em><a href="examples/contacts">Contacts example</a> — an iOS-style address book over 10,000 live records: sticky A–Z sections, drag-to-jump index, and reactive search, all backed by SQLite through Qivot.</em>
 </p>
 
 <p align="center">
@@ -103,6 +119,8 @@ HTTP on a worker thread**, writing the results into your database.
   the DB in as a `ListView` scrolls, so huge tables load lazily, not all at once.
 - 🎯 **Modern & portable** — Qt **5.15 and 6** from one codebase, C++17,
   `[[nodiscard]]` on the operations that matter.
+- 📱 **[iOS & Android](docs/Mobile.md)** — the same models and QML run on phones;
+  the whole test suite runs on an iOS simulator and an Android emulator in CI.
 - 📦 **[Header-only option](#install)** — drop in a single generated
   [`dist/qivot.hpp`](dist/qivot.hpp); no library to build. (Or use qmake / CMake
   as a static lib.)
@@ -134,6 +152,10 @@ badge points at the exact dialect that broke. Oracle's SQL generation is unit-te
 Recent additions that take Qivot from "capable" to "scales" — each with a
 step-by-step example:
 
+- 📱 **iOS & Android** — Qivot apps build and run on phones with Qt 6.8+, and CI
+  runs the full test suite on an iOS simulator and an Android emulator. The
+  Contacts example is now a native-feeling phone app. → [mobile guide](docs/Mobile.md),
+  [`examples/contacts`](examples/contacts)
 - ⚙️ **Async queries** — run any query on a worker thread and get a `QFuture`
   back, so the UI never blocks. `QiAsync::run([](QiConnection &c){ … })` opens an
   isolated per-thread connection for you. → [`examples/asyncquery`](examples/asyncquery),
