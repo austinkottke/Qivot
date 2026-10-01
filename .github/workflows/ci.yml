@@ -107,9 +107,13 @@ jobs:
   # db-mysql.yml, db-postgres.yml, db-sqlserver.yml, db-duckdb.yml. Oracle stays
   # generation-only, covered by the unit tests above.
 
+  # Pinned to windows-2022 (Visual Studio 2022): Qt 5.15.2's msvc2019_64 build
+  # needs it. windows-latest now has Visual Studio 18, whose STL dropped
+  # stdext::make_checked_array_iterator, which Qt 5.15.2's qlist.h calls
+  # whenever two QLists are compared (error C2653: 'stdext' is not a class or namespace).
   windows:
-    name: windows-latest (msvc)
-    runs-on: windows-latest
+    name: windows-2022 (msvc)
+    runs-on: windows-2022
     timeout-minutes: 30
 
     steps:
