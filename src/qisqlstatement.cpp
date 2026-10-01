@@ -296,6 +296,10 @@ QString QiSqlStatement::replaceInto(QiModelMetaInfo *info,QStringList fields){
     return _insertInto(info,"REPLACE",fields);
 }
 
+QString QiSqlStatement::insertDefaults(QiModelMetaInfo *info){
+    return QString("INSERT INTO %1 DEFAULT VALUES;").arg(info->name());
+}
+
 QString QiSqlStatement::upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns){
     QStringList values;
     foreach (QString f, fields) {

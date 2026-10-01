@@ -84,6 +84,11 @@ public:
      */
     virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
 
+    /// Insert a row that sets no columns (every column takes its default),
+    /// e.g. a model whose only column is its auto-numbered key.
+    /// "INSERT INTO t DEFAULT VALUES" here; MySQL spells it "() VALUES ()".
+    virtual QString insertDefaults(QiModelMetaInfo *info);
+
     /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
     /**
       A non-destructive upsert: insert the row, or if it collides on the given

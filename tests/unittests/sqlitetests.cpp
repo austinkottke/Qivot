@@ -227,6 +227,14 @@ public:
 };
 QI_DECLARE_MODEL(SkipGadget, "skip_gadget", QI_FIELD(name), QI_FIELD(weight));
 
+// For saveModelWithOnlyAnId(): a table that is nothing but its key (a lookup a
+// foreign key points at). The model lists QiModel's own id as its one field.
+class IdOnly : public QiModel {
+    QI_MODEL
+public:
+};
+QI_DECLARE_MODEL_NOID(IdOnly, "id_only", QI_FIELD(id));
+
 void SqliteTests::initTestCase()
 {
     verifyCreateTable();
@@ -2033,4 +2041,26 @@ void SqliteTests::loadSkipsUnknownColumns()
     QCOMPARE(int(all.at(0)->weight), 7);
 
     QVERIFY(q.exec("DROP TABLE skip_gadget"));
+}
+
+void SqliteTests::saveModelWithOnlyAnId()
+{
+    // Saving it sets no columns at all, which used to produce the invalid
+    // "REPLACE INTO id_only () values ()".
+    QSqlQuery q(db);
+    QVERIFY(q.exec("DROP TABLE IF EXISTS id_only"));
+    QVERIFY(q.exec("CREATE TABLE id_only (id INTEGER PRIMARY KEY AUTOINCREMENT)"));
+
+    IdOnly a, b;
+    QVERIFY(a.save());
+    QVERIFY(b.save());
+    QVERIFY(a.id.get().toInt() > 0);
+    QCOMPARE(b.id.get().toInt(), a.id.get().toInt() + 1);
+
+    IdOnly back;
+    QVERIFY(back.load(QiWhere("id = ", b.id.get())));
+    QCOMPARE(back.id.get().toInt(), b.id.get().toInt());
+    QCOMPARE(IdOnly::objects().all().size(), 2);
+
+    QVERIFY(q.exec("DROP TABLE id_only"));
 }

@@ -2304,6 +2304,11 @@ public:
      */
     virtual QString replaceInto(QiModelMetaInfo *info,QStringList fields);
 
+    /// Insert a row that sets no columns (every column takes its default),
+    /// e.g. a model whose only column is its auto-numbered key.
+    /// "INSERT INTO t DEFAULT VALUES" here; MySQL spells it "() VALUES ()".
+    virtual QString insertDefaults(QiModelMetaInfo *info);
+
     /// Upsert statement : "INSERT INTO ... ON CONFLICT(keys) DO UPDATE SET ..."
     /**
       A non-destructive upsert: insert the row, or if it collides on the given
@@ -4600,6 +4605,7 @@ public:
     QString tableSuffix(QiModelMetaInfo *info) override;
 
     QString upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns) override;
+    QString insertDefaults(QiModelMetaInfo *info) override;
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
@@ -7878,6 +7884,11 @@ QStringList QiMysqlStatement::dropFtsIndex(QString name){
     return QStringList();
 }
 
+QString QiMysqlStatement::insertDefaults(QiModelMetaInfo *info){
+    // MySQL has no DEFAULT VALUES; an empty column list means the same.
+    return QString("INSERT INTO %1 () VALUES ();").arg(info->name());
+}
+
 // ---- src/qioraclestatement.cpp -----------------------------------
 #include <QStringList>
 #include <QDebug>
@@ -10047,7 +10058,9 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
 
 bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,QStringList fields,bool replace){
     QString sql;
-    if (replace) {
+    if (fields.isEmpty()) {
+        sql = d->m_statement->insertDefaults(info);      // nothing to set: "() values ()" isn't SQL
+    } else if (replace) {
         sql = d->m_statement->replaceInto(info,fields);
     } else {
         sql = d->m_statement->insertInto(info,fields);
@@ -10089,7 +10102,9 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
 
     QSqlQuery q = query();
 
-    if (replace){
+    if (fields.isEmpty()){
+        sql = d->m_statement->insertDefaults(info);      // nothing to set: "() values ()" isn't SQL
+    } else if (replace){
         sql = d->m_statement->replaceInto(info,fields);
     } else {
         sql = d->m_statement->insertInto(info,fields);
@@ -10636,6 +10651,10 @@ QString QiSqlStatement::insertInto(QiModelMetaInfo *info,QStringList fields){
 
 QString QiSqlStatement::replaceInto(QiModelMetaInfo *info,QStringList fields){
     return _insertInto(info,"REPLACE",fields);
+}
+
+QString QiSqlStatement::insertDefaults(QiModelMetaInfo *info){
+    return QString("INSERT INTO %1 DEFAULT VALUES;").arg(info->name());
 }
 
 QString QiSqlStatement::upsertInto(QiModelMetaInfo *info,QStringList fields,QStringList conflictColumns){

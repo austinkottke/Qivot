@@ -39,6 +39,7 @@ private Q_SLOTS:
     /// A column added to the table behind the model's back (and placed before
     /// columns the model does know) must not stop the row from loading.
     void loadSkipsUnknownColumns();
+    void saveModelWithOnlyAnId();
     void cleanupTestCase();
 
     void insertInto();

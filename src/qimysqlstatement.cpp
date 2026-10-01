@@ -100,3 +100,8 @@ QStringList QiMysqlStatement::dropFtsIndex(QString name){
     Q_UNUSED(name);
     return QStringList();
 }
+
+QString QiMysqlStatement::insertDefaults(QiModelMetaInfo *info){
+    // MySQL has no DEFAULT VALUES; an empty column list means the same.
+    return QString("INSERT INTO %1 () VALUES ();").arg(info->name());
+}

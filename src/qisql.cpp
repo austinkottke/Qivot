@@ -289,7 +289,9 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
 
 bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,QStringList fields,bool replace){
     QString sql;
-    if (replace) {
+    if (fields.isEmpty()) {
+        sql = d->m_statement->insertDefaults(info);      // nothing to set: "() values ()" isn't SQL
+    } else if (replace) {
         sql = d->m_statement->replaceInto(info,fields);
     } else {
         sql = d->m_statement->insertInto(info,fields);
@@ -331,7 +333,9 @@ bool QiSql::insertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,b
 
     QSqlQuery q = query();
 
-    if (replace){
+    if (fields.isEmpty()){
+        sql = d->m_statement->insertDefaults(info);      // nothing to set: "() values ()" isn't SQL
+    } else if (replace){
         sql = d->m_statement->replaceInto(info,fields);
     } else {
         sql = d->m_statement->insertInto(info,fields);

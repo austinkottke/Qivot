@@ -26,6 +26,7 @@ public:
     QString tableSuffix(QiModelMetaInfo *info) override;
 
     QString upsertInto(QiModelMetaInfo *info, QStringList fields, QStringList conflictColumns) override;
+    QString insertDefaults(QiModelMetaInfo *info) override;
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
