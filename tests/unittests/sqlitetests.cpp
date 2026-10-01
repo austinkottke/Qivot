@@ -218,6 +218,15 @@ SqliteTests::SqliteTests(QObject* parent) : QObject(parent)
 {
 }
 
+// For loadSkipsUnknownColumns(): the table gets a column this model never declares.
+class SkipGadget : public QiModel {
+    QI_MODEL
+public:
+    QiField<QString> name;
+    QiField<int>     weight;
+};
+QI_DECLARE_MODEL(SkipGadget, "skip_gadget", QI_FIELD(name), QI_FIELD(weight));
+
 void SqliteTests::initTestCase()
 {
     verifyCreateTable();
@@ -2001,4 +2010,27 @@ void SqliteTests::asyncCancel() {
     for (int waited = 0; !f.isFinished() && waited < 10000; waited += 10) QThread::msleep(10);
     QVERIFY2(f.isFinished(), "cancelable worker never completed within 10s");
     QVERIFY(f.result() == -1);   // the job noticed the cancel and returned early
+}
+
+void SqliteTests::loadSkipsUnknownColumns()
+{
+    QSqlQuery q(db);
+    QVERIFY(q.exec("DROP TABLE IF EXISTS skip_gadget"));
+    // "extra" sits before columns the model knows, so a load that stopped at
+    // the first unknown column would miss name and weight entirely.
+    QVERIFY(q.exec("CREATE TABLE skip_gadget (id INTEGER PRIMARY KEY AUTOINCREMENT, extra TEXT,"
+                   " name TEXT, weight INTEGER)"));
+    QVERIFY(q.exec("INSERT INTO skip_gadget (extra, name, weight) VALUES ('added later', 'widget', 7)"));
+
+    SkipGadget g;
+    QVERIFY(g.load(QiWhere("name = ", "widget")));
+    QCOMPARE(QString(g.name), QString("widget"));
+    QCOMPARE(int(g.weight), 7);
+    QVERIFY(g.id.get().toInt() > 0);
+
+    const auto all = SkipGadget::objects().all();
+    QCOMPARE(all.size(), 1);
+    QCOMPARE(int(all.at(0)->weight), 7);
+
+    QVERIFY(q.exec("DROP TABLE skip_gadget"));
 }

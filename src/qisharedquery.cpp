@@ -354,19 +354,19 @@ QVariant QiSharedQuery::call(QString func , QString field){
 bool QiSharedQuery::recordTo(QiAbstractModel *model) {
     Q_ASSERT (data->metaInfo);
     Q_ASSERT (data->metaInfo == model->metaInfo() );
-    bool res = true;
 
     QSqlRecord record = data->query.record();
 
+    // A column the model doesn't declare is skipped, not fatal. Tables gain
+    // columns (a migration, another app, a DBA), and an older model must keep
+    // loading the columns it does know — as qiRawQuery already does. This used
+    // to stop at the first unknown column and report failure, so one added
+    // column made every load of the table fail.
     int count = record.count();
-    for (int i = 0 ; i < count;i++){
-        QString field = record.fieldName(i);
-        res = data->metaInfo->setValue(model,field,record.value(i));
-        if (!res)
-            break;
-    }
+    for (int i = 0 ; i < count;i++)
+        data->metaInfo->setValue(model, record.fieldName(i), record.value(i));
 
-    return res;
+    return true;
 }
 
 bool QiSharedQuery::get(QiAbstractModel* model){
