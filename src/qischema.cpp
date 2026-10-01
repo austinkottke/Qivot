@@ -461,7 +461,9 @@ QiTableInfo QiSchema::tablePostgres(const Entry &e) const
         }
     }
 
-    // Foreign keys, with both column lists in constraint order.
+    // Foreign keys, with both column lists in constraint order. For a
+    // partitioned table, keys declared on its partitions count too: they are
+    // the table's real relationships even though the parent doesn't hold them.
     q.prepare(QStringLiteral(
         "SELECT con.conname, rn.nspname, rc.relname, con.confdeltype, con.confupdtype, "
         "  (SELECT string_agg(a.attname, chr(31) ORDER BY k.ord) "
@@ -473,11 +475,21 @@ QiTableInfo QiSchema::tablePostgres(const Entry &e) const
         "FROM pg_constraint con "
         "JOIN pg_class rc ON rc.oid = con.confrelid "
         "JOIN pg_namespace rn ON rn.oid = rc.relnamespace "
-        "WHERE con.conrelid = CAST(? AS regclass) AND con.contype = 'f' "
-        "ORDER BY con.conname"));
+        "WHERE con.contype = 'f' AND (con.conrelid = CAST(? AS regclass) "
+        "   OR con.conrelid IN (SELECT inhrelid FROM pg_inherits WHERE inhparent = CAST(? AS regclass))) "
+        "ORDER BY con.conrelid <> CAST(? AS regclass), con.conname"));
+    q.addBindValue(rel);
+    q.addBindValue(rel);
     q.addBindValue(rel);
     if (q.exec()) {
+        QSet<QString> seen;                     // one entry per relationship, not per partition
         while (q.next()) {
+            const QString signature = q.value(5).toString() + QLatin1Char('>') + q.value(1).toString()
+                                    + QLatin1Char('.') + q.value(2).toString() + QLatin1Char('.')
+                                    + q.value(6).toString();
+            if (seen.contains(signature))
+                continue;
+            seen.insert(signature);
             QiForeignKeyInfo fk;
             fk.name = q.value(0).toString();
             const QString refSchema = q.value(1).toString();

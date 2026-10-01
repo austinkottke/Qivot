@@ -72,6 +72,7 @@ static QStringList ddl(const QString &backend)
 
     if (backend == "postgres") return QStringList{
         "DROP SCHEMA IF EXISTS qs_sales CASCADE",
+        "DROP TABLE IF EXISTS qs_sale",
         "DROP VIEW IF EXISTS qs_v_titles",
         "DROP TABLE IF EXISTS qs_book_tag, qs_book, qs_author CASCADE",
         "CREATE TABLE qs_author (id SERIAL PRIMARY KEY, name VARCHAR(80) NOT NULL,"
@@ -86,6 +87,12 @@ static QStringList ddl(const QString &backend)
         "  tag TEXT NOT NULL, PRIMARY KEY (tag, book_id))",
         "CREATE SCHEMA qs_sales",
         "CREATE TABLE qs_sales.invoice (id SERIAL PRIMARY KEY, book_id INTEGER REFERENCES qs_book(id))",
+        // Partitioned, with its foreign key declared on each partition (as Pagila's payment is).
+        "CREATE TABLE qs_sale (book_id INTEGER NOT NULL, sold DATE NOT NULL) PARTITION BY RANGE (sold)",
+        "CREATE TABLE qs_sale_2025 PARTITION OF qs_sale FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
+        "CREATE TABLE qs_sale_2026 PARTITION OF qs_sale FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
+        "ALTER TABLE qs_sale_2025 ADD FOREIGN KEY (book_id) REFERENCES qs_book(id)",
+        "ALTER TABLE qs_sale_2026 ADD FOREIGN KEY (book_id) REFERENCES qs_book(id)",
     } + common;
 
     if (backend == "mysql") return QStringList{
@@ -260,6 +267,16 @@ static bool run(QSqlDatabase db, const QString &backend, const Check &check)
             check(fkOn(inv, "book_id") && fkOn(inv, "book_id")->refTable == "qs_book",
                   "cross-schema foreign key names the default-schema table plainly");
         check(schema.rowCount("qs_sales.invoice") == 0, "rowCount works on a qualified name");
+    }
+
+    if (backend == "postgres") {
+        const QStringList all = schema.tableNames();
+        check(all.contains("qs_sale") && !all.contains("qs_sale_2025"),
+              "a partitioned table is listed once, without its partitions");
+        const QiTableInfo sale = schema.table("qs_sale");
+        check(sale.foreignKeys.size() == 1 && sale.foreignKeys.at(0).refTable == "qs_book",
+              QString("foreign keys declared on partitions belong to the table, once (got %1)")
+                  .arg(sale.foreignKeys.size()));
     }
     return true;
 }
