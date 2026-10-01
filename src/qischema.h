@@ -45,7 +45,8 @@ struct QiTableInfo {
         Internal                 ///< storage behind a virtual table (FTS shadow tables); usually hidden
     };
 
-    QString                   name;
+    QString                   name;          ///< as listed: plain in the default schema, else "schema.table"
+    QString                   schema;        ///< the schema it lives in ("" for SQLite)
     Kind                      kind = Table;
     QVector<QiColumnInfo>     columns;
     QStringList               primaryKey;   ///< column names, in key order
@@ -65,11 +66,17 @@ struct QiTableInfo {
   views, columns, keys, foreign keys and indexes that are actually there — the
   basis for browsers, diagram tools, code generators and migration diffs.
 
-  SQLite is read from its own catalog (the `PRAGMA table_info` family), so
-  everything is reported. Other drivers currently go through Qt's generic driver
-  API, which yields tables, views, columns and primary keys; their foreign keys
-  and indexes come back empty until a dialect-specific reader is added
+  Each database is read from its own catalog, so everything is reported:
+  SQLite (`PRAGMA table_info` and friends), PostgreSQL (`pg_catalog`),
+  MySQL / MariaDB (`information_schema`, current database only), SQL Server
+  (`sys.*` views, over QODBC) and DuckDB (`duckdb_*()` functions).
+  Any other driver goes through Qt's generic driver API, which yields tables,
+  views, columns and primary keys but no foreign keys or indexes
   (hasForeignKeyInfo() says which applies).
+
+  Databases with schemas list every user schema. A table in the default schema
+  (`public`, `dbo`, ...) keeps its plain name; any other is listed as
+  `schema.table`. Use sqlName() to put either form into SQL.
 
 \code
     QiSchema schema(QSqlDatabase::database());
@@ -85,8 +92,13 @@ class QiSchema {
 public:
     explicit QiSchema(const QSqlDatabase &db = QSqlDatabase::database());
 
-    /// Which reader is in use: "sqlite", or "generic" for any other driver.
+    /// Which reader is in use: "sqlite", "postgres", "mysql", "sqlserver", "duckdb",
+    /// or "generic" for any other driver.
     QString dialect() const;
+
+    /// The schema unqualified names live in ("public" for PostgreSQL, "dbo" for
+    /// SQL Server, "main" for DuckDB, the current database for MySQL, "" for SQLite).
+    QString defaultSchema() const;
 
     /// True if foreign keys and indexes are read for this database (not just columns and keys).
     bool hasForeignKeyInfo() const;
@@ -107,19 +119,44 @@ public:
     /// The driver's quoted form of an identifier, for building SQL safely.
     QString quoted(const QString &identifier) const;
 
+    /// How to name a listed table in SQL: `"book"`, or `"sales"."orders"` for a
+    /// table outside the default schema. Empty if there's no such table.
+    QString sqlName(const QString &table) const;
+
     /// Why the last call failed (empty on success).
     QString lastError() const;
 
 private:
-    struct Entry { QString name; QiTableInfo::Kind kind; };
-    QVector<Entry> listSqlite() const;
-    QVector<Entry> listGeneric() const;
+    enum Reader { Sqlite, Postgres, MySql, SqlServer, DuckDb, Generic };
+
+    struct Entry {
+        QString name;                // as listed
+        QString schema;
+        QString table;               // unqualified
+        QiTableInfo::Kind kind;
+    };
+
     QVector<Entry> list() const;
-    QiTableInfo tableSqlite(const QString &name, QiTableInfo::Kind kind) const;
-    QiTableInfo tableGeneric(const QString &name, QiTableInfo::Kind kind) const;
+    const Entry *find(const QVector<Entry> &entries, const QString &name) const;
+    QString sqlName(const Entry &e) const;
+    QiTableInfo describe(const Entry &e) const;
+
+    QVector<Entry> listSqlite() const;
+    QiTableInfo    tableSqlite(const Entry &e) const;
+    QVector<Entry> listPostgres() const;
+    QiTableInfo    tablePostgres(const Entry &e) const;
+    QVector<Entry> listMySql() const;
+    QiTableInfo    tableMySql(const Entry &e) const;
+    QVector<Entry> listSqlServer() const;
+    QiTableInfo    tableSqlServer(const Entry &e) const;
+    QVector<Entry> listDuckDb() const;
+    QiTableInfo    tableDuckDb(const Entry &e) const;
+    QVector<Entry> listGeneric() const;
+    QiTableInfo    tableGeneric(const Entry &e) const;
 
     QSqlDatabase    m_db;
-    bool            m_sqlite = false;
+    Reader          m_reader = Generic;
+    mutable QString m_defaultSchema;
     mutable QString m_error;
 };
 

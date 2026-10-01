@@ -68,6 +68,18 @@ public:
     // Qivot's portable columnNames() calls QSqlDatabase::record() — so migrations depend on this.
     QSqlRecord record(const QString &tableName) const override;
 
+    // Standard SQL quoting. QSqlDriver's default returns the name unchanged,
+    // which breaks on spaces, reserved words ("order", "select") and mixed case.
+    QString escapeIdentifier(const QString &identifier, IdentifierType) const override {
+        if (identifier.size() >= 2 && identifier.startsWith(QLatin1Char('"')) && identifier.endsWith(QLatin1Char('"')))
+            return identifier;                                   // already quoted
+        return QLatin1Char('"') + QString(identifier).replace(QLatin1Char('"'), QLatin1String("\"\""))
+             + QLatin1Char('"');
+    }
+    bool isIdentifierEscaped(const QString &identifier, IdentifierType) const override {
+        return identifier.size() >= 2 && identifier.startsWith(QLatin1Char('"')) && identifier.endsWith(QLatin1Char('"'));
+    }
+
     QVariant handle() const override { return QVariant(); }
 
     duckdb_connection conn() const { return m_con; }

@@ -11,6 +11,7 @@
       - a STRING primary key model (no auto id) save + load + upsert-translation
       - the migration path (createTables twice is a safe no-op via portable columnNames)
       - upsert on a unique key updates in place instead of duplicating
+      - QiSchema reads the database's structure back (schemasuite.h)
 
     Usage:  ./integration <sqlite|mysql|postgres|sqlserver>
     The `sqlite` backend uses an in-memory database and needs no server, so the whole
@@ -23,6 +24,7 @@
     See tests/integration/README.md.
  */
 #include "intmodel.h"
+#include "schemasuite.h"
 
 #include <qimysqlstatement.h>
 #include <qipgstatement.h>
@@ -241,6 +243,10 @@ int main(int argc, char **argv) {
     conn.addModel<IntTag>();
 
     runSuite(conn);
+    const QString dialect = backend == "pg" ? QString("postgres")
+                          : backend == "mariadb" ? QString("mysql")
+                          : backend == "mssql" ? QString("sqlserver") : backend;
+    SchemaSuite::run(db, dialect, check);
 
     conn.close();
     qInfo().noquote() << (failures == 0 ? "ALL PASSED\n" : QString("%1 CHECK(S) FAILED\n").arg(failures));
