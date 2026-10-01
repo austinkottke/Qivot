@@ -49,6 +49,8 @@ set(QIVOT_SOURCES
     src/qistream.cpp
     src/qilistwriter.cpp
     src/qijsonmapper.cpp
+    src/qimigrator.cpp
+    src/qischema.cpp
     src/qilistmodel.cpp)
 
 set(QIVOT_PUBLIC_HEADERS
@@ -60,7 +62,7 @@ set(QIVOT_PUBLIC_HEADERS
     src/qiquery.h src/qiqueryrules.h src/qiexpression.h src/qilist.h src/qiabstractmodel.h
     src/qisharedlist.h src/qiindex.h src/qistream.h src/qilistwriter.h src/qijoin.h
     src/qifieldref.h src/qicolumns.h src/qirelation.h src/qiftsindex.h src/qitransaction.h src/qigadget.h src/qilistmodel.h
-    src/qijsonmapper.h src/qivot.h)
+    src/qijsonmapper.h src/qimigrator.h src/qischema.h src/qivot.h)
 
 if(QIVOT_WITH_NETWORK)
     list(APPEND QIVOT_SOURCES src/qijsonrequest.cpp)
