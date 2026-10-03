@@ -1931,7 +1931,8 @@ void SqliteTests::migratorRollback() {
     QVERIFY(openMigDb("migdown", c));
     QiMigrator m(c);
     m.addSql(1, "create", "CREATE TABLE r (id INTEGER)", "DROP TABLE r");
-    m.addSql(2, "col", "ALTER TABLE r ADD COLUMN v TEXT", "ALTER TABLE r DROP COLUMN v");
+    // (An index rather than a column: DROP COLUMN needs SQLite 3.35, newer than Qt 5.15.2's.)
+    m.addSql(2, "index", "CREATE INDEX r_id ON r (id)", "DROP INDEX r_id");
     bool downRan = false;
     m.add(3, "code", [](QiConnection &cc) { return cc.query().exec("CREATE TABLE r3 (id INTEGER)"); },
                      [&](QiConnection &cc) { downRan = true; return cc.query().exec("DROP TABLE r3"); });
@@ -1940,7 +1941,10 @@ void SqliteTests::migratorRollback() {
     QVERIFY(m.rollback(1) == 2);
     QVERIFY(downRan);
     QVERIFY(m.currentVersion() == 1);
-    QVERIFY(!hasColumn(c, "r", "v"));
+    QSqlQuery idx = c.query();
+    QVERIFY(idx.exec("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'r_id'") && idx.next());
+    QCOMPARE(idx.value(0).toInt(), 0);
+    idx.finish();
     QVERIFY(!c.sql().database().tables().contains("r3"));
     QSqlQuery q = c.query();
     QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 1);
