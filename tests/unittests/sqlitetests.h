@@ -164,6 +164,13 @@ private Q_SLOTS:
     void keysetPaging();
     /// Versioned schema migrations — QiMigrator ordering / idempotency / rollback
     void migrator();
+    void migratorSql();
+    void migratorFiles();
+    void migratorChecksums();
+    void migratorRollback();
+    void migratorUpgrade();
+    void migratorSplit();
+    void migratorForeignKeys();
     /// Declarative many-to-many — QI_MANY_TO_MANY / QiRelationSet, both directions
     void relationsManyToMany();
     /// One-to-many accessor + batched prefetch (N+1 avoidance)

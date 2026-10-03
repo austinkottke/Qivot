@@ -2,6 +2,9 @@
 #include <QJsonArray>
 #include <QDateTime>
 #include <QThread>
+#include <QTemporaryDir>
+#include <QFile>
+#include <QDir>
 #include <qijsonmapper.h>
 #include <qitransaction.h>
 #include <qifieldref.h>
@@ -1773,6 +1776,304 @@ void SqliteTests::migrator() {
     }   // db / c / m released here
 
     QSqlDatabase::removeDatabase("migtest");
+}
+
+// A private in-memory database for one migrator test.
+static bool openMigDb(const QString &name, QiConnection &c) {
+    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
+    db.setDatabaseName(":memory:");
+    return db.open() && c.open(db, false);
+}
+
+static bool hasColumn(QiConnection &c, const QString &table, const QString &column) {
+    QSqlQuery q = c.query();
+    q.exec(QString("PRAGMA table_info(%1)").arg(table));
+    while (q.next())
+        if (q.value(1).toString() == column)
+            return true;
+    return false;
+}
+
+void SqliteTests::migratorSql() {
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migsql", c));
+
+    QiMigrator m(c);
+    m.addSql(1, "create", "CREATE TABLE a (id INTEGER PRIMARY KEY, x TEXT);\n"
+                          "CREATE TABLE b (id INTEGER PRIMARY KEY);\n"
+                          "INSERT INTO a (x) VALUES ('semi;colon');");
+    m.addSql(2, "index", "CREATE INDEX a_x ON a (x)");
+
+    QVERIFY(m.pending().size() == 2);
+    QVERIFY(m.migrate() == 2);
+    QVERIFY(m.pending().isEmpty());
+    QVERIFY(m.currentVersion() == 2);
+
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("SELECT x FROM a") && q.next() && q.value(0).toString() == "semi;colon");
+
+    // Recorded in qivot_migrations, and user_version kept in step.
+    QVERIFY(q.exec("SELECT version, name, checksum, applied_at FROM qivot_migrations ORDER BY version"));
+    QVERIFY(q.next() && q.value(0).toInt() == 1 && q.value(1).toString() == "create");
+    QVERIFY(q.value(2).toString().size() == 64);
+    QVERIFY(QDateTime::fromString(q.value(3).toString(), Qt::ISODate).isValid());
+    QVERIFY(q.next() && q.value(0).toInt() == 2);
+    QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 2);
+
+    const QVector<QiMigrator::Migration> st = m.status();
+    QVERIFY(st.size() == 2 && st[0].applied && st[0].known && !st[0].changed && st[1].durationMs >= 0);
+
+    // A failing statement in the middle undoes the whole migration.
+    m.addSql(3, "half", "CREATE TABLE c (id INTEGER);\nALTER TABLE nope ADD COLUMN y TEXT;");
+    QVERIFY(m.migrate() == -1);
+    QVERIFY(m.lastError().contains("migration 3"));
+    QVERIFY(m.lastError().contains("nope"));
+    QVERIFY(!c.sql().database().tables().contains("c"));
+    QVERIFY(m.currentVersion() == 2);
+
+    // migrateTo stops where it's told.
+    m.addSql(3, "c", "CREATE TABLE c (id INTEGER)");
+    m.addSql(4, "d", "CREATE TABLE d (id INTEGER)");
+    QVERIFY(m.migrateTo(3) == 1);
+    QVERIFY(m.currentVersion() == 3);
+    QVERIFY(m.migrate() == 1);
+    QVERIFY(m.currentVersion() == 4);
+    }
+    QSqlDatabase::removeDatabase("migsql");
+}
+
+void SqliteTests::migratorFiles() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    auto write = [&](const QString &name, const QByteArray &text) {
+        QFile f(QDir(dir.path()).filePath(name));
+        return f.open(QIODevice::WriteOnly) && f.write(text) == text.size();
+    };
+    QVERIFY(write("0001_create_notes.sql", "CREATE TABLE note (id INTEGER PRIMARY KEY, title TEXT);\r\n"));
+    QVERIFY(write("0002_add_body.up.sql", "ALTER TABLE note ADD COLUMN body TEXT;"));
+    QVERIFY(write("0002_add_body.down.sql", "ALTER TABLE note DROP COLUMN body;"));
+    QVERIFY(write("10_tags.sql",
+                  "CREATE TABLE tag (id INTEGER PRIMARY KEY, name TEXT);\n"
+                  "-- keep the count current\n"
+                  "CREATE TRIGGER tag_touch AFTER INSERT ON tag BEGIN\n"
+                  "  UPDATE tag SET name = CASE WHEN new.name IS NULL THEN 'x' ELSE new.name END WHERE id = new.id;\n"
+                  "END;\n"));
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migfiles", c));
+    QiMigrator m(c);
+    QVERIFY(m.addDirectory(dir.path()) == 3);
+    QVERIFY(m.targetVersion() == 10);
+
+    const QVector<QiMigrator::Migration> p = m.pending();
+    QVERIFY(p.size() == 3);
+    QVERIFY(p[0].name == "create notes");
+    QVERIFY(p[1].name == "add body" && p[1].reversible);
+    QVERIFY(!p[0].reversible);
+    QVERIFY(p[0].checksum == QiMigrator::checksum("CREATE TABLE note (id INTEGER PRIMARY KEY, title TEXT);\n"));
+
+    QVERIFY2(m.migrate() == 3, qPrintable(m.lastError()));
+    QVERIFY(hasColumn(c, "note", "body"));
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("INSERT INTO tag (name) VALUES (NULL)"));
+    QVERIFY(q.exec("SELECT name FROM tag") && q.next() && q.value(0).toString() == "x");
+    }
+    QSqlDatabase::removeDatabase("migfiles");
+
+    // Bad folders are refused without registering anything.
+    QiMigrator bad;
+    QVERIFY(bad.addDirectory(dir.path() + "/missing") == -1);
+    QVERIFY(write("notes.sql", "SELECT 1"));
+    QVERIFY(bad.addDirectory(dir.path()) == -1);
+    QVERIFY(bad.lastError().contains("notes.sql"));
+    QVERIFY(bad.targetVersion() == 0);
+    QVERIFY(QFile::remove(QDir(dir.path()).filePath("notes.sql")));
+    QVERIFY(write("0001_again.sql", "SELECT 1"));
+    QVERIFY(bad.addDirectory(dir.path()) == -1);
+    QVERIFY(bad.lastError().contains("more than one"));
+}
+
+void SqliteTests::migratorChecksums() {
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migsum", c));
+    {
+        QiMigrator m(c);
+        m.addSql(1, "create", "CREATE TABLE s (id INTEGER)");
+        QVERIFY(m.migrate() == 1);
+    }
+
+    // The same migration, edited after it ran.
+    QiMigrator m(c);
+    m.addSql(1, "create", "CREATE TABLE s (id INTEGER, extra TEXT)");
+    m.addSql(2, "next", "CREATE TABLE t (id INTEGER)");
+    QVERIFY(m.changed().size() == 1);
+    QVERIFY(m.status()[0].changed);
+    QVERIFY(m.migrate() == -1);
+    QVERIFY(m.lastError().contains("changed"));
+    QVERIFY(!c.sql().database().tables().contains("t"));    // nothing ran
+
+    QVERIFY(m.acceptChecksums());
+    QVERIFY(m.changed().isEmpty());
+    QVERIFY(m.migrate() == 1);
+
+    // Line endings alone don't count as a change.
+    QVERIFY(QiMigrator::checksum("A;\r\nB;") == QiMigrator::checksum("A;\nB;"));
+    QVERIFY(QiMigrator::checksum("").isEmpty());
+    }
+    QSqlDatabase::removeDatabase("migsum");
+}
+
+void SqliteTests::migratorRollback() {
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migdown", c));
+    QiMigrator m(c);
+    m.addSql(1, "create", "CREATE TABLE r (id INTEGER)", "DROP TABLE r");
+    m.addSql(2, "col", "ALTER TABLE r ADD COLUMN v TEXT", "ALTER TABLE r DROP COLUMN v");
+    bool downRan = false;
+    m.add(3, "code", [](QiConnection &cc) { return cc.query().exec("CREATE TABLE r3 (id INTEGER)"); },
+                     [&](QiConnection &cc) { downRan = true; return cc.query().exec("DROP TABLE r3"); });
+    QVERIFY(m.migrate() == 3);
+
+    QVERIFY(m.rollback(1) == 2);
+    QVERIFY(downRan);
+    QVERIFY(m.currentVersion() == 1);
+    QVERIFY(!hasColumn(c, "r", "v"));
+    QVERIFY(!c.sql().database().tables().contains("r3"));
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 1);
+    QVERIFY(m.rollback(1) == 0);                // nothing newer
+
+    QVERIFY(m.migrate() == 2);                  // and forward again
+
+    // One step without a down: nothing is undone.
+    m.add(4, "one way", [](QiConnection &cc) { return cc.query().exec("CREATE TABLE r4 (id INTEGER)"); });
+    QVERIFY(m.migrate() == 1);
+    QVERIFY(m.rollback(0) == -1);
+    QVERIFY(m.lastError().contains("no down step"));
+    QVERIFY(m.currentVersion() == 4);
+    QVERIFY(c.sql().database().tables().contains("r3"));
+    }
+    QSqlDatabase::removeDatabase("migdown");
+}
+
+void SqliteTests::migratorUpgrade() {
+    {
+    // A database migrated by the old user_version-only migrator, at v2.
+    QiConnection c;
+    QVERIFY(openMigDb("migold", c));
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("CREATE TABLE old (id INTEGER PRIMARY KEY, a TEXT, b TEXT)"));
+    QVERIFY(q.exec("PRAGMA user_version = 2"));
+
+    QiMigrator m(c);
+    m.add(1, "create", [](QiConnection &cc) { return cc.query().exec("CREATE TABLE old (id INTEGER PRIMARY KEY, a TEXT)"); });
+    m.add(2, "add b", [](QiConnection &cc) { return cc.query().exec("ALTER TABLE old ADD COLUMN b TEXT"); });
+    m.add(3, "add c", [](QiConnection &cc) { return cc.query().exec("ALTER TABLE old ADD COLUMN c TEXT"); });
+
+    QVERIFY(m.currentVersion() == 2);           // read without writing anything
+    QVERIFY(m.pending().size() == 1 && m.pending()[0].version == 3);
+    QVERIFY(!c.sql().database().tables().contains("qivot_migrations"));
+
+    QVERIFY2(m.migrate() == 1, qPrintable(m.lastError()));   // 1 and 2 are not run again
+    QVERIFY(hasColumn(c, "old", "c"));
+    QVERIFY(q.exec("SELECT COUNT(*) FROM qivot_migrations") && q.next() && q.value(0).toInt() == 3);
+    QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 3);
+    q.finish();
+
+    // A migrator with a table of its own is a separate history: user_version isn't its.
+    QiMigrator other(c);
+    other.setTable("plugin_migrations");
+    other.addSql(1, "plugin", "CREATE TABLE plugin (id INTEGER)");
+    QVERIFY(other.currentVersion() == 0 && other.pending().size() == 1);
+    QVERIFY(other.migrate() == 1);
+    QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 3);
+    QVERIFY(m.currentVersion() == 3 && m.migrate() == 0);
+    }
+    QSqlDatabase::removeDatabase("migold");
+}
+
+void SqliteTests::migratorForeignKeys() {
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migfk", c));
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("PRAGMA foreign_keys") && q.next() && q.value(0).toInt() == 1);   // Qivot turns them on
+    q.finish();
+
+    QiMigrator m(c);
+    m.addSql(1, "tables", "BEGIN;\n"                                    // left out: the migrator has its own
+                          "CREATE TABLE parent (id INTEGER PRIMARY KEY, name TEXT);\n"
+                          "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id) ON DELETE CASCADE);\n"
+                          "INSERT INTO parent VALUES (1, 'a'), (2, 'b');\n"
+                          "INSERT INTO child VALUES (10, 1), (11, 1), (12, 2);\n"
+                          "COMMIT;");
+    // SQLite's way to change a table: build the new one, copy, drop the old, rename.
+    m.addSql(2, "rebuild parent", "CREATE TABLE parent_new (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '');\n"
+                                  "INSERT INTO parent_new SELECT id, name FROM parent;\n"
+                                  "DROP TABLE parent;\n"
+                                  "ALTER TABLE parent_new RENAME TO parent;");
+    QVERIFY2(m.migrate() == 2, qPrintable(m.lastError()));
+    QVERIFY(q.exec("SELECT COUNT(*) FROM child") && q.next() && q.value(0).toInt() == 3);   // nothing cascaded
+    QVERIFY(q.exec("PRAGMA foreign_keys") && q.next() && q.value(0).toInt() == 1);          // and back on
+    q.finish();
+
+    // One that leaves a child pointing nowhere fails and is undone.
+    m.addSql(3, "orphan", "DELETE FROM parent WHERE id = 2");
+    QVERIFY(m.migrate() == -1);
+    QVERIFY(m.lastError().contains("child"));
+    QVERIFY(q.exec("SELECT COUNT(*) FROM parent") && q.next() && q.value(0).toInt() == 2);
+    QVERIFY(q.exec("PRAGMA foreign_keys") && q.next() && q.value(0).toInt() == 1);
+    q.finish();
+    QVERIFY(m.currentVersion() == 2);
+    }
+    QSqlDatabase::removeDatabase("migfk");
+}
+
+void SqliteTests::migratorSplit() {
+    // Quotes, comments and empty statements.
+    QStringList s = QiMigrator::splitStatements(
+        "-- header\nCREATE TABLE a (x TEXT DEFAULT ';');\n/* ; */ INSERT INTO a VALUES ('it''s;');;\n"
+        "INSERT INTO \"we;ird\" VALUES (1) -- trailing ;\n");
+    QVERIFY(s.size() == 3);
+    QVERIFY(s[0].endsWith("DEFAULT ';')"));
+    QVERIFY(s[1].contains("'it''s;'"));
+    QVERIFY(s[2].startsWith("INSERT INTO \"we;ird\""));
+    QVERIFY(QiMigrator::splitStatements("-- only a comment\n").isEmpty());
+
+    // PostgreSQL function bodies.
+    s = QiMigrator::splitStatements(
+        "CREATE FUNCTION f() RETURNS trigger AS $body$ BEGIN NEW.x := 1; RETURN NEW; END; $body$ LANGUAGE plpgsql;\n"
+        "DO $$ BEGIN PERFORM 1; END $$;\nSELECT $1;", "QPSQL");
+    QVERIFY(s.size() == 3);
+    QVERIFY(s[0].endsWith("LANGUAGE plpgsql"));
+    QVERIFY(s[1].startsWith("DO $$"));
+
+    // MySQL procedures, with END IF that doesn't close the body, and backslash escapes.
+    s = QiMigrator::splitStatements(
+        "CREATE PROCEDURE p() BEGIN IF 1 THEN SELECT 1; END IF; SELECT CASE WHEN 1 THEN 2 END; END;\n"
+        "INSERT INTO t VALUES ('a\\';b');", "QMYSQL");
+    QVERIFY(s.size() == 2);
+    QVERIFY(s[0].endsWith("END"));
+    QVERIFY(s[1] == "INSERT INTO t VALUES ('a\\';b')");
+
+    // SQL Server: GO separates batches and a procedure keeps its semicolons.
+    s = QiMigrator::splitStatements(
+        "CREATE TABLE [a;b] (id INT);\nGO\nCREATE PROCEDURE p AS SELECT 1; SELECT 2;\ngo\nSELECT 3", "QODBC");
+    QVERIFY(s.size() == 3);
+    QVERIFY(s[0] == "CREATE TABLE [a;b] (id INT)");
+    QVERIFY(s[1] == "CREATE PROCEDURE p AS SELECT 1; SELECT 2;");
+    QVERIFY(s[2] == "SELECT 3");
+
+    // Opting out.
+    s = QiMigrator::splitStatements("-- qivot:no-split\nSELECT 1; SELECT 2;");
+    QVERIFY(s.size() == 1);
+
+    // A column named like a keyword doesn't make a table a trigger.
+    s = QiMigrator::splitStatements("CREATE TABLE t (trigger_at TEXT, \"begin\" INT); SELECT 1;");
+    QVERIFY(s.size() == 2);
 }
 
 void SqliteTests::relationsManyToMany() {

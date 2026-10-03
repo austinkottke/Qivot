@@ -166,9 +166,12 @@ step-by-step example:
 - 🪟 **Windowed list model** — `QiWindowedListModel` counts once, then fetches only
   the pages you scroll to (and evicts old ones) — a 10k-row list on a tiny memory
   footprint, with a working A–Z jump. → [`examples/contacts`](examples/contacts)
-- 🧱 **Versioned migrations** — `QiMigrator` tracks the schema version in
-  `PRAGMA user_version` and runs pending migrations in order, transactionally and
-  idempotently. → [`examples/migrations`](examples/migrations)
+- 🧱 **Versioned migrations** — `QiMigrator` runs migrations written as code, SQL
+  text or a folder of `0001_name.sql` files, in order and each in its own transaction,
+  on SQLite, PostgreSQL, MySQL, SQL Server and DuckDB. It records them in a
+  `qivot_migrations` table with checksums (an edited migration that already ran is
+  refused), rolls back with down steps, and locks so two instances don't migrate at
+  once. → [Versioned migrations](#versioned-migrations), [`examples/migrations`](examples/migrations)
 - 🔗 **Relations** — **one-to-many** with `QI_HAS_MANY(Song, songs, "artist")`
   → `artist.songs()`; **many-to-many** with `QI_MANY_TO_MANY(Tag, tags, "photo_tag")`
   → `photo.tags().add(tag)` / `.all()` / `.remove()` / `.contains()`, join table
@@ -321,6 +324,15 @@ python3 tools/qivot-gen.py --db mysql://user:pass@host/dbname --output src/model
 Outputs a complete C++ header with model classes, `QiField` declarations, foreign keys,
 and `QI_DECLARE_MODEL` macros — ready to customize. Supports SQLite, PostgreSQL, MySQL, and SQL Server.
 
+### Command line: `qivot-cli`
+
+[Qivot Studio](https://github.com/austinkottke/Qivot-studio) has a command line
+built on the same engine: model headers from any database (`qivot-cli models
+postgres://me@db/shop -o models.h`), schema diffs, and migrations, where
+`qivot-cli migrate new` writes the next `NNNN_name.up.sql` / `.down.sql` for
+[`QiMigrator`](#versioned-migrations) from the difference between two databases,
+and `migrate status --exit-code` fails a CI job when migrations are pending.
+
 ### Project Templates: `create-qivot-project.sh`
 
 Scaffold a new Qivot project in one command:
@@ -411,7 +423,8 @@ thread (with a tiny local server so it runs offline).
 [Validation](#validation-with-clean) ·
 [Error handling](#error-handling) ·
 [Seeding](#seeding-initial-data) ·
-[Tables & migrations](#creating-and-dropping-tables)
+[Tables & migrations](#creating-and-dropping-tables) ·
+[Versioned migrations](#versioned-migrations)
 
 ### Project setup (qmake)
 
@@ -1385,6 +1398,58 @@ its `QiDefault` value).
 connection.renameColumn<User>("karma", "reputation");   // SQLite 3.25+
 connection.dropColumn<User>("legacyField");             // SQLite 3.35+
 ```
+
+### Versioned migrations
+
+`createTables()` adds new columns for you; anything else (renames, new indexes,
+data fixes, a table split in two) belongs in a **migration**. `QiMigrator` runs
+each one once, in version order, and remembers what ran in a `qivot_migrations`
+table (version, name, checksum, applied_at, duration_ms), so `migrate()` is safe
+on every startup:
+
+```c++
+#include <qimigrator.h>
+
+QiMigrator migrator(connection);
+migrator.addDirectory(":/migrations");    // 0001_create_notes.sql, 0002_add_body.up.sql …
+migrator.addSql(3, "pinned index", "CREATE INDEX note_pinned ON note (pinned)",
+                                   "DROP INDEX note_pinned");          // optional down
+migrator.add(4, "welcome note", [](QiConnection &c) {                  // or code
+    Note n; n.title = "Welcome"; return n.save();
+});
+
+if (migrator.migrate() < 0)
+    qWarning() << migrator.lastError();
+```
+
+- **Files.** `addDirectory()` reads `NNNN_name.sql` (or `NNNN_name.up.sql`) and an
+  optional `NNNN_name.down.sql`, from disk or a Qt resource. A file can hold many
+  statements: quotes, comments, PostgreSQL `$$` bodies and trigger `BEGIN … END`
+  blocks are kept whole, and on SQL Server `GO` lines separate batches. Put
+  `-- qivot:no-split` in a file to send it to the server as one piece.
+- **Status.** `status()` lists every migration with `applied`, `appliedAt`,
+  `durationMs` and `changed`; `pending()` is what the next `migrate()` would run;
+  `migrateTo(n)` stops at version *n*.
+- **Checksums.** SQL migrations are stored with a SHA-256 of their text. Edit one
+  that already ran and `migrate()` refuses, naming it, until you undo the edit or
+  call `acceptChecksums()`.
+- **Rollback.** `rollback(n)` undoes everything newer than *n*, newest first, with
+  the down steps. If one of them has no down step, nothing is undone.
+- **Transactions.** Each migration runs in its own transaction, so a failure leaves
+  the database as it was on SQLite, PostgreSQL, SQL Server and DuckDB (`BEGIN` and
+  `COMMIT` lines in a file are left out). MySQL commits DDL as it goes: keep MySQL
+  migrations to one DDL statement where you can.
+- **SQLite table rebuilds.** Foreign keys are off while a migration runs and
+  `PRAGMA foreign_key_check` must pass before it commits, so rebuilding a parent
+  table doesn't cascade into its children.
+- **Locking.** On PostgreSQL, MySQL and SQL Server, `migrate()` and `rollback()`
+  hold a lock (`pg_advisory_lock`, `GET_LOCK`, `sp_getapplock`), so two instances
+  of an app starting together don't both migrate.
+- **Upgrading.** Earlier Qivot tracked the version in SQLite's `PRAGMA user_version`
+  only. On such a database the first run records the migrations up to that version
+  as applied without running them, and `user_version` keeps following.
+
+→ [`examples/migrations`](examples/migrations) walks through every case.
 
 ### JSON mapping
 

@@ -465,7 +465,8 @@ QSqlQuery QiConnection::lastQuery(){
      */
     QSqlQuery query;
     d->mutex.lock();
-    query = *d->lastQuery;
+    if (d->lastQuery != nullptr)        // nothing has run yet
+        query = *d->lastQuery;
     d->mutex.unlock();
 
     return query;
