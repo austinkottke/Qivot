@@ -359,17 +359,21 @@ Settings → Editor → Live Templates → Import.
 
 ### Package Managers
 
-**vcpkg:**
-```bash
-vcpkg install qivot
-vcpkg install qivot[network]  # with JSON-over-HTTP support
+Qivot isn't in the vcpkg or Conan registries yet. Until it is, CMake can fetch it
+straight from GitHub:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(qivot GIT_REPOSITORY https://github.com/austinkottke/Qivot.git GIT_TAG main)
+set(QIVOT_WITH_NETWORK OFF CACHE BOOL "" FORCE)   # leave it ON for the JSON-over-HTTP loader
+FetchContent_MakeAvailable(qivot)
+
+target_link_libraries(app PRIVATE Qivot::qivot)
 ```
 
-**Conan:**
-```bash
-conan install --requires=qivot/1.0.0
-conan install --requires=qivot/1.0.0 -o qivot/*:with_network=True
-```
+Or use one of the ways under [Install](#install): the sources, the static library,
+or the single header. (The recipes in [`vcpkg/`](vcpkg) and [`conan/`](conan) are
+drafts for a future submission and don't work yet.)
 
 ## Guide
 
