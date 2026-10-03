@@ -24,12 +24,27 @@ public:
         }
     }
 
+    // Connect options (setConnectOptions, ';'-separated): DUCKDB_OPEN_READONLY opens
+    // the file for reading only, so nothing through this connection can change it (and
+    // several read-only connections can share the file).
     bool open(const QString &db, const QString &, const QString &,
-              const QString &, int, const QString &) override {
+              const QString &, int, const QString &options) override {
         close();
         const QByteArray path = db.isEmpty() ? QByteArray(":memory:") : db.toUtf8();
-        if (duckdb_open(path.constData(), &m_db) != DuckDBSuccess) {
-            setLastError(QSqlError("duckdb_open failed", QString(), QSqlError::ConnectionError));
+        const bool readOnly = options.split(QLatin1Char(';')).contains(QLatin1String("DUCKDB_OPEN_READONLY"));
+        duckdb_config config = nullptr;
+        char *why = nullptr;
+        duckdb_create_config(&config);
+        if (readOnly)
+            duckdb_set_config(config, "access_mode", "READ_ONLY");
+        const bool opened = duckdb_open_ext(path.constData(), &m_db, config, &why) == DuckDBSuccess;
+        duckdb_destroy_config(&config);
+        if (!opened) {
+            setLastError(QSqlError("duckdb_open failed", why ? QString::fromUtf8(why) : QString(),
+                                   QSqlError::ConnectionError));
+            if (why) duckdb_free(why);
+            m_db = nullptr;
+            setOpenError(true);
             return false;
         }
         if (duckdb_connect(m_db, &m_con) != DuckDBSuccess) {

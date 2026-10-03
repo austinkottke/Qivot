@@ -4,6 +4,7 @@
 #include <QTime>
 #include <QDateTime>
 #include <QVariant>
+#include <limits>
 
 // ---- type mapping ----------------------------------------------------------
 
@@ -85,14 +86,18 @@ static void bindParam(duckdb_prepared_statement stmt, idx_t idx, const QVariant 
 
 // ---- result ----------------------------------------------------------------
 
+// A result keeps DuckDB's own (columnar, compact) copy and turns a row into
+// QVariants only when it's read, so a big result costs DuckDB's memory, not a
+// QVariant per cell.
 class DuckDbResult : public QSqlResult {
 public:
     explicit DuckDbResult(const DuckDbDriver *drv) : QSqlResult(drv), m_drv(drv) {}
+    ~DuckDbResult() override { clear(); }
 
 protected:
     QVariant data(int i) override {
-        if (m_at < 0 || m_at >= m_rows.size() || i < 0 || i >= m_rows[m_at].size()) return QVariant();
-        return m_rows[m_at][i];
+        if (!m_hasResult || m_at < 0 || m_at >= m_rowCount || i < 0 || i >= m_types.size()) return QVariant();
+        return cellValue(&m_res, idx_t(i), idx_t(m_at), m_types[i]);
     }
     bool isNull(int i) override { const QVariant v = data(i); return v.isNull(); }
 
@@ -103,7 +108,7 @@ protected:
             setLastError(QSqlError("query failed", QString::fromUtf8(duckdb_result_error(&res)), QSqlError::StatementError));
             duckdb_destroy_result(&res); return false;
         }
-        store(res); duckdb_destroy_result(&res);
+        store(res);
         setActive(true);
         return true;
     }
@@ -134,41 +139,52 @@ protected:
             setLastError(QSqlError("execute failed", QString::fromUtf8(duckdb_result_error(&res)), QSqlError::StatementError));
             duckdb_destroy_result(&res); return false;
         }
-        store(res); duckdb_destroy_result(&res);
+        store(res);
         setActive(true);
         return true;
     }
 
-    bool fetch(int i) override { if (i < 0 || i >= m_rows.size()) return false; m_at = i; setAt(i); return true; }
+    bool fetch(int i) override { if (i < 0 || i >= m_rowCount) return false; m_at = i; setAt(i); return true; }
     bool fetchFirst() override { return fetch(0); }
-    bool fetchLast() override  { return fetch(m_rows.size() - 1); }
+    bool fetchLast() override  { return fetch(m_rowCount - 1); }
     bool fetchNext() override  { return fetch(m_at + 1); }
-    int  size() override { return m_rows.size(); }
-    int  numRowsAffected() override { return -1; }
+    int  size() override { return isSelect() ? m_rowCount : -1; }
+    int  numRowsAffected() override { return m_rowsChanged; }
     QSqlRecord record() const override { return m_record; }
     QVariant lastInsertId() const override { return QVariant(); }   // Qivot uses currval() for DuckDB
 
 private:
-    void clear() { m_rows.clear(); m_record.clear(); m_at = -1; setAt(QSql::BeforeFirstRow); setActive(false); }
+    void clear() {
+        if (m_hasResult) { duckdb_destroy_result(&m_res); m_hasResult = false; }
+        m_types.clear(); m_record.clear(); m_rowCount = 0; m_rowsChanged = -1; m_at = -1;
+        setAt(QSql::BeforeFirstRow); setActive(false);
+    }
+    // Takes over `res`: it's read from as rows are fetched, and freed by clear().
     void store(duckdb_result &res) {
-        const idx_t cols = duckdb_column_count(&res), rows = duckdb_row_count(&res);
-        QVector<duckdb_type> types(cols);
+        m_res = res;
+        m_hasResult = true;
+        const idx_t cols = duckdb_column_count(&m_res);
+        m_types.resize(int(cols));
         for (idx_t c = 0; c < cols; ++c) {
-            types[c] = duckdb_column_type(&res, c);
-            m_record.append(QSqlField(QString::fromUtf8(duckdb_column_name(&res, c)), metaFor(types[c])));
+            m_types[int(c)] = duckdb_column_type(&m_res, c);
+            m_record.append(QSqlField(QString::fromUtf8(duckdb_column_name(&m_res, c)), metaFor(m_types[int(c)])));
         }
-        for (idx_t r = 0; r < rows; ++r) {
-            QVariantList row; row.reserve(cols);
-            for (idx_t c = 0; c < cols; ++c) row.append(cellValue(&res, c, r, types[c]));
-            m_rows.append(row);
-        }
-        setSelect(cols > 0);
+        // A statement that returns rows has columns; DuckDB reports a DML statement's
+        // changed-row count as a one-column "Count" result, and rows_changed alongside.
+        const bool returnsRows = duckdb_result_return_type(m_res) == DUCKDB_RESULT_TYPE_QUERY_RESULT;
+        m_rowCount = int(qMin<idx_t>(duckdb_row_count(&m_res), idx_t(std::numeric_limits<int>::max())));
+        m_rowsChanged = returnsRows ? -1 : int(duckdb_rows_changed(&m_res));
+        setSelect(returnsRows && cols > 0);
     }
 
     const DuckDbDriver  *m_drv;
     QString              m_query;
-    QVector<QVariantList> m_rows;
+    duckdb_result        m_res {};
+    bool                 m_hasResult = false;
+    QVector<duckdb_type> m_types;
     QSqlRecord           m_record;
+    int                  m_rowCount = 0;
+    int                  m_rowsChanged = -1;
     int                  m_at = -1;
 };
 
