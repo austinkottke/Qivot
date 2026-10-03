@@ -1,12 +1,14 @@
 /** Versioned schema migrations with QiMigrator.
 
-    QiMigrator tracks the schema version in SQLite's PRAGMA user_version. You
-    register migrations by version; migrate() runs the pending ones in order,
-    each in its own transaction, and bumps user_version. Re-running is a no-op,
+    QiMigrator records what ran in a qivot_migrations table. You register
+    migrations by version (as code, SQL text or .sql files); migrate() runs the
+    pending ones in order, each in its own transaction. Re-running is a no-op,
     so it's safe to call on every startup.
 
-    This program migrates a fresh database up through several versions, proves
-    that a second run is idempotent, then adds one more migration and applies it.
+    Part 1 migrates a fresh database up through several code migrations, proves
+    a second run is idempotent, adds one more, and shows a failure rolling back.
+    Part 2 runs a folder of .sql files, catches an edited one by its checksum,
+    and rolls back with the down steps.
  */
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
@@ -84,6 +86,41 @@ int main(int argc, char *argv[]) {
                       << "(-1 = failed)";
     qInfo().noquote() << "  version still:" << migrator.currentVersion();
     qInfo().noquote() << "  error:" << migrator.lastError();
+
+    // --- Part 2: migrations as .sql files -----------------------------------
+    // Ship them as a folder (here a Qt resource, see migrations.qrc):
+    // 0001_create_tags.sql, 0002_seed_tags.up.sql + .down.sql, …
+    QiMigrator files(conn);
+    files.setTable("tag_migrations");          // a second history beside the first
+    qInfo().noquote() << "\nFrom :/migrations:" << files.addDirectory(":/migrations") << "files";
+    for (const QiMigrator::Migration &m : files.pending())
+        qInfo().noquote() << QString("  pending v%1 %2%3").arg(m.version).arg(m.name,
+                                     m.reversible ? QString(" (has a down step)") : QString());
+
+    qInfo().noquote() << "migrate() applied" << files.migrate() << "-> version" << files.currentVersion();
+    q.exec("INSERT INTO note_tag (note_id, tag_id) VALUES (1, 1)");
+    q.exec("SELECT name, uses FROM tag ORDER BY id");
+    QStringList tags;
+    while (q.next()) tags << QString("%1=%2").arg(q.value(0).toString()).arg(q.value(1).toInt());
+    q.finish();
+    qInfo().noquote() << "  tag uses:" << tags.join(", ");
+
+    for (const QiMigrator::Migration &m : files.status())
+        qInfo().noquote() << QString("  v%1 %2  applied %3 in %4 ms")
+                                 .arg(m.version).arg(m.name)
+                                 .arg(m.appliedAt.toString(Qt::ISODate)).arg(m.durationMs);
+
+    // Editing a file that already ran is caught by its checksum.
+    QiMigrator edited(conn);
+    edited.setTable("tag_migrations");
+    edited.addDirectory(":/migrations");
+    edited.addSql(1, "create tags", "CREATE TABLE tag (id INTEGER PRIMARY KEY, name TEXT)");
+    qInfo().noquote() << "\nEdited v1: migrate() returns" << edited.migrate();
+    qInfo().noquote() << "  error:" << edited.lastError();
+
+    // Down steps undo, newest first.
+    qInfo().noquote() << "\nrollback(1) undid" << files.rollback(1) << "-> version" << files.currentVersion();
+    qInfo().noquote() << "  tag columns:" << columns(conn, "tag").join(", ");
 
     return 0;
 }

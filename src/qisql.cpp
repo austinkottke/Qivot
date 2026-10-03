@@ -81,6 +81,8 @@ QSqlQuery QiSql::query(){
 }
 
 QSqlQuery QiSql::lastQuery(){
+    if (d->m_lastQuery == 0)            // nothing has run yet
+        return QSqlQuery();
     return QSqlQuery(*d->m_lastQuery);
 }
 

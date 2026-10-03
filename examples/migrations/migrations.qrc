@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/migrations">
+        <file alias="0001_create_tags.sql">sql/0001_create_tags.sql</file>
+        <file alias="0002_seed_tags.up.sql">sql/0002_seed_tags.up.sql</file>
+        <file alias="0002_seed_tags.down.sql">sql/0002_seed_tags.down.sql</file>
+        <file alias="0003_tag_counts.up.sql">sql/0003_tag_counts.up.sql</file>
+        <file alias="0003_tag_counts.down.sql">sql/0003_tag_counts.down.sql</file>
+    </qresource>
+</RCC>

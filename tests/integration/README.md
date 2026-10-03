@@ -58,6 +58,9 @@ logic locally with zero setup before you ever touch a server. It checks:
   or `MERGE` respectively, on a non-`id` key)
 - the **migration** path: a second `createTables()` is a safe no-op (portable column reading)
 - **upsert** on a unique key updating in place instead of duplicating
+- **versioned migrations** (`QiMigrator`, [migrationsuite.h](migrationsuite.h)): SQL
+  migrations applied and recorded, a failing one rolled back (MySQL keeps the DDL it
+  already ran), down steps, an edited migration refused, and the server's lock
 
 If the driver plugin is missing or no server answers, it **skips** (exit 0), so it's safe to run
 anywhere — unless `QIVOT_REQUIRE_DB=1`, which turns those into hard failures.
