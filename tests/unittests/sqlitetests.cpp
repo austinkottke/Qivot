@@ -1803,7 +1803,7 @@ void SqliteTests::migratorSql() {
     m.addSql(1, "create", "CREATE TABLE a (id INTEGER PRIMARY KEY, x TEXT);\n"
                           "CREATE TABLE b (id INTEGER PRIMARY KEY);\n"
                           "INSERT INTO a (x) VALUES ('semi;colon');");
-    m.addSql(2, "index", "CREATE INDEX a_x ON a (x)");
+    m.addSql(2, "it's 100%1 an index", "CREATE INDEX a_x ON a (x)");   // quotes and %1 stay as written
 
     QVERIFY(m.pending().size() == 2);
     QVERIFY(m.migrate() == 2);
@@ -1818,7 +1818,7 @@ void SqliteTests::migratorSql() {
     QVERIFY(q.next() && q.value(0).toInt() == 1 && q.value(1).toString() == "create");
     QVERIFY(q.value(2).toString().size() == 64);
     QVERIFY(QDateTime::fromString(q.value(3).toString(), Qt::ISODate).isValid());
-    QVERIFY(q.next() && q.value(0).toInt() == 2);
+    QVERIFY(q.next() && q.value(0).toInt() == 2 && q.value(1).toString() == "it's 100%1 an index");
     QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 2);
 
     const QVector<QiMigrator::Migration> st = m.status();
