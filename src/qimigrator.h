@@ -183,6 +183,7 @@ private:
     bool isSqlite() const;
     bool usesUserVersion() const;
     bool tableExists() const;
+    QString literal(const QString &value) const;
     bool ensureTable();
     bool begin();
     bool foreignKeysHold();

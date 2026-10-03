@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QSqlDriver>
+#include <QSqlField>
 #include <QSqlQuery>
 #include <QSqlError>
 #include "qimigrator.h"
@@ -112,20 +113,43 @@ bool QiMigrator::usesUserVersion() const {
     return isSqlite() && m_table.compare(QLatin1String("qivot_migrations"), Qt::CaseInsensitive) == 0;
 }
 
+// A string as an SQL literal, quoted by the database's own driver.
+/* The history table is written with literals rather than bound parameters:
+   some Qt ODBC builds (Ubuntu 24.04's Qt 6.4) send every bound string with a
+   NUL on the end, which overflows the checksum column on SQL Server. */
+QString QiMigrator::literal(const QString &value) const {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QSqlField field(QStringLiteral("v"), QMetaType(QMetaType::QString));
+#else
+    QSqlField field(QStringLiteral("v"), QVariant::String);
+#endif
+    field.setValue(value);
+    const QSqlDatabase db = m_conn.sql().database();
+    const QString text = db.driver()->formatValue(field);
+    // N'…' keeps names outside the server's code page on SQL Server.
+    return db.driver()->dbmsType() == QSqlDriver::MSSqlServer ? QLatin1Char('N') + text : text;
+}
+
 bool QiMigrator::tableExists() const {
     QSqlDatabase db = m_conn.sql().database();
     if (db.tables().contains(m_table, Qt::CaseInsensitive))
         return true;
-    // Some MySQL client libraries list no tables at all; ask the server.
+    // Some client libraries (MySQL builds, Qt 6.4's ODBC) list no tables at all;
+    // ask the server.
     const QString d = driver();
-    if (d == QLatin1String("QMYSQL") || d == QLatin1String("QMARIADB")) {
-        QSqlQuery q = m_conn.query();
-        q.prepare(QStringLiteral("SELECT COUNT(*) FROM information_schema.tables "
-                                 "WHERE table_schema = DATABASE() AND table_name = ?"));
-        q.addBindValue(m_table);
-        return q.exec() && q.next() && q.value(0).toInt() > 0;
-    }
-    return false;
+    QString sql;
+    if (d == QLatin1String("QMYSQL") || d == QLatin1String("QMARIADB"))
+        sql = QStringLiteral("SELECT COUNT(*) FROM information_schema.tables "
+                             "WHERE table_schema = DATABASE() AND table_name = %1");
+    else if (d == QLatin1String("QPSQL"))
+        sql = QStringLiteral("SELECT COUNT(*) FROM information_schema.tables "
+                             "WHERE table_schema = current_schema() AND lower(table_name) = lower(%1)");
+    else if (db.driver()->dbmsType() == QSqlDriver::MSSqlServer)
+        sql = QStringLiteral("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = %1");
+    if (sql.isEmpty())
+        return false;
+    QSqlQuery q = m_conn.query();
+    return q.exec(sql.arg(literal(m_table))) && q.next() && q.value(0).toInt() > 0;
 }
 
 bool QiMigrator::begin() {
@@ -318,14 +342,9 @@ bool QiMigrator::ensureTable() {
         if (e.version > adopt)
             break;
         QSqlQuery ins = m_conn.query();
-        ins.prepare(QStringLiteral("INSERT INTO %1 (version, name, checksum, applied_at, duration_ms) "
-                                   "VALUES (?, ?, ?, ?, ?)").arg(m_table));
-        ins.addBindValue(e.version);
-        ins.addBindValue(e.name);
-        ins.addBindValue(e.checksum);
-        ins.addBindValue(QString());
-        ins.addBindValue(-1);
-        if (!ins.exec()) {
+        if (!ins.exec(QStringLiteral("INSERT INTO %1 (version, name, checksum, applied_at, duration_ms) "
+                                     "VALUES (%2, %3, %4, %5, -1)")
+                          .arg(m_table, QString::number(e.version), literal(e.name), literal(e.checksum), literal(QString())))) {
             failed(QStringLiteral("could not record migration %1: %2").arg(e.version).arg(ins.lastError().text().trimmed()));
             return false;
         }
@@ -376,14 +395,10 @@ bool QiMigrator::runStep(const Entry &e, bool up) {
 
 bool QiMigrator::record(const Entry &e, int durationMs) {
     QSqlQuery q = m_conn.query();
-    q.prepare(QStringLiteral("INSERT INTO %1 (version, name, checksum, applied_at, duration_ms) "
-                             "VALUES (?, ?, ?, ?, ?)").arg(m_table));
-    q.addBindValue(e.version);
-    q.addBindValue(e.name);
-    q.addBindValue(e.checksum);
-    q.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    q.addBindValue(durationMs);
-    if (!q.exec()) {
+    if (!q.exec(QStringLiteral("INSERT INTO %1 (version, name, checksum, applied_at, duration_ms) "
+                               "VALUES (%2, %3, %4, %5, %6)")
+                    .arg(m_table, QString::number(e.version), literal(e.name), literal(e.checksum),
+                         literal(QDateTime::currentDateTimeUtc().toString(Qt::ISODate)), QString::number(durationMs)))) {
         m_error = q.lastError().text().trimmed();
         return false;
     }
@@ -392,9 +407,7 @@ bool QiMigrator::record(const Entry &e, int durationMs) {
 
 bool QiMigrator::unrecord(int version) {
     QSqlQuery q = m_conn.query();
-    q.prepare(QStringLiteral("DELETE FROM %1 WHERE version = ?").arg(m_table));
-    q.addBindValue(version);
-    if (!q.exec()) {
+    if (!q.exec(QStringLiteral("DELETE FROM %1 WHERE version = %2").arg(m_table, QString::number(version)))) {
         m_error = q.lastError().text().trimmed();
         return false;
     }
@@ -614,10 +627,8 @@ bool QiMigrator::acceptChecksums() {
         return false;
     for (const Migration &m : changed()) {
         QSqlQuery q = m_conn.query();
-        q.prepare(QStringLiteral("UPDATE %1 SET checksum = ? WHERE version = ?").arg(m_table));
-        q.addBindValue(m.checksum);
-        q.addBindValue(m.version);
-        if (!q.exec()) {
+        if (!q.exec(QStringLiteral("UPDATE %1 SET checksum = %2 WHERE version = %3")
+                        .arg(m_table, literal(m.checksum), QString::number(m.version)))) {
             failed(QStringLiteral("could not update migration %1: %2").arg(m.version).arg(q.lastError().text().trimmed()));
             return false;
         }
