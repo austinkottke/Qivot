@@ -11,6 +11,7 @@
 #include <qirelation.h>
 #include <qikeyset.h>
 #include <qimigrator.h>
+#include <qirecorder.h>
 #include <qiconnectionpool.h>
 #include <qiasync.h>
 #include <qilog.h>
@@ -1997,6 +1998,23 @@ void SqliteTests::migratorUpgrade() {
     QVERIFY(m.currentVersion() == 3 && m.migrate() == 0);
     }
     QSqlDatabase::removeDatabase("migold");
+
+    // A database whose user_version means something else: off, it's left alone.
+    {
+    QiConnection c;
+    QVERIFY(openMigDb("migother", c));
+    QSqlQuery q = c.query();
+    QVERIFY(q.exec("PRAGMA user_version = 7"));
+    QiMigrator m(c);
+    m.setUseUserVersion(false);
+    QVERIFY(!m.useUserVersion());
+    m.addSql(1, "one", "CREATE TABLE one (id INTEGER)");
+    QVERIFY(m.currentVersion() == 0 && m.pending().size() == 1);
+    QVERIFY(m.migrate() == 1);
+    QVERIFY(q.exec("PRAGMA user_version") && q.next() && q.value(0).toInt() == 7);
+    q.finish();
+    }
+    QSqlDatabase::removeDatabase("migother");
 }
 
 void SqliteTests::migratorForeignKeys() {
@@ -2034,6 +2052,61 @@ void SqliteTests::migratorForeignKeys() {
     QVERIFY(m.currentVersion() == 2);
     }
     QSqlDatabase::removeDatabase("migfk");
+}
+
+void SqliteTests::whereSnakeCase() {
+    QiWhere w("author_id = ", 3);
+    QCOMPARE(w.op(), QString("="));
+    QVERIFY2(w.toString().contains("author_id"), qPrintable(w.toString()));
+    QVERIFY(!w.toString().contains("author _id"));
+    QiWhere spaced("  created_at >= ", 1);
+    QCOMPARE(spaced.op(), QString(">="));
+}
+
+void SqliteTests::recorder() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath("app.qrec");
+    QVERIFY(!QiRecorder::isRecording());
+    QVERIFY(QiRecorder::start(path, 3));          // keep 3 samples of each statement
+    QVERIFY(QiRecorder::isRecording());
+    for (int i = 0; i < 5; ++i) {
+        Model1 m;
+        m.key = QString("rec-%1").arg(i);
+        m.value = QStringLiteral("it's \"quoted\"");
+        QVERIFY(m.save());
+    }
+    QVERIFY(QiQuery<Model1>().filter(QiWhere("key = ", "rec-1")).count() == 1);
+    QiRecorder::stop();
+    QVERIFY(!QiRecorder::isRecording());
+
+    QString error;
+    const QVector<QiRecorder::Query> qs = QiRecorder::read(path, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    const QiRecorder::Query *insert = nullptr, *count = nullptr;
+    for (const QiRecorder::Query &q : qs) {
+        if ((q.sql.startsWith("INSERT") || q.sql.startsWith("REPLACE")) && q.sql.contains(Model1::TableName())) insert = &q;
+        if (q.sql.contains("count(", Qt::CaseInsensitive) && q.sql.contains(Model1::TableName())) count = &q;
+    }
+    QVERIFY(insert && count);
+    QCOMPARE(insert->driver, QString("QSQLITE"));
+    QCOMPARE(insert->runs, qint64(5));             // 3 samples + 2 counted
+    QCOMPARE(insert->samples.size(), 3);
+    QVERIFY(insert->samples.at(0).values.contains(QVariant("rec-0")));
+    QVERIFY(insert->samples.at(0).values.contains(QVariant("it's \"quoted\"")));
+    QVERIFY(count->samples.first().values.contains(QVariant("rec-1")));
+    QVERIFY(count->samples.first().ms >= 0);
+
+    // Values keep their types through JSON.
+    const QDateTime when(QDate(2026, 10, 3), QTime(12, 30, 15, 250), Qt::UTC);
+    QCOMPARE(QiRecorder::decode(QiRecorder::encode(when)).toDateTime(), when);
+    QCOMPARE(QiRecorder::decode(QiRecorder::encode(QByteArray("\x00\x01b", 3))).toByteArray(), QByteArray("\x00\x01b", 3));
+    QCOMPARE(QiRecorder::decode(QJsonValue(42.0).toVariant()).userType(), int(QMetaType::LongLong));
+    QVERIFY(QiRecorder::decode(QVariant()).isNull());
+
+    // Nothing is recorded once stopped.
+    { Model1 m; m.key = "after"; QVERIFY(m.save()); }
+    QCOMPARE(QiRecorder::read(path).size(), qs.size());
 }
 
 void SqliteTests::migratorSplit() {

@@ -16,6 +16,7 @@
 #include <qiftsindex.h>
 #include <qitransaction.h>
 #include <qimigrator.h>
+#include <qirecorder.h>
 #include <qischema.h>
 #include <qijsonmapper.h>
 // Note: <qiasync.h> is intentionally NOT included here — it depends on

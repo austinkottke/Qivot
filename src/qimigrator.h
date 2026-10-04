@@ -154,6 +154,15 @@ public:
 
     // --- Options -------------------------------------------------------------
 
+    /// Whether SQLite's `PRAGMA user_version` is part of the history (default on).
+    /** On, a database with no migrations table counts the migrations up to its
+        user_version as applied (what Qivot's SQLite-only migrator left), and
+        user_version is kept in step. Turn it off for a database whose
+        user_version means something else: a tool working on any database, say,
+        or an app that sets it itself. */
+    void setUseUserVersion(bool on);
+    bool useUserVersion() const;
+
     /// The table migrations are recorded in (default "qivot_migrations").
     /** Several migrators can share a database, each with its own table. */
     void setTable(const QString &table);
@@ -205,6 +214,7 @@ private:
     QString        m_table = QStringLiteral("qivot_migrations");
     QString        m_error;
     bool           m_locked = false;
+    bool           m_useUserVersion = true;
     bool           m_inTransaction = false;
     bool           m_restoreForeignKeys = false;
 };

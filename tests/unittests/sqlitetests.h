@@ -171,6 +171,8 @@ private Q_SLOTS:
     void migratorUpgrade();
     void migratorSplit();
     void migratorForeignKeys();
+    void recorder();
+    void whereSnakeCase();
     /// Declarative many-to-many — QI_MANY_TO_MANY / QiRelationSet, both directions
     void relationsManyToMany();
     /// One-to-many accessor + batched prefetch (N+1 avoidance)
