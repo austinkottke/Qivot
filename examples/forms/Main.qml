@@ -11,7 +11,9 @@ ApplicationWindow {
     visible: true
     title: "Qivot Forms"
     color: QiTheme.background
-    Component.onCompleted: if (startTheme === "light") QiTheme.mode = QiTheme.Light; else if (startTheme === "dark") QiTheme.mode = QiTheme.Dark
+    Component.onCompleted: setTheme(startTheme)
+    /// For the screenshots: "light", "dark" or "" (follow the system).
+    function setTheme(name) { QiTheme.mode = name === "light" ? QiTheme.Light : name === "dark" ? QiTheme.Dark : QiTheme.Auto }
     palette.window: QiTheme.background
     palette.windowText: QiTheme.text
     palette.text: QiTheme.text

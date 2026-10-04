@@ -9,6 +9,7 @@ ScrollView {
     property string title
     property string note
     property string tag
+    property int maxWidth: 660
     default property alias content: column.data
     clip: true
     // Laid out by the view's width, not what the scrollbar leaves: otherwise the
@@ -22,7 +23,7 @@ ScrollView {
         // Columns, not layouts, out here: wrapped text in a layout sizes itself in a loop in Qt 5.
         Column {
             id: body
-            width: Math.min(page.width - 48, 660)
+            width: Math.min(page.width - 48, page.maxWidth)
             x: (page.width - width) / 2
             y: 40
             spacing: 22

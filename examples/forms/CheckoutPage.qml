@@ -6,9 +6,18 @@ import Qivot 1.0
 import Qivot.Forms 1.0
 
 DemoPage {
+    objectName: "checkoutPage"
     tag: "Cross-field & nested"
     title: "Checkout"
     note: "Each basket line is its own form, checked together with the order. Billing details only when they differ; cards checked with Luhn and their expiry; delivery 2–60 days out on a working day. An unknown promo code is only a warning."
+
+    /// Check every basket line (each its own form). True if they're all fine.
+    function validateLines() {
+        var ok = true
+        for (var i = 0; i < lines.count; ++i)
+            ok = lines.itemAt(i).form.validate() && ok
+        return ok
+    }
 
     QiForm {
         id: checkout
@@ -89,9 +98,7 @@ DemoPage {
     QiButton {
         text: "Pay now"
         onClicked: {
-            var ok = true
-            for (var i = 0; i < lines.count; ++i)
-                ok = lines.itemAt(i).form.validate() && ok
+            var ok = validateLines()
             ok = checkout.validate() && ok
             result.text = ok && checkout.submit() ? "Payment accepted — order #" + checkout.recordId + "." : ""
         }
