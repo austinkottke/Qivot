@@ -2922,10 +2922,123 @@ inline QDebug operator<< (QDebug d, const QiList<T>& rhs ){
 
 #endif // QiLIST_H
 
+// ---- src/qilog.h -------------------------------------------------
+#ifndef QiLOG_H
+#define QiLOG_H
+
+#include <QString>
+#include <QDebug>
+#include <functional>
+
+class QSqlQuery;
+
+/// Qivot's debug logger — timestamped, filterable, colorized.
+/**
+  Logging is **off by default** (zero overhead). Turn it on when you want to see
+  what Qivot is doing against the database:
+
+\code
+    QiLog::enableAll();                       // everything, at Debug level
+    // or fine-grained:
+    QiLog::setEnabled(true);
+    QiLog::setLevel(QiLog::Debug);
+    QiLog::setCategories(QiLog::Sql | QiLog::Connection);   // only these
+\endcode
+
+  Each line carries a timestamp, a category tag and a level, e.g.
+
+\verbatim
+    [2026-07-21 01:37:12.345] [SQL ] DEBUG  SELECT ALL user.* FROM user WHERE karma > :arg0  | args: [:arg0=50] | rows: 3 | 0.42ms
+    [2026-07-21 01:37:12.361] [SQL ] ERROR  INSERT INTO user (...) ...  | error: UNIQUE constraint failed: user.userId
+\endcode
+
+  Redirect anywhere (a file, your app's logger, a test buffer) with setHandler().
+  You can also log your own lines in the same format via qiLog() / QiLog::debug().
+ */
+class QiLog {
+public:
+    /// Severity, low to high. A message is shown only if its level >= the
+    /// configured threshold (see setLevel()).
+    enum Level { Trace, Debug, Info, Warning, Error };
+
+    /// Message categories (a bitmask — enable any subset with setCategories()).
+    enum Category {
+        General    = 1 << 0,   ///< your own messages / uncategorised
+        Connection = 1 << 1,   ///< open / close
+        Sql        = 1 << 2,   ///< every statement executed, with params + timing
+        Model      = 1 << 3,   ///< model-level events (validation failures, ...)
+        Json       = 1 << 4    ///< JSON mapping
+    };
+    enum { AllCategories = General | Connection | Sql | Model | Json };
+
+    // ---- configuration ----------------------------------------------------
+    static void  setEnabled(bool on);
+    static bool  isEnabled();
+    static void  setLevel(Level level);        ///< threshold (default Debug)
+    static Level level();
+    static void  setCategories(int mask);      ///< default: AllCategories
+    static int   categories();
+    static void  setTimestamps(bool on);       ///< default: true
+    static void  setColorized(bool on);        ///< default: true (built-in sink)
+
+    /// One-liner: enable logging for all categories at a level (default Debug).
+    static void  enableAll(Level level = Debug);
+
+    /// Custom sink: receives (level, category, formatted-line-without-color).
+    /// Pass nullptr to restore the built-in stderr sink.
+    using Handler = std::function<void(Level, int, const QString &)>;
+    static void  setHandler(Handler handler);
+
+    // ---- cheap predicate (guard expensive message building) ---------------
+    static bool  wants(int category, Level level);
+
+    // ---- emit -------------------------------------------------------------
+    static void  write(int category, Level level, const QString &message);
+    static void  trace  (const QString &m, int c = General) { write(c, Trace,   m); }
+    static void  debug  (const QString &m, int c = General) { write(c, Debug,   m); }
+    static void  info   (const QString &m, int c = General) { write(c, Info,    m); }
+    static void  warning(const QString &m, int c = General) { write(c, Warning, m); }
+    static void  error  (const QString &m, int c = General) { write(c, Error,   m); }
+
+    // ---- used by the ORM internals (safe to ignore) -----------------------
+    /// Log a just-executed query: SQL text, bound params, row count, error and
+    /// (if provided) elapsed time. Level is Error when the query failed.
+    static void  logQuery(const QSqlQuery &query, qint64 elapsedNs = -1);
+};
+
+/// QDebug-style stream for your own log lines, flushed when it goes out of scope:
+/// `qiLog(QiLog::General, QiLog::Info) << "loaded" << n << "rows";`
+class QiLogStream {
+public:
+    QiLogStream(int category, QiLog::Level level)
+        : m_cat(category), m_level(level), m_on(QiLog::wants(category, level)) {}
+    ~QiLogStream() { if (m_on) QiLog::write(m_cat, m_level, m_buf.trimmed()); }
+
+    template <typename T>
+    QiLogStream &operator<<(const T &value) {
+        if (m_on) QDebug(&m_buf).noquote() << value;
+        return *this;
+    }
+private:
+    int          m_cat;
+    QiLog::Level m_level;
+    bool         m_on;
+    QString      m_buf;
+};
+
+/// Convenience factory: `qiLog(QiLog::Sql, QiLog::Debug) << ...;`
+inline QiLogStream qiLog(int category = QiLog::General,
+                         QiLog::Level level = QiLog::Debug) {
+    return QiLogStream(category, level);
+}
+
+#endif // QiLOG_H
+
 // ---- src/qiquery.h -----------------------------------------------
 #ifndef QiQUERY_H
 #define QiQUERY_H
 
+#include <QElapsedTimer>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QVariantList>
@@ -3103,7 +3216,11 @@ inline QiList<T> qiRawQuery(const QString &sql,
     for (const QVariant &b : binds)
         q.addBindValue(b);
 
-    if (q.exec()) {
+    QElapsedTimer timer;
+    timer.start();
+    const bool ran = q.exec();
+    QiLog::logQuery(q, timer.nsecsElapsed());   // logged and recorded like every other query
+    if (ran) {
         const QStringList fields = info->fieldNameList();
         while (q.next()) {
             QiAbstractModel *model = info->create();
@@ -4341,118 +4458,6 @@ Q_DECLARE_METATYPE(QiListWriter::Next);
 
 #endif // QiLISTWRITER_H
 
-// ---- src/qilog.h -------------------------------------------------
-#ifndef QiLOG_H
-#define QiLOG_H
-
-#include <QString>
-#include <QDebug>
-#include <functional>
-
-class QSqlQuery;
-
-/// Qivot's debug logger — timestamped, filterable, colorized.
-/**
-  Logging is **off by default** (zero overhead). Turn it on when you want to see
-  what Qivot is doing against the database:
-
-\code
-    QiLog::enableAll();                       // everything, at Debug level
-    // or fine-grained:
-    QiLog::setEnabled(true);
-    QiLog::setLevel(QiLog::Debug);
-    QiLog::setCategories(QiLog::Sql | QiLog::Connection);   // only these
-\endcode
-
-  Each line carries a timestamp, a category tag and a level, e.g.
-
-\verbatim
-    [2026-07-21 01:37:12.345] [SQL ] DEBUG  SELECT ALL user.* FROM user WHERE karma > :arg0  | args: [:arg0=50] | rows: 3 | 0.42ms
-    [2026-07-21 01:37:12.361] [SQL ] ERROR  INSERT INTO user (...) ...  | error: UNIQUE constraint failed: user.userId
-\endcode
-
-  Redirect anywhere (a file, your app's logger, a test buffer) with setHandler().
-  You can also log your own lines in the same format via qiLog() / QiLog::debug().
- */
-class QiLog {
-public:
-    /// Severity, low to high. A message is shown only if its level >= the
-    /// configured threshold (see setLevel()).
-    enum Level { Trace, Debug, Info, Warning, Error };
-
-    /// Message categories (a bitmask — enable any subset with setCategories()).
-    enum Category {
-        General    = 1 << 0,   ///< your own messages / uncategorised
-        Connection = 1 << 1,   ///< open / close
-        Sql        = 1 << 2,   ///< every statement executed, with params + timing
-        Model      = 1 << 3,   ///< model-level events (validation failures, ...)
-        Json       = 1 << 4    ///< JSON mapping
-    };
-    enum { AllCategories = General | Connection | Sql | Model | Json };
-
-    // ---- configuration ----------------------------------------------------
-    static void  setEnabled(bool on);
-    static bool  isEnabled();
-    static void  setLevel(Level level);        ///< threshold (default Debug)
-    static Level level();
-    static void  setCategories(int mask);      ///< default: AllCategories
-    static int   categories();
-    static void  setTimestamps(bool on);       ///< default: true
-    static void  setColorized(bool on);        ///< default: true (built-in sink)
-
-    /// One-liner: enable logging for all categories at a level (default Debug).
-    static void  enableAll(Level level = Debug);
-
-    /// Custom sink: receives (level, category, formatted-line-without-color).
-    /// Pass nullptr to restore the built-in stderr sink.
-    using Handler = std::function<void(Level, int, const QString &)>;
-    static void  setHandler(Handler handler);
-
-    // ---- cheap predicate (guard expensive message building) ---------------
-    static bool  wants(int category, Level level);
-
-    // ---- emit -------------------------------------------------------------
-    static void  write(int category, Level level, const QString &message);
-    static void  trace  (const QString &m, int c = General) { write(c, Trace,   m); }
-    static void  debug  (const QString &m, int c = General) { write(c, Debug,   m); }
-    static void  info   (const QString &m, int c = General) { write(c, Info,    m); }
-    static void  warning(const QString &m, int c = General) { write(c, Warning, m); }
-    static void  error  (const QString &m, int c = General) { write(c, Error,   m); }
-
-    // ---- used by the ORM internals (safe to ignore) -----------------------
-    /// Log a just-executed query: SQL text, bound params, row count, error and
-    /// (if provided) elapsed time. Level is Error when the query failed.
-    static void  logQuery(const QSqlQuery &query, qint64 elapsedNs = -1);
-};
-
-/// QDebug-style stream for your own log lines, flushed when it goes out of scope:
-/// `qiLog(QiLog::General, QiLog::Info) << "loaded" << n << "rows";`
-class QiLogStream {
-public:
-    QiLogStream(int category, QiLog::Level level)
-        : m_cat(category), m_level(level), m_on(QiLog::wants(category, level)) {}
-    ~QiLogStream() { if (m_on) QiLog::write(m_cat, m_level, m_buf.trimmed()); }
-
-    template <typename T>
-    QiLogStream &operator<<(const T &value) {
-        if (m_on) QDebug(&m_buf).noquote() << value;
-        return *this;
-    }
-private:
-    int          m_cat;
-    QiLog::Level m_level;
-    bool         m_on;
-    QString      m_buf;
-};
-
-/// Convenience factory: `qiLog(QiLog::Sql, QiLog::Debug) << ...;`
-inline QiLogStream qiLog(int category = QiLog::General,
-                         QiLog::Level level = QiLog::Debug) {
-    return QiLogStream(category, level);
-}
-
-#endif // QiLOG_H
-
 // ---- src/qimigrator.h --------------------------------------------
 #ifndef QiMIGRATOR_H
 #define QiMIGRATOR_H
@@ -4609,6 +4614,15 @@ public:
 
     // --- Options -------------------------------------------------------------
 
+    /// Whether SQLite's `PRAGMA user_version` is part of the history (default on).
+    /** On, a database with no migrations table counts the migrations up to its
+        user_version as applied (what Qivot's SQLite-only migrator left), and
+        user_version is kept in step. Turn it off for a database whose
+        user_version means something else: a tool working on any database, say,
+        or an app that sets it itself. */
+    void setUseUserVersion(bool on);
+    bool useUserVersion() const;
+
     /// The table migrations are recorded in (default "qivot_migrations").
     /** Several migrators can share a database, each with its own table. */
     void setTable(const QString &table);
@@ -4660,6 +4674,7 @@ private:
     QString        m_table = QStringLiteral("qivot_migrations");
     QString        m_error;
     bool           m_locked = false;
+    bool           m_useUserVersion = true;
     bool           m_inTransaction = false;
     bool           m_restoreForeignKeys = false;
 };
@@ -4845,6 +4860,83 @@ public:
 };
 
 #endif // QIPGSTATEMENT_H
+
+// ---- src/qirecorder.h --------------------------------------------
+#ifndef QiRECORDER_H
+#define QiRECORDER_H
+
+#include <QDateTime>
+#include <QString>
+#include <QVariantList>
+#include <QVector>
+
+class QSqlQuery;
+
+/// Records the queries an app runs through Qivot, to replay them later.
+/**
+  Every statement Qivot executes (the ones QiLog sees) is appended to a file
+  as one JSON object per line: the SQL, its bound values, how long it took
+  and whether it failed. Nothing else is needed in the app: set
+  `QIVOT_RECORD=path/to/app.qrec` in its environment, or call start().
+
+\code
+    QiRecorder::start("app.qrec");     // or: QIVOT_RECORD=app.qrec ./myapp
+    ...                                // use the app
+    QiRecorder::stop();
+
+    for (const QiRecorder::Query &q : QiRecorder::read("app.qrec"))
+        qDebug() << q.runs << q.sql;
+\endcode
+
+  Each distinct SQL text is written at most `samples` times (default 20, or
+  QIVOT_RECORD_SAMPLES), each with its own bound values; later runs are only
+  counted, and the counts are written when recording stops (or the app quits).
+  So a loop that runs one query a million times costs a handful of lines.
+
+  Qt Sql's own drivers can't be watched, so a QSqlQuery an app runs itself
+  (`connection.query().exec(...)`) isn't recorded; everything through Qivot is.
+
+  The recording is what `qivot-cli replay` reads to test migrations against
+  the queries an app really runs.
+ */
+class QiRecorder {
+public:
+    /// One recorded run of a statement.
+    struct Run {
+        QVariantList values;     ///< bound values, in order
+        double       ms = -1;    ///< how long it took (-1: unknown)
+        bool         failed = false;
+        QString      error;
+    };
+
+    /// A distinct statement, with the runs recorded for it.
+    struct Query {
+        QString      sql;
+        QString      driver;     ///< the Qt driver it ran on ("QSQLITE", "QPSQL", ...)
+        qint64       runs = 0;   ///< how many times it ran (recorded or only counted)
+        QVector<Run> samples;
+    };
+
+    /// Start appending to `path` (created if missing). False if it can't be opened.
+    static bool start(const QString &path, int samples = 20);
+    /// Stop, writing the counts of runs beyond the samples.
+    static void stop();
+    static bool isRecording();
+    /// The file being recorded to ("" if none).
+    static QString path();
+
+    /// Called by QiLog for every statement Qivot runs.
+    static void record(const QSqlQuery &query, qint64 elapsedNs);
+
+    /// Read a recording: one entry per distinct (driver, SQL), in first-seen order.
+    static QVector<Query> read(const QString &path, QString *error = nullptr);
+
+    /// A bound value as JSON and back (bytes, dates and times keep their type).
+    static QVariant encode(const QVariant &value);
+    static QVariant decode(const QVariant &json);
+};
+
+#endif // QiRECORDER_H
 
 // ---- src/qirelation.h --------------------------------------------
 #ifndef QiRELATION_H
@@ -7152,6 +7244,8 @@ void QiLog::write(int category, Level level, const QString &message) {
 }
 
 void QiLog::logQuery(const QSqlQuery &query, qint64 elapsedNs) {
+    QiRecorder::record(query, elapsedNs);   // a no-op unless recording (QIVOT_RECORD)
+
     const bool failed = query.lastError().type() != QSqlError::NoError;
     const Level level = failed ? Error : Debug;
     if (!wants(Sql, level))
@@ -7297,7 +7391,8 @@ bool QiMigrator::isSqlite() const {
 // takes over from it. A table of your own (setTable) is a separate history and
 // leaves user_version alone.
 bool QiMigrator::usesUserVersion() const {
-    return isSqlite() && m_table.compare(QLatin1String("qivot_migrations"), Qt::CaseInsensitive) == 0;
+    return m_useUserVersion && isSqlite()
+        && m_table.compare(QLatin1String("qivot_migrations"), Qt::CaseInsensitive) == 0;
 }
 
 // A string as an SQL literal, quoted by the database's own driver.
@@ -7825,6 +7920,14 @@ bool QiMigrator::acceptChecksums() {
 
 QString QiMigrator::lastError() const {
     return m_error;
+}
+
+void QiMigrator::setUseUserVersion(bool on) {
+    m_useUserVersion = on;
+}
+
+bool QiMigrator::useUserVersion() const {
+    return m_useUserVersion;
 }
 
 void QiMigrator::setTable(const QString &table) {
@@ -9111,6 +9214,280 @@ QList<QiBaseJoin> QiQueryRules::joins() {
 
 bool QiQueryRules::distinct() {
     return data->distinct;
+}
+
+// ---- src/qirecorder.cpp ------------------------------------------
+#include <atomic>
+#include <QCoreApplication>
+#include <QFile>
+#include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMutex>
+#include <QSqlDriver>
+#include <QSqlError>
+#include <QSqlQuery>
+
+namespace {
+
+struct RecorderState {
+    QMutex                 mutex;
+    QFile                 *file = nullptr;
+    int                    samples = 20;
+    bool                   envChecked = false;
+    QHash<QString, qint64> seen;        // key -> runs so far
+    QHash<QString, QPair<QString, QString>> keys;   // key -> (driver, sql), for the counts
+};
+
+RecorderState &recorderState() {
+    static RecorderState s;
+    return s;
+}
+
+std::atomic<bool> recorderActive{false};
+std::atomic<bool> recorderEnvChecked{false};
+
+QString recorderDriverName(const QSqlQuery &q) {
+    const QSqlDriver *d = q.driver();
+    if (!d)
+        return QString();
+    switch (d->dbmsType()) {
+    case QSqlDriver::SQLite:      return QStringLiteral("QSQLITE");
+    case QSqlDriver::PostgreSQL:  return QStringLiteral("QPSQL");
+    case QSqlDriver::MySqlServer: return QStringLiteral("QMYSQL");
+    case QSqlDriver::MSSqlServer: return QStringLiteral("QODBC");
+    case QSqlDriver::Oracle:      return QStringLiteral("QOCI");
+    default:                      return QString();
+    }
+}
+
+void recorderWrite(RecorderState &s, const QJsonObject &o) {
+    if (!s.file)
+        return;
+    s.file->write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    s.file->write("\n");
+    s.file->flush();
+}
+
+// Write the runs beyond the samples, then close. Called with the mutex held.
+void recorderFinish(RecorderState &s) {
+    if (!s.file)
+        return;
+    for (auto it = s.seen.constBegin(); it != s.seen.constEnd(); ++it) {
+        const qint64 more = it.value() - s.samples;
+        if (more > 0) {
+            const QPair<QString, QString> k = s.keys.value(it.key());
+            recorderWrite(s, QJsonObject{ { "driver", k.first }, { "sql", k.second }, { "more", double(more) } });
+        }
+    }
+    s.file->close();
+    delete s.file;
+    s.file = nullptr;
+    s.seen.clear();
+    s.keys.clear();
+    recorderActive = false;
+}
+
+void recorderAtExit() {
+    QiRecorder::stop();
+}
+
+bool recorderStartLocked(RecorderState &s, const QString &path, int samples) {
+    if (s.file)
+        recorderFinish(s);
+    auto *f = new QFile(path);
+    if (!f->open(QIODevice::WriteOnly | QIODevice::Append)) {
+        delete f;
+        return false;
+    }
+    s.file = f;
+    s.samples = qMax(1, samples);
+    recorderActive = true;
+    if (QCoreApplication::instance())
+        qAddPostRoutine(recorderAtExit);    // write the counts when the app quits
+    return true;
+}
+
+// QIVOT_RECORD=path starts recording the first time a query runs.
+void recorderCheckEnvironment() {
+    if (recorderEnvChecked.load())
+        return;
+    RecorderState &s = recorderState();
+    QMutexLocker lock(&s.mutex);
+    if (s.envChecked)
+        return;
+    s.envChecked = true;
+    recorderEnvChecked = true;
+    const QString path = qEnvironmentVariable("QIVOT_RECORD");
+    if (!path.isEmpty() && !s.file) {
+        bool ok = false;
+        const int samples = qEnvironmentVariableIntValue("QIVOT_RECORD_SAMPLES", &ok);
+        recorderStartLocked(s, path, ok ? samples : 20);
+    }
+}
+
+} // namespace
+
+bool QiRecorder::start(const QString &path, int samples) {
+    RecorderState &s = recorderState();
+    QMutexLocker lock(&s.mutex);
+    s.envChecked = true;            // an explicit start wins over QIVOT_RECORD
+    recorderEnvChecked = true;
+    return recorderStartLocked(s, path, samples);
+}
+
+void QiRecorder::stop() {
+    RecorderState &s = recorderState();
+    QMutexLocker lock(&s.mutex);
+    recorderFinish(s);
+}
+
+bool QiRecorder::isRecording() {
+    recorderCheckEnvironment();
+    return recorderActive.load();
+}
+
+QString QiRecorder::path() {
+    RecorderState &s = recorderState();
+    QMutexLocker lock(&s.mutex);
+    return s.file ? s.file->fileName() : QString();
+}
+
+void QiRecorder::record(const QSqlQuery &query, qint64 elapsedNs) {
+    recorderCheckEnvironment();
+    if (!recorderActive.load())
+        return;
+    const QString sql = query.lastQuery().trimmed();
+    if (sql.isEmpty())
+        return;
+    const QString driver = recorderDriverName(query);
+
+    RecorderState &s = recorderState();
+    QMutexLocker lock(&s.mutex);
+    if (!s.file)
+        return;
+    const QString key = driver + QChar(0x1f) + sql;
+    const qint64 runs = ++s.seen[key];
+    if (runs == 1)
+        s.keys.insert(key, qMakePair(driver, sql));
+    if (runs > s.samples)
+        return;                     // counted; written as "more" at the end
+
+    QJsonArray values;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    const int n = query.boundValues().size();
+#else
+    const int n = int(query.boundValues().size());
+#endif
+    for (int i = 0; i < n; ++i)
+        values << QJsonValue::fromVariant(encode(query.boundValue(i)));
+
+    QJsonObject o{ { "driver", driver }, { "sql", sql }, { "values", values },
+                   { "at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) } };
+    if (elapsedNs >= 0)
+        o.insert("ms", elapsedNs / 1.0e6);
+    if (query.lastError().type() != QSqlError::NoError) {
+        o.insert("failed", true);
+        o.insert("error", query.lastError().text().simplified());
+    }
+    recorderWrite(s, o);
+}
+
+QVector<QiRecorder::Query> QiRecorder::read(const QString &path, QString *error) {
+    QVector<Query> out;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (error) *error = QStringLiteral("%1: %2").arg(path, f.errorString());
+        return out;
+    }
+    QHash<QString, int> index;
+    int line = 0;
+    while (!f.atEnd()) {
+        const QByteArray text = f.readLine().trimmed();
+        ++line;
+        if (text.isEmpty())
+            continue;
+        QJsonParseError pe;
+        const QJsonObject o = QJsonDocument::fromJson(text, &pe).object();
+        if (pe.error != QJsonParseError::NoError || !o.contains("sql")) {
+            if (error) *error = QStringLiteral("%1:%2: not a recorded query").arg(path).arg(line);
+            return {};
+        }
+        const QString driver = o.value("driver").toString();
+        const QString sql = o.value("sql").toString();
+        const QString key = driver + QChar(0x1f) + sql;
+        int at = index.value(key, -1);
+        if (at < 0) {
+            at = out.size();
+            index.insert(key, at);
+            Query q;
+            q.sql = sql;
+            q.driver = driver;
+            out << q;
+        }
+        Query &q = out[at];
+        if (o.contains("more")) {
+            q.runs += qint64(o.value("more").toDouble());
+            continue;
+        }
+        Run r;
+        for (const QJsonValue &v : o.value("values").toArray())
+            r.values << decode(v.toVariant());
+        r.ms = o.value("ms").toDouble(-1);
+        r.failed = o.value("failed").toBool();
+        r.error = o.value("error").toString();
+        q.samples << r;
+        q.runs += 1;
+    }
+    return out;
+}
+
+QVariant QiRecorder::encode(const QVariant &value) {
+    if (value.isNull())
+        return QVariant();
+    switch (value.userType()) {
+    case QMetaType::Bool:
+    case QMetaType::Int: case QMetaType::UInt:
+    case QMetaType::LongLong: case QMetaType::ULongLong:
+    case QMetaType::Double: case QMetaType::Float:
+    case QMetaType::QString:
+        return value;
+    case QMetaType::QByteArray:
+        return QVariantMap{ { QStringLiteral("bytes"), QString::fromLatin1(value.toByteArray().toBase64()) } };
+    case QMetaType::QDate:
+        return QVariantMap{ { QStringLiteral("date"), value.toDate().toString(Qt::ISODate) } };
+    case QMetaType::QTime:
+        return QVariantMap{ { QStringLiteral("time"), value.toTime().toString(Qt::ISODateWithMs) } };
+    case QMetaType::QDateTime:
+        return QVariantMap{ { QStringLiteral("datetime"), value.toDateTime().toString(Qt::ISODateWithMs) } };
+    default:
+        return value.toString();
+    }
+}
+
+QVariant QiRecorder::decode(const QVariant &json) {
+    if (json.isNull())
+        return QVariant();
+    if (json.userType() == QMetaType::QVariantMap) {
+        const QVariantMap m = json.toMap();
+        if (m.contains(QStringLiteral("bytes")))
+            return QByteArray::fromBase64(m.value(QStringLiteral("bytes")).toString().toLatin1());
+        if (m.contains(QStringLiteral("date")))
+            return QDate::fromString(m.value(QStringLiteral("date")).toString(), Qt::ISODate);
+        if (m.contains(QStringLiteral("time")))
+            return QTime::fromString(m.value(QStringLiteral("time")).toString(), Qt::ISODateWithMs);
+        if (m.contains(QStringLiteral("datetime")))
+            return QDateTime::fromString(m.value(QStringLiteral("datetime")).toString(), Qt::ISODateWithMs);
+        return QVariant();
+    }
+    // JSON numbers are doubles: whole ones go back as integers, as they were bound.
+    if (json.userType() == QMetaType::Double) {
+        const double d = json.toDouble();
+        if (d == double(qint64(d)) && qAbs(d) < 9.0e15)
+            return qint64(d);
+    }
+    return json;
 }
 
 // ---- src/qischema.cpp --------------------------------------------
@@ -11978,7 +12355,8 @@ QiWhere::QiWhere(QString field,QString op, QVariant right)
 }
 
 QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){
-    QRegularExpression rx("^\\s*[a-zA-Z0-9]+");
+    // A column name, snake_case included ("book_id = ").
+    static const QRegularExpression rx("^\\s*[A-Za-z0-9_]+");
     QRegularExpressionMatch match = rx.match(fieldAndOp);
 
     if (!match.hasMatch()){

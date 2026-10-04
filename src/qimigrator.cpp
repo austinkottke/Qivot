@@ -110,7 +110,8 @@ bool QiMigrator::isSqlite() const {
 // takes over from it. A table of your own (setTable) is a separate history and
 // leaves user_version alone.
 bool QiMigrator::usesUserVersion() const {
-    return isSqlite() && m_table.compare(QLatin1String("qivot_migrations"), Qt::CaseInsensitive) == 0;
+    return m_useUserVersion && isSqlite()
+        && m_table.compare(QLatin1String("qivot_migrations"), Qt::CaseInsensitive) == 0;
 }
 
 // A string as an SQL literal, quoted by the database's own driver.
@@ -638,6 +639,14 @@ bool QiMigrator::acceptChecksums() {
 
 QString QiMigrator::lastError() const {
     return m_error;
+}
+
+void QiMigrator::setUseUserVersion(bool on) {
+    m_useUserVersion = on;
+}
+
+bool QiMigrator::useUserVersion() const {
+    return m_useUserVersion;
 }
 
 void QiMigrator::setTable(const QString &table) {

@@ -166,6 +166,9 @@ step-by-step example:
 - 🪟 **Windowed list model** — `QiWindowedListModel` counts once, then fetches only
   the pages you scroll to (and evicts old ones) — a 10k-row list on a tiny memory
   footprint, with a working A–Z jump. → [`examples/contacts`](examples/contacts)
+- 🎥 **Query recording** — `QIVOT_RECORD=app.qrec ./myapp` writes down every query
+  the app runs, with its values and timing, for `qivot-cli replay` to test migrations
+  against. → [Recording queries](#recording-queries)
 - 🧱 **Versioned migrations** — `QiMigrator` runs migrations written as code, SQL
   text or a folder of `0001_name.sql` files, in order and each in its own transaction,
   on SQLite, PostgreSQL, MySQL, SQL Server and DuckDB. It records them in a
@@ -1454,6 +1457,37 @@ if (migrator.migrate() < 0)
   as applied without running them, and `user_version` keeps following.
 
 → [`examples/migrations`](examples/migrations) walks through every case.
+
+### Recording queries
+
+`QiRecorder` writes down every query an app runs through Qivot, with its bound
+values and timing, one JSON object per line. No code is needed; set an
+environment variable:
+
+```sh
+QIVOT_RECORD=app.qrec ./myapp           # QIVOT_RECORD_SAMPLES=20: value sets kept per query
+```
+
+or start and stop it yourself:
+
+```c++
+#include <qirecorder.h>
+
+QiRecorder::start("app.qrec");
+...
+QiRecorder::stop();
+for (const QiRecorder::Query &q : QiRecorder::read("app.qrec"))
+    qDebug() << q.runs << q.sql;
+```
+
+Each distinct statement keeps its first 20 runs (with their values); later runs are
+only counted, so a hot loop costs a few lines. Queries a `QSqlQuery` runs outside
+Qivot aren't seen.
+
+The point of a recording is [Qivot Studio](https://github.com/austinkottke/Qivot-studio)'s
+`qivot-cli replay`: it runs the recorded queries against a database before and after
+your pending migrations, and reports which ones fail, return different columns or
+rows, or get slower, with both query plans.
 
 ### JSON mapping
 

@@ -1,6 +1,7 @@
 #ifndef QiQUERY_H
 #define QiQUERY_H
 
+#include <QElapsedTimer>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QVariantList>
@@ -8,6 +9,7 @@
 #include <qilist.h>
 #include <qiconnection.h>
 #include <qimodelmetainfo.h>
+#include <qilog.h>
 
 ///  QiQuery is a template class for performing database queries and record deletion on specific model
 /**
@@ -182,7 +184,11 @@ inline QiList<T> qiRawQuery(const QString &sql,
     for (const QVariant &b : binds)
         q.addBindValue(b);
 
-    if (q.exec()) {
+    QElapsedTimer timer;
+    timer.start();
+    const bool ran = q.exec();
+    QiLog::logQuery(q, timer.nsecsElapsed());   // logged and recorded like every other query
+    if (ran) {
         const QStringList fields = info->fieldNameList();
         while (q.next()) {
             QiAbstractModel *model = info->create();

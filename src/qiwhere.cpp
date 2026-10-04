@@ -60,7 +60,8 @@ QiWhere::QiWhere(QString field,QString op, QVariant right)
 }
 
 QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){
-    QRegularExpression rx("^\\s*[a-zA-Z0-9]+");
+    // A column name, snake_case included ("book_id = ").
+    static const QRegularExpression rx("^\\s*[A-Za-z0-9_]+");
     QRegularExpressionMatch match = rx.match(fieldAndOp);
 
     if (!match.hasMatch()){

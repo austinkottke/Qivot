@@ -8,6 +8,7 @@
 #include <QStringList>
 
 #include "qilog.h"
+#include "qirecorder.h"
 
 // --- configuration state (off by default) ---------------------------------
 static bool           s_enabled    = false;
@@ -111,6 +112,8 @@ void QiLog::write(int category, Level level, const QString &message) {
 }
 
 void QiLog::logQuery(const QSqlQuery &query, qint64 elapsedNs) {
+    QiRecorder::record(query, elapsedNs);   // a no-op unless recording (QIVOT_RECORD)
+
     const bool failed = query.lastError().type() != QSqlError::NoError;
     const Level level = failed ? Error : Debug;
     if (!wants(Sql, level))
