@@ -10,6 +10,7 @@
 #include "models.h"
 #include <qiform.h>
 #include <QDir>
+#include <functional>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -269,28 +270,87 @@ int main(int argc, char *argv[]) {
     if (engine.rootObjects().isEmpty())
         return 1;
 
-    // QIVOT_SHOTS=<folder>: a picture of each page (after a submit, so its errors show).
+    // QIVOT_SHOTS=<folder>: the README's pictures, each page caught mid-use, light and dark.
     const QString shots = qEnvironmentVariable("QIVOT_SHOTS");
     if (!shots.isEmpty()) {
         QTimer::singleShot(400, [&]() {
             QObject *root = engine.rootObjects().first();
             QObject *tabs = root->findChild<QObject *>("tabs");
             auto *window = qobject_cast<QQuickWindow *>(root);
-            window->resize(1000, qEnvironmentVariableIntValue("QIVOT_SHOT_HEIGHT") > 0 ? qEnvironmentVariableIntValue("QIVOT_SHOT_HEIGHT") : 1500);
             auto wait = [](int ms) { QEventLoop l; QTimer::singleShot(ms, &l, &QEventLoop::quit); l.exec(); };
-            const char *names[] = { "signup", "checkout", "booking", "wizard", "inventory" };
-            for (QiForm *f : root->findChildren<QiForm *>()) {
-                if (f->objectName() == "signupForm") { f->set("email", "taken@example.com"); f->set("name", "Ada"); f->set("password", "Analytic1"); f->set("plan", "Team"); f->submit(); }
-                if (f->objectName() == "checkoutForm") { f->set("card_number", "4111 1111 1111 1112"); f->set("card_expiry", "01/20"); f->submit(); }
-                if (f->objectName() == "bookingForm") { f->set("organiser", "Mary Jackson"); f->touch("organiser"); }
-            }
-            wait(300);
-            const QString suffix = qEnvironmentVariable("QIVOT_THEME");
-            for (int i = 0; i < 5; ++i) {
-                tabs->setProperty("currentIndex", i);
-                wait(450);
-                window->grabWindow().save(QDir(shots).filePath(QStringLiteral("%1-%2%3.png").arg(i).arg(names[i])
-                                                                .arg(suffix.isEmpty() ? QString() : QLatin1Char('-') + suffix)));
+            auto form = [&](const char *name) { return root->findChild<QiForm *>(name); };
+            QDate day = QDate::currentDate().addDays(1);
+            while (day.dayOfWeek() > 5) day = day.addDays(1);
+            const QString d = day.toString(Qt::ISODate);
+
+            struct Scene { const char *name; int tab; int height; std::function<void()> setUp; };
+            const QList<Scene> scenes = {
+                { "signup", 0, 1640, [&]() {
+                    QiForm *f = form("signupForm"); f->reset();
+                    f->set("email", "ada@example"); f->set("name", "Ada Lovelace"); f->set("username", "ada");
+                    f->set("password", "Analytic1"); f->set("password_confirm", "Analytic2"); f->set("born", "2014-05-01");
+                    f->set("plan", "Pro");
+                    for (const char *x : { "email", "name", "username", "password", "password_confirm", "born", "plan" }) f->touch(x);
+                } },
+                { "signup-submitted", 0, 2050, [&]() {
+                    QiForm *f = form("signupForm"); f->reset();
+                    f->set("email", "grace@example.com"); f->set("name", "Grace Hopper"); f->set("plan", "Team");
+                    f->submit();
+                } },
+                { "signup-validators", 0, 1640, [&]() {
+                    QiForm *f = form("signupForm"); f->reset();
+                    f->set("email", "kj@example.com"); f->set("name", "Katherine Johnson"); f->set("username", "katherine_johnson");
+                    f->set("password", "katherine_johnson9X"); f->set("password_confirm", "katherine_johnson9X"); f->set("born", "1918-08-26");
+                    for (const char *x : { "email", "name", "username", "password", "password_confirm", "born" }) f->touch(x);
+                } },
+                { "checkout", 1, 2250, [&]() {
+                    QiForm *f = form("checkoutForm"); f->reset();
+                    f->set("email", "mary@example.com"); f->set("ship_name", "Mary Jackson"); f->set("ship_address", "1 Langley Way, Hampton");
+                    f->set("ship_postcode", "va 23681"); f->set("ship_country", "United States"); f->set("billing_same", false);
+                    f->set("card_number", "4111 1111 1111 1112"); f->set("card_expiry", "01/24"); f->set("cvc", "123");
+                    f->set("deliver_on", QDate::currentDate().addDays(1).toString(Qt::ISODate)); f->set("promo", "SUMMER");
+                    QVariant linesOk;                   // as Pay now does
+                    QMetaObject::invokeMethod(root->findChild<QObject *>("checkoutPage"), "validateLines", Q_RETURN_ARG(QVariant, linesOk));
+                    f->submit();
+                } },
+                { "booking", 2, 1500, [&]() {
+                    QiForm *f = form("bookingForm"); f->reset();
+                    f->set("room", "Atlas"); f->set("organiser", "Mary Jackson"); f->set("starts_at", d + " 10:30");
+                    f->set("ends_at", d + " 11:30"); f->set("people", "16");
+                    for (const char *x : { "room", "organiser", "starts_at", "ends_at", "people" }) f->touch(x);
+                } },
+                { "wizard", 3, 1300, [&]() {
+                    QiForm *f = form("wizardForm"); f->reset();
+                    f->set("first_name", "Dorothy"); f->set("last_name", "Vaughan"); f->set("email", "dorothy@example.com"); f->set("born", "1910-09-20");
+                    root->findChild<QObject *>("wizardPage")->setProperty("step", 1);
+                    f->set("country", "United States"); f->set("postcode", "23681"); f->set("phone", "12");
+                    f->validateFields({ "country", "state", "postcode", "phone" });
+                } },
+                { "inventory", 4, 1050, [&]() {
+                    wait(300);                    // its rows are made when the page is first shown
+                    QList<QiForm *> rows;           // a ListView's rows aren't the page's children: ask the page
+                    QObject *page = root->findChild<QObject *>("inventoryPage");
+                    for (int i = 0; page && i < 3; ++i) {
+                        QVariant row;
+                        QMetaObject::invokeMethod(page, "rowForm", Q_RETURN_ARG(QVariant, row), Q_ARG(QVariant, i));
+                        if (auto *f = qobject_cast<QiForm *>(row.value<QObject *>())) rows << f;
+                    }
+                    if (rows.size() >= 3) {
+                        rows[0]->set("sku", "mug 01"); rows[0]->touch("sku");
+                        rows[1]->set("price", "9999"); rows[1]->touch("price");
+                        rows[2]->set("stock", "-3"); rows[2]->touch("stock");
+                    }
+                } },
+            };
+            for (const char *theme : { "dark", "light" }) {
+                QMetaObject::invokeMethod(root, "setTheme", Q_ARG(QVariant, QString::fromLatin1(theme)));
+                for (const Scene &s : scenes) {
+                    window->resize(s.tab == 4 ? 1200 : 1040, s.height);
+                    tabs->setProperty("currentIndex", s.tab);
+                    s.setUp();
+                    wait(500);
+                    window->grabWindow().save(QDir(shots).filePath(QStringLiteral("%1-%2.png").arg(s.name, theme)));
+                }
             }
             app.exit(0);
         });

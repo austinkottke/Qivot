@@ -6,11 +6,15 @@ import Qivot 1.0
 import Qivot.Forms 1.0
 
 DemoPage {
+    objectName: "inventoryPage"
     tag: "A form per row"
+    maxWidth: 900
     title: "Inventory"
     note: "Each row is its own form, loaded by id and saved on its own. SKUs are upper-cased and unique, prices over 5,000 get a warning, and stock can't go negative."
 
     property var rows: demo.products()
+    /// Row `i`'s form (the screenshots fill some in).
+    function rowForm(i) { var row = list.itemAtIndex(i); return row ? row.form : null }
 
     RowLayout {
         Layout.fillWidth: true
@@ -40,6 +44,7 @@ DemoPage {
         spacing: 10
         model: rows
         delegate: RowLayout {
+            property alias form: product
             width: list.width
             spacing: 12
             QiForm {

@@ -28,7 +28,12 @@ QiFormRow {
         text: root.value === undefined || root.value === null ? "" : String(root.value)
         maximumLength: root.form && root.form.maxLengths[root.field] > 0 ? root.form.maxLengths[root.field] : 32767
         onTextEdited: if (root.form) root.form.set(root.field, text)
-        onActiveFocusChanged: if (!activeFocus && root.form) root.form.touch(root.field)
+        onActiveFocusChanged: {
+            if (activeFocus) return
+            cursorPosition = 0                    // show the start of the text, not where typing ended
+            if (root.form) root.form.touch(root.field)
+        }
+        onTextChanged: if (!activeFocus) cursorPosition = 0
         onAccepted: if (root.form) root.form.touch(root.field)
         background: QiFieldBackground {
             focused: input.activeFocus

@@ -23,7 +23,7 @@ ColumnLayout {
     readonly property bool hasWarning: !hasError && warning.length > 0
     readonly property bool visited: !!(form && form.visited[field])
     readonly property bool filled: value !== undefined && value !== null && String(value).length > 0
-    readonly property bool isValid: showValid && visited && filled && !hasError
+    readonly property bool isValid: showValid && visited && filled && !hasError && !hasWarning
     default property alias content: holder.data
 
     spacing: 7

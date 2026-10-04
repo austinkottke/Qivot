@@ -7,6 +7,7 @@ import Qivot.Forms 1.0
 
 DemoPage {
     id: page
+    objectName: "wizardPage"
     tag: "One step at a time"
     title: "Apply"
     note: "Next checks only that step's fields (validateFields), so step 2 never complains while you're on step 1. A US address needs a state, the UK doesn't use one; employment details only if you're employed."
