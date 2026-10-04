@@ -166,6 +166,11 @@ step-by-step example:
 - 🪟 **Windowed list model** — `QiWindowedListModel` counts once, then fetches only
   the pages you scroll to (and evicts old ones) — a 10k-row list on a tiny memory
   footprint, with a working A–Z jump. → [`examples/contacts`](examples/contacts)
+- ✅ **Validation and forms** — rules on the fields (`QiEmail()`, `QiLength(2, 80)`,
+  `QiRequiredIf`, `QiUniqueIn`, `QiNoOverlap`, `QiMinAge(18)`, `QiBusinessDay`, …),
+  errors per field, warnings, contexts, CHECK constraints from the same rules, and
+  `QiForm` to use them in QML with one line per field. → [Validation](#validation),
+  [`examples/forms`](examples/forms)
 - 🎥 **Query recording** — `QIVOT_RECORD=app.qrec ./myapp` writes down every query
   the app runs, with its values and timing, for `qivot-cli replay` to test migrations
   against. → [Recording queries](#recording-queries)
@@ -427,7 +432,8 @@ thread (with a tiny local server so it runs offline).
 
 **Schema & lifecycle** ·
 [Indexes](#indexes) ·
-[Validation](#validation-with-clean) ·
+[Validation](#validation) ·
+[Forms in QML](#forms-in-qml) ·
 [Error handling](#error-handling) ·
 [Seeding](#seeding-initial-data) ·
 [Tables & migrations](#creating-and-dropping-tables) ·
@@ -1242,42 +1248,141 @@ connection.dropFtsIndex("article_fts");
 > on `PRAGMA recursive_triggers` when it opens a connection so that
 > `REPLACE`-based `save()` updates keep the index in sync.
 
-### Validation with clean()
+### Validation
 
-Override `clean()` to validate (and optionally mutate) a record before it is
-saved. Returning `false` aborts the `save()`; it's also the natural place to
-stamp bookkeeping fields.
+Rules go on the fields, next to the other field options, and are checked by
+`save()`, by `validate()`, and live by forms in QML (see
+[Forms in QML](#forms-in-qml)). One declaration, every place agrees:
 
 ```c++
-class User : public QiModel {
-    QI_MODEL
-public:
-    QiField<QString>   userId;
-    QiField<QString>   passwd;
-    QiField<QDateTime> lastModifiedTime;
+#include <qivot.h>
 
-    virtual bool clean();
-};
+QI_DECLARE_MODEL(Member, "member",
+    QI_FIELD(email,    QiNotNull | QiUnique | QiTrim() | QiLower() | QiEmail()),
+    QI_FIELD(name,     QiLabel("Your name") | QiRequired() | QiLength(2, 60)),
+    QI_FIELD(password, QiRequired() | QiStrongPassword(8)),
+    QI_FIELD(confirm,  QiSameAs("password")),
+    QI_FIELD(born,     QiPast() | QiMinAge(16).message("you must be 16 or over")),
+    QI_FIELD(plan,     QiOneOf({ "Free", "Pro", "Team" }).enforced()),
+    QI_FIELD(team,     QiRequiredIf("plan", "Team")),
+    QI_FIELD(price,    QiDecimals(2) | QiMax(5000).warning().message("is unusually high")));
+```
 
-bool User::clean() {
-    if (passwd->isNull() || passwd->toString().size() < 8) {
-        setError("password must be at least 8 characters");   // surfaces via lastError()
-        return false;                                         // save() returns false
-    }
-    lastModifiedTime = QDateTime::currentDateTime();          // stamp on every save
-    return true;
+```c++
+QiValidation v = member.validate();     // every rule, including the database ones
+if (!v.isValid()) {
+    v.error("email");                   // "is already taken"
+    v.errorMap();                       // { email: "...", born: "..." } for a UI
+    v.summary();                        // "Email: is already taken\nYour name: ..."
+    v.toJson();                         // { valid, errors: { field: [...] }, warnings }
+}
+if (!member.save())                     // validates first; a failure is a ValidationError
+    qWarning() << member.validation().summary();
+```
+
+**The rules**
+
+| | |
+|---|---|
+| Presence | `QiRequired()` (not empty or blank), `QiRequiredIf(field, value)` / `QiRequiredIf(condition)`, `QiRequiredUnless`, `QiProhibitedIf`; `QiNotNull` columns are required too |
+| Text | `QiLength(min, max)`, `QiMinLength`, `QiMaxLength`, `QiPattern(regex, message)`, `QiEmail()`, `QiUrl()`, `QiPhone()`, `QiUuid()`, `QiLuhn()` (card numbers), `QiCharset("a-z0-9_")`, `QiStrongPassword(8, upper, lower, digit, symbol)` |
+| Numbers | `QiRange(min, max)`, `QiMin`, `QiMax`, `QiPositive()`, `QiNonNegative()`, `QiDecimals(2)`, `QiMultipleOf(6)` |
+| Choices | `QiOneOf({...})`, `QiNotOneOf({...})` |
+| Other fields | `QiSameAs("password")`, `QiDifferentFrom`, `QiGreaterThan(field, orEqual)`, `QiLessThan` |
+| Database | `QiUnique` columns, `QiUniqueIn({"store_id"})` (unique within a scope), `QiExists("room")`, `QiNoOverlap("starts_at", {"room_id"})` (bookings) |
+| Dates | `QiPast()`, `QiFuture()`, `QiTodayOrLater()`, `QiTodayOrEarlier()`, `QiDateMin/Max/Between`, `QiMinAge(18)`, `QiMaxAge`, `QiWeekday()`, `QiWeekend()`, `QiOnDays({...})`, `QiNotOn(holidays)`, `QiBusinessDay(isHoliday)`, `QiTimeBetween(08:00, 20:00)`, `QiTimeStep(15)`, `QiAfter("start")`, `QiBefore`, `QiDaysAfter("check_in", 1, 30)`, `QiMinutesAfter("starts_at", 30, 240)`, `QiNotExpired()` (MM/YY), `QiExistingLocalTime("Europe/Berlin")`, `QiDate()` |
+| Clean-up first | `QiTrim()`, `QiLower()`, `QiUpper()`, `QiCollapseSpaces()`, `QiNormalize(fn)` |
+| Your own | `QiCustom(name, message, [](const QVariant &v) { ... })`, or with the whole record (`const QiRuleContext &`) |
+
+**Modifiers** change any rule: `.message("…")` (with `{min}`, `{max}`, `{otherLabel}`, …
+placeholders, translated through `QCoreApplication::translate("QiValidation", …)`),
+`.warning()` (reported, but doesn't stop a save), `.on("create")` / `.on("step2")`
+(only in those contexts), `.when(condition)`, `.inZone("Europe/Paris")` (what "today"
+and times of day mean), and `.enforced()`, which also writes the rule into the table
+as a `CHECK` constraint where the database can express it (`QiLength`, `QiRange`,
+`QiMin`/`QiMax`, `QiPositive`, `QiOneOf`). `QiLabel("…")` names a field in messages.
+
+**Dates** accept `QDate`, `QDateTime`, `QTime` or ISO strings. A string that isn't a
+real date (`"2026-02-30"`) fails with "is not a valid date". Limits may be relative:
+`QiDateMin("today+2d")`, `QiDateMax("today+60d")`, `"now-2h"`, `"-18y"`, `"tomorrow"`
+(units `s`, `min`, `h`, `d`, `w`, `m` for months, `y`).
+
+**Across fields**, override `clean()` and call `addError(field, message)` (or
+`addWarning`); returning false still stops the save. `validateFields({"email"})`
+checks only some fields, `validate("step2")` runs the rules limited to that context.
+A list of records is checked together with
+`qiValidateAll(order.lines, "lines")`, its errors at paths like `lines[2].quantity`.
+
+`validate()` runs the database rules (and checks `QiUnique` columns and references);
+`save()` runs the explicit database rules (`QiUniqueIn`, `QiExists`, `QiNoOverlap`)
+and leaves `QiUnique` to the database, whose refusal comes back on the field
+("UNIQUE constraint failed: member.email" becomes *email: is already taken*). Note
+that on SQLite and MySQL `save()` is a `REPLACE`: a new record with a taken unique
+value replaces the old row rather than failing, so call `validate()` first (forms
+do) or use `upsert()`.
+
+### Forms in QML
+
+`QiForm` puts a model's rules in front of people: values to bind, errors as they
+happen, `submit()` to validate and save. Include `src/qivot-qml.pri` instead of
+`qivot.pri` (or build `Qivot::qml` with CMake's `-DQIVOT_WITH_QML=ON`), then call
+`qiRegisterQml(&engine)` before loading QML:
+
+```qml
+import Qivot 1.0
+import Qivot.Forms 1.0
+
+QiForm { id: signup; model: "Member"; onSaved: function(savedId) { stack.push(welcome) } }
+
+QiTextField     { form: signup; field: "email" }
+QiPasswordField { form: signup; field: "password" }
+QiDateField     { form: signup; field: "born" }
+QiComboBox      { form: signup; field: "plan" }         // its entries are the QiOneOf values
+QiCheckBox      { form: signup; field: "terms" }
+QiErrorSummary  { form: signup }
+QiSubmitButton  { form: signup; text: "Create account" }
+```
+
+Each control shows its label (from `QiLabel`, with a `*` when required), the value,
+and its error or warning underneath. Errors appear once a field has been visited
+or the form submitted, not on a fresh form. The fast rules run as you type; the
+database ones (taken emails, overlapping bookings) when you leave a field; everything,
+and `clean()`, on submit. Text that isn't the field's type ("abc" for a number,
+"2026-02-30" for a date) is an error on that field.
+
+Any control works with the attached properties:
+
+```qml
+TextField { id: user; QiForm.form: signup; QiForm.field: "username" }   // both ways
+Label     { text: user.QiForm.error }
+```
+
+Validators of your own can live in QML too, next to the model's rules. A function
+gets the field's value and all the values, and returns `""`, a message, or
+`{ message, warning: true }`:
+
+```qml
+QiForm {
+    model: "Member"
+    validators: ({
+        password: function(value, values) {
+            return value && value.indexOf(values.username) >= 0 ? "can't contain your username" : ""
+        }
+    })
 }
 ```
 
-```c++
-User user;
-user.userId = "anonymous";
-qDebug() << user.save();               // false
-qDebug() << user.lastError().text();   // "password must be at least 8 characters"
+The controls follow the system's light or dark mode through the `QiTheme`
+singleton, which holds every colour and size: `QiTheme.mode = QiTheme.Dark`,
+`QiTheme.accent = "#0a84ff"`. `QiButton` matches them, and `QiFieldBackground`
+gives a control of your own the same box.
 
-user.passwd = "123456789";
-qDebug() << user.save();               // true
-```
+`QiForm` also has `values`, `errors`, `allErrors`, `warnings`, `visited`, `valid`, `dirty`,
+`submitted`, `summary`, `labels`, `required`, `choices`, `maxLengths`, and
+`validate()`, `validateFields([...])` (a wizard's step), `load(id)`, `reset()`,
+`setError(field, message)` (a server's answer).
+→ [`examples/forms`](examples/forms): sign-up, checkout, room booking, a wizard and
+an editable table.
 
 ### Error handling
 

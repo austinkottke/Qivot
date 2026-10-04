@@ -32,6 +32,7 @@ SUBDIRS += \
     clinic \
     erp \
     contacts \
+    forms \
     multidb \
     vision \
     index

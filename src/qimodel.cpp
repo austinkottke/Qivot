@@ -69,17 +69,61 @@ void QiModel::setError(const QString &message) {
     setError(QiError(QiError::ValidationError, message));
 }
 
-bool QiModel::save(bool forceInsert,bool forceAllField) {
+void QiModel::addError(const QString &field, const QString &message) {
+    m_validation.addError(field, message);
+}
+
+void QiModel::addWarning(const QString &field, const QString &message) {
+    m_validation.addWarning(field, message);
+}
+
+QiValidation QiModel::validation() const {
+    return m_validation;
+}
+
+// The rules, then clean(). False if anything is wrong (m_validation / m_error say what).
+bool QiModel::runValidation(const QString &context, const QStringList &fields, bool uniqueKeys) {
     m_error.clear();
-    if (!clean() ) {
+    QiModelMetaInfo *info = metaInfo();
+    QiConnection conn = connection();
+    QiValidator::Options o;
+    o.context = context;
+    o.fields = fields;
+    o.uniqueKeys = uniqueKeys;
+    m_validation = QiValidator::validate(this, info, &conn, o);
+    const bool cleaned = fields.isEmpty() ? clean() : true;   // clean() looks at the whole record
+    if (!cleaned) {
         if (!m_error.isValid())
             m_error = QiError(QiError::ValidationError, QStringLiteral("clean() rejected the record"));
+        if (m_validation.isValid())
+            m_validation.addError(QString(), m_error.text());
         return false;
     }
+    if (!m_validation.isValid()) {
+        m_error = QiError(QiError::ValidationError, m_validation.summary());
+        return false;
+    }
+    return true;
+}
+
+QiValidation QiModel::validate(const QString &context) {
+    runValidation(context, QStringList(), true);
+    return m_validation;
+}
+
+QiValidation QiModel::validateFields(const QStringList &fields, const QString &context) {
+    runValidation(context, fields, true);
+    return m_validation;
+}
+
+bool QiModel::save(bool forceInsert,bool forceAllField) {
+    const bool creating = forceInsert || id->isNull();
+    if (!runValidation(creating ? QStringLiteral("create") : QStringLiteral("update"), QStringList(), false))
+        return false;
     QiModelMetaInfo *info = metaInfo();
     Q_ASSERT(info);
 
-    const bool created = forceInsert || id->isNull();
+    const bool created = creating;
     qiTouchTimestamps(info, this, created);
 
     QStringList fields = info->fieldNameList();
@@ -115,6 +159,11 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
+    if (!res) {
+        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
+        if (!fe.field.isEmpty())
+            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+    }
 
     m_connection.setLastQuery(sql.lastQuery());
 
@@ -158,6 +207,11 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
 
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
+    if (!res) {
+        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
+        if (!fe.field.isEmpty())
+            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+    }
 
     m_connection.setLastQuery(sql.lastQuery());
 

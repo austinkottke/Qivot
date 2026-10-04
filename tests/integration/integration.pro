@@ -7,7 +7,7 @@ CONFIG   -= app_bundle
 
 TEMPLATE = app
 
-HEADERS += intmodel.h schemasuite.h migrationsuite.h
+HEADERS += intmodel.h schemasuite.h migrationsuite.h validationsuite.h
 SOURCES += main.cpp
 
 # Optional DuckDB backend. DuckDB ships no Qt driver, so link the bundled QDUCKDB driver

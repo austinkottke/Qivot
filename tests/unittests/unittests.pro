@@ -24,14 +24,16 @@ SOURCES += main.cpp \
     sqlitetests.cpp \
     coretests.cpp \
     dialecttests.cpp \
-    schematests.cpp
+    schematests.cpp \
+    validationtests.cpp
 
 HEADERS += \
     testobjectrunner.h \
     coretests.h \
     sqlitetests.h \
     dialecttests.h \
-    schematests.h
+    schematests.h \
+    validationtests.h
 
 include (../../src/qivot.pri)
 include(../models/models.pri)

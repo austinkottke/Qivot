@@ -17,6 +17,15 @@ QiModelMetaInfo* qiFindMetaInfo(QString name) {
     return res;
 }
 
+QiModelMetaInfo* qiFindModel(const QString &name) {
+    if (QiModelMetaInfo *info = qiFindMetaInfo(name))
+        return info;
+    for (auto it = metaTypeList.cbegin(); it != metaTypeList.cend(); ++it)
+        if (it.value()->className() == name)
+            return it.value();
+    return nullptr;
+}
+
 void qiRegisterMetaInfo(QString name, QiModelMetaInfo *metaType){
     metaTypeList[name] = metaType;
 }

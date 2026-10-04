@@ -27,6 +27,7 @@
 #include "intmodel.h"
 #include "schemasuite.h"
 #include "migrationsuite.h"
+#include "validationsuite.h"
 
 #include <qimysqlstatement.h>
 #include <qipgstatement.h>
@@ -250,6 +251,7 @@ int main(int argc, char **argv) {
                           : backend == "mssql" ? QString("sqlserver") : backend;
     SchemaSuite::run(db, dialect, check);
     MigrationSuite::run(conn, dialect, check);
+    ValidationSuite::run(conn, dialect, check);
 
     conn.close();
     qInfo().noquote() << (failures == 0 ? "ALL PASSED\n" : QString("%1 CHECK(S) FAILED\n").arg(failures));
