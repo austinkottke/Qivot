@@ -172,11 +172,17 @@ QString qiHumanize(const QString &field) {
 namespace {
 
 QTimeZone qivZone(const QByteArray &id) {
+#if QT_CONFIG(timezone)
     if (!id.isEmpty()) {
         QTimeZone z(id);
         if (z.isValid()) return z;
     }
     return QTimeZone::systemTimeZone();
+#else
+    // Qt built without time zones (WebAssembly): everything is local time.
+    Q_UNUSED(id);
+    return QTimeZone(QTimeZone::LocalTime);
+#endif
 }
 
 QDateTime qivNow(const QByteArray &zone) {
@@ -998,8 +1004,13 @@ QiRule QiExistingLocalTime(const QByteArray &zoneId) {
             p.insert(QStringLiteral("_message"), QStringLiteral("is not a valid date"));
             return false;
         }
+#if QT_CONFIG(timezone)
         const QTimeZone zone(zoneId);
         if (!zone.isValid()) return true;
+#else
+        return true;                       // no time zone data to ask
+        const QTimeZone zone(QTimeZone::LocalTime);
+#endif
         const QDateTime there(d, t, zone);
         return there.isValid() && there.date() == d && there.time() == t;     // a gap moves it
     });

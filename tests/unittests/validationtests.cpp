@@ -438,8 +438,12 @@ void ValidationTests::expiryAndZones()
     s.card_expiry = QStringLiteral("13/30");
     QCOMPARE(s.validate().error("card_expiry"), QString("is not a valid expiry date"));
 
+#if !QT_CONFIG(timezone)
+    QSKIP("Qt without time zones");
+#else
     if (!QTimeZone("Europe/Berlin").isValid())
         QSKIP("no time zone data");
+#endif
     // Clocks in Berlin went from 02:00 to 03:00 on 29 March 2026: 02:30 never happened.
     s.opens = QStringLiteral("2026-03-29 02:30");
     QCOMPARE(s.validate().error("opens"), QString("doesn't exist in Europe/Berlin: the clocks change then"));
