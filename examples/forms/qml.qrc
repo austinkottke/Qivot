@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Main.qml</file>
+        <file>DemoPage.qml</file>
+        <file>Segmented.qml</file>
+        <file>Section.qml</file>
+        <file>Banner.qml</file>
+        <file>SignUpPage.qml</file>
+        <file>CheckoutPage.qml</file>
+        <file>BookingPage.qml</file>
+        <file>WizardPage.qml</file>
+        <file>InventoryPage.qml</file>
+    </qresource>
+</RCC>

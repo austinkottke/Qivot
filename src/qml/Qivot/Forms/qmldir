@@ -1,0 +1,15 @@
+module Qivot.Forms
+singleton QiTheme 1.0 QiTheme.qml
+QiFieldBackground 1.0 QiFieldBackground.qml
+QiFormRow 1.0 QiFormRow.qml
+QiTextField 1.0 QiTextField.qml
+QiPasswordField 1.0 QiPasswordField.qml
+QiTextArea 1.0 QiTextArea.qml
+QiNumberField 1.0 QiNumberField.qml
+QiDateField 1.0 QiDateField.qml
+QiDateTimeField 1.0 QiDateTimeField.qml
+QiCheckBox 1.0 QiCheckBox.qml
+QiComboBox 1.0 QiComboBox.qml
+QiButton 1.0 QiButton.qml
+QiSubmitButton 1.0 QiSubmitButton.qml
+QiErrorSummary 1.0 QiErrorSummary.qml

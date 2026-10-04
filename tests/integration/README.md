@@ -58,6 +58,9 @@ logic locally with zero setup before you ever touch a server. It checks:
   or `MERGE` respectively, on a non-`id` key)
 - the **migration** path: a second `createTables()` is a safe no-op (portable column reading)
 - **upsert** on a unique key updating in place instead of duplicating
+- **validation** ([validationsuite.h](validationsuite.h)): uniqueness (and within a scope),
+  references that must exist, overlapping time ranges, `enforced()` rules as CHECK
+  constraints in each dialect, and a duplicate the database refuses coming back on its field
 - **versioned migrations** (`QiMigrator`, [migrationsuite.h](migrationsuite.h)): SQL
   migrations applied and recorded, a failing one rolled back (MySQL keeps the DDL it
   already ran), down steps, an edited migration refused, and the server's lock

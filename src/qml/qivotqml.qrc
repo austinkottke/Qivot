@@ -1,0 +1,19 @@
+<RCC>
+    <qresource prefix="/qivot/qml">
+        <file>Qivot/Forms/qmldir</file>
+        <file>Qivot/Forms/QiTheme.qml</file>
+        <file>Qivot/Forms/QiFieldBackground.qml</file>
+        <file>Qivot/Forms/QiButton.qml</file>
+        <file>Qivot/Forms/QiFormRow.qml</file>
+        <file>Qivot/Forms/QiTextField.qml</file>
+        <file>Qivot/Forms/QiPasswordField.qml</file>
+        <file>Qivot/Forms/QiTextArea.qml</file>
+        <file>Qivot/Forms/QiNumberField.qml</file>
+        <file>Qivot/Forms/QiDateField.qml</file>
+        <file>Qivot/Forms/QiDateTimeField.qml</file>
+        <file>Qivot/Forms/QiCheckBox.qml</file>
+        <file>Qivot/Forms/QiComboBox.qml</file>
+        <file>Qivot/Forms/QiSubmitButton.qml</file>
+        <file>Qivot/Forms/QiErrorSummary.qml</file>
+    </qresource>
+</RCC>

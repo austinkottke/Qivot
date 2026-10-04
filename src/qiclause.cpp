@@ -33,6 +33,14 @@ void QiClause::setFlag(Type type,QVariant val){
     m_flags[type] = val;
 }
 
+QiClause::QiClause(const QiRule &rule) {
+    m_flags[RULES] = QVariant::fromValue(QiRuleList() << rule);
+}
+
+QiRuleList QiClause::rules() const {
+    return m_flags.contains(RULES) ? m_flags.value(RULES).value<QiRuleList>() : QiRuleList();
+}
+
 QiClause QiClause::operator|(const QiClause& other) {
     QiClause clause;
 
@@ -47,6 +55,10 @@ QiClause QiClause::operator|(const QiClause& other) {
          clause.setFlag(iter.key(), iter.value());
          iter++;
     }
+
+    // Rules add up rather than the right-hand ones replacing the left.
+    if (m_flags.contains(RULES) && other.m_flags.contains(RULES))
+        clause.setFlag(RULES, QVariant::fromValue(rules() + other.rules()));
 
     return clause;
 }

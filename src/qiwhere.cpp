@@ -61,8 +61,8 @@ QiWhere::QiWhere(QString field,QString op, QVariant right)
 
 QiWhere::QiWhere(QString fieldAndOp , QVariant right)  : m_right(right){
     // A column name, snake_case included ("book_id = ").
-    static const QRegularExpression rx("^\\s*[A-Za-z0-9_]+");
-    QRegularExpressionMatch match = rx.match(fieldAndOp);
+    static const QRegularExpression qiWhereFieldRx("^\\s*[A-Za-z0-9_]+");
+    QRegularExpressionMatch match = qiWhereFieldRx.match(fieldAndOp);
 
     if (!match.hasMatch()){
         qWarning() << QString("QiWhere() : can not parse %1").arg(fieldAndOp);

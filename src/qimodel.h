@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <qifield.h>
 #include <qiconnection.h>
+#include <qivalidation.h>
 #include <qiwhere.h>
 #include <qisharedlist.h>
 #include <qiquery.h>
@@ -154,6 +155,27 @@ public:
       */
     virtual bool clean();
 
+    /// Check the record against its fields' rules and clean(), without saving.
+    /**
+      Runs every rule, including the ones that ask the database (uniqueness of
+      QiUnique fields, QiExists, QiNoOverlap, …), then clean(). `context` is
+      "create" or "update" by default (by whether the record has been saved),
+      or one of your own for rules limited with QiRule::on().
+\code
+    QiValidation v = user.validate();
+    if (!v.isValid())
+        qDebug() << v.error("email");     // "is already taken"
+\endcode
+      save() validates too (leaving QiUnique and foreign keys to the database,
+      whose errors still come back as field errors), so calling this first is
+      for forms that want to show problems before saving.
+     */
+    QiValidation validate(const QString &context = QString());
+    /// Only `fields` (live checking while someone types).
+    QiValidation validateFields(const QStringList &fields, const QString &context = QString());
+    /// What the last validate(), validateFields() or save() found.
+    QiValidation validation() const;
+
     /// The error from the last save() / load() / remove() / upsert() on this record
     /**
       Returns a QiError describing why the last operation failed (or a
@@ -199,10 +221,16 @@ protected:
 
     /// Set a validation error message (convenience for clean() overrides)
     void setError(const QString &message);
+    /// From clean(): a problem with one field ("end" "must be after the start").
+    void addError(const QString &field, const QString &message);
+    /// From clean(): a warning on one field (shown, doesn't stop the save).
+    void addWarning(const QString &field, const QString &message);
 
 private:
     QiConnection m_connection;
     QiError m_error;
+    QiValidation m_validation;
+    bool runValidation(const QString &context, const QStringList &fields, bool uniqueKeys);
 };
 
 template<>

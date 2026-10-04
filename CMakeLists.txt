@@ -11,6 +11,7 @@ set(CMAKE_AUTOMOC ON)
 
 option(QIVOT_WITH_NETWORK "Build the JSON-over-HTTP loader (requires Qt Network)" ON)
 option(QIVOT_BUILD_EXAMPLES "Build the example programs" OFF)
+option(QIVOT_WITH_QML "Build Qivot::qml: QiForm and the Qivot.Forms controls (requires Qt Qml and Quick)" OFF)
 
 # --- Qt (works with both Qt 5.15+ and Qt 6) ---
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Sql)
@@ -51,6 +52,7 @@ set(QIVOT_SOURCES
     src/qijsonmapper.cpp
     src/qimigrator.cpp
     src/qirecorder.cpp
+    src/qivalidation.cpp
     src/qischema.cpp
     src/qilistmodel.cpp)
 
@@ -63,7 +65,7 @@ set(QIVOT_PUBLIC_HEADERS
     src/qiquery.h src/qiqueryrules.h src/qiexpression.h src/qilist.h src/qiabstractmodel.h
     src/qisharedlist.h src/qiindex.h src/qistream.h src/qilistwriter.h src/qijoin.h
     src/qifieldref.h src/qicolumns.h src/qirelation.h src/qiftsindex.h src/qitransaction.h src/qigadget.h src/qilistmodel.h
-    src/qijsonmapper.h src/qimigrator.h src/qirecorder.h src/qischema.h src/qivot.h)
+    src/qijsonmapper.h src/qimigrator.h src/qirecorder.h src/qirule.h src/qivalidation.h src/qischema.h src/qivot.h)
 
 if(QIVOT_WITH_NETWORK)
     list(APPEND QIVOT_SOURCES src/qijsonrequest.cpp)
@@ -83,6 +85,19 @@ target_link_libraries(qivot PUBLIC
     Qt${QT_VERSION_MAJOR}::Sql)
 if(QIVOT_WITH_NETWORK)
     target_link_libraries(qivot PUBLIC Qt${QT_VERSION_MAJOR}::Network)
+endif()
+
+# --- Optional: forms in QML (QiForm + the Qivot.Forms controls) ---
+if(QIVOT_WITH_QML)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Qml Quick)
+    set(CMAKE_AUTORCC ON)
+    add_library(qivotqml STATIC src/qml/qiform.cpp src/qml/qiform.h src/qml/qivotqml.qrc)
+    add_library(Qivot::qml ALIAS qivotqml)
+    target_include_directories(qivotqml PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/qml>)
+    target_link_libraries(qivotqml PUBLIC qivot Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick)
+    if(NOT MSVC)
+        target_compile_options(qivotqml PRIVATE -Wno-invalid-offsetof)
+    endif()
 endif()
 
 # QiModel uses offsetof on a polymorphic type on purpose (see the reflection

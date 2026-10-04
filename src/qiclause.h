@@ -13,6 +13,7 @@
 #include <QList>
 #include <QVariant>
 #include <QVector>
+#include <qirule.h>
 
 /// The clause of a column definition
 /** QiClause is a data structure to describe the clause of column definition for "create table".
@@ -91,6 +92,8 @@ public:
         FK_ON_DELETE,   ///< value: a QiFkAction (ON DELETE ... referential action)
         CHECK,          ///< value: a CHECK constraint expression (QString)
         SQL_TYPE,       ///< value: a raw SQL column type override (QString; "" = typeless)
+        RULES,          ///< value: a QiRuleList (validation; see qivalidation.h)
+        LABEL,          ///< value: the field's name for people ("Email address")
         LAST
     };
 
@@ -106,6 +109,8 @@ public:
 
     /// Constructs a QiClause and set the clause type and its value
     QiClause(Type type, QVariant value);
+    /// A clause holding one validation rule (so rules combine with the other options).
+    QiClause(const QiRule &rule);
 
     /// TRUE if this type of clause flag is set
     bool testFlag(Type);
@@ -119,8 +124,13 @@ public:
     /// | operation overloading
     /**
       @remarks If both of the flag is set in two clause object. It will use the value specified in second clause
+        — except validation rules, which add up.
      */
     QiClause operator|(const QiClause& other);
+    QiClause operator|(const QiRule& rule) { return *this | QiClause(rule); }
+
+    /// The validation rules (empty if none).
+    QiRuleList rules() const;
 
 private:
     void init();
@@ -171,6 +181,14 @@ private:
   \endcode
  */
 #define QiCheck(expr) QiClause(QiClause::CHECK, expr)
+
+/// The field's name for people, used in validation messages and forms.
+/** \code QI_FIELD(email, QiLabel("Email address") | QiEmail()) \endcode */
+#define QiLabel(text) QiClause(QiClause::LABEL, QString(text))
+
+/// Rules combine with each other and with the other field options.
+inline QiClause operator|(const QiRule &a, const QiRule &b) { return QiClause(a) | QiClause(b); }
+inline QiClause operator|(const QiRule &a, const QiClause &b) { return QiClause(a) | b; }
 
 /// Override the emitted SQL column type (see QI_FIELD_AS). An empty string emits
 /// a typeless column (SQLite BLOB affinity — the type slot is skipped entirely).

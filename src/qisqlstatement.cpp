@@ -3,6 +3,7 @@
 
 #include "qisqlstatement.h"
 #include "qisqlitestatement.h"
+#include "qivalidation.h"
 #include "qimysqlstatement.h"
 #include "qipgstatement.h"
 #include "qimssqlstatement.h"
@@ -164,6 +165,8 @@ QString QiSqlStatement::_createTableIfNotExists(QiModelMetaInfo *info){
         }
 
         QString cons = columnConstraint(clause, typeName, !composite);
+        for (const QString &check : QiValidator::constraints(f->name, clause.rules(), driverName()))
+            cons += QStringLiteral(" CHECK %1").arg(check);       // rules marked enforced()
         QString columnDef;
         if (typeName.isEmpty()) {
             columnDef = cons.isEmpty() ? f->name : QString("%1 %2").arg(f->name).arg(cons);

@@ -189,6 +189,9 @@ private:
  */
 QiModelMetaInfo* qiFindMetaInfo(QString name);
 
+/// Find a registered model by its table name or its class name ("user" or "User").
+QiModelMetaInfo* qiFindModel(const QString &name);
+
 /// Register a meta info
 /**
   @remarks User should not use this function for any purpose

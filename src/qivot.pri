@@ -45,6 +45,8 @@ QIVOT_HEADERS += \
     $$PWD/qitransaction.h \
     $$PWD/qimigrator.h \
     $$PWD/qirecorder.h \
+    $$PWD/qirule.h \
+    $$PWD/qivalidation.h \
     $$PWD/qischema.h \
     $$PWD/qigadget.h \
     $$PWD/qilistmodel.h \
@@ -87,5 +89,6 @@ SOURCES += \
     $$PWD/qijsonmapper.cpp \
     $$PWD/qimigrator.cpp \
     $$PWD/qirecorder.cpp \
+    $$PWD/qivalidation.cpp \
     $$PWD/qischema.cpp \
     $$PWD/qilistmodel.cpp

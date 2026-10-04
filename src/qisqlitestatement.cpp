@@ -1,6 +1,7 @@
 #include <QStringList>
 #include <QtCore>
 #include "qisqlitestatement.h"
+#include "qivalidation.h"
 #include <QSqlDriver>
 #include <QSqlField>
 
@@ -40,6 +41,8 @@ QString QiSqliteStatement::_createTableIfNotExists(QiModelMetaInfo *info) {
         }
 
         QString cons = columnConstraint(clause, typeName, !composite);
+        for (const QString &check : QiValidator::constraints(f->name, clause.rules(), driverName()))
+            cons += QStringLiteral(" CHECK %1").arg(check);       // rules marked enforced()
         QString columnDef;
         if (typeName.isEmpty()) {
             // Typeless column: name directly followed by its constraints (if any).
