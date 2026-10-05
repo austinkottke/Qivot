@@ -16,6 +16,20 @@
 class QiModelMetaInfo;
 class QiSql;
 class QiConnectionPriv;
+
+/// What a write through Qivot changed: one record, or many at once.
+/** Delivered to the hooks added with QiConnection::addRowChangeHook(). */
+struct QiChange {
+    enum Kind {
+        Inserted,   ///< save() created the record `id`
+        Updated,    ///< save() or upsert() wrote the existing record `id`
+        Removed,    ///< remove() deleted the record `id`
+        Many        ///< a bulk write (update(), remove() on a query, a batch save, raw SQL): any rows of `table`
+    };
+    QString table;
+    Kind kind = Many;
+    QVariant id;
+};
 template <typename T> inline QiModelMetaInfo* qiMetaInfo();
 
 /// Connection to QSqlDatabase
@@ -275,13 +289,22 @@ public:
         live mode; you rarely call it directly. */
     int addChangeHook(std::function<void(const QString &table)> hook);
 
-    /// Remove a change hook registered with addChangeHook().
+    /// Like addChangeHook(), but told which record changed and how.
+    /** A save() or remove() reports the record's id, so a list can update that
+        one row; bulk writes report QiChange::Many. Used by QiLiveListModel.
+        @return An id you can pass to removeChangeHook(). */
+    int addRowChangeHook(std::function<void(const QiChange &change)> hook);
+
+    /// Remove a change hook registered with addChangeHook() or addRowChangeHook().
     void removeChangeHook(int id);
 
     /// Notify listeners that a table changed. Called internally by the write
     /// operations; call it yourself only after a raw SQL write you want views
     /// to react to.
     void notifyChanged(const QString &table);
+
+    /// Notify listeners that one record changed (or, with QiChange::Many, any).
+    void notifyChanged(const QiChange &change);
 
 signals:
 

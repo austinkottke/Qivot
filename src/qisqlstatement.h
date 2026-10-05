@@ -104,6 +104,13 @@ public:
     /// Select statement
     virtual QString select(QiSharedQuery query);
 
+    /// Where one record falls in a query's order: SELECT its 1-based row number.
+    /** The record is the one whose id is bound to `:qi_id`; no row comes back
+        when it doesn't match the query's filter. Ties in the query's order are
+        broken by id. Uses ROW_NUMBER(), so it needs SQLite 3.25, MySQL 8,
+        MariaDB 10.2, PostgreSQL or SQL Server. Used by QiLiveListModel. */
+    virtual QString rowPosition(QiSharedQuery query);
+
     /// Delete from statement
     virtual QString deleteFrom(QiSharedQuery query);
 

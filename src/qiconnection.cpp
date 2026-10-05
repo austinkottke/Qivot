@@ -34,7 +34,7 @@ class QiConnectionPriv : public QSharedData
     QiError lastError;
 
     /// Reactive change listeners (id -> callback)
-    QVector<QPair<int, std::function<void(const QString&)>>> changeHooks;
+    QVector<QPair<int, std::function<void(const QiChange&)>>> changeHooks;
     int nextHookId = 1;
 
     /// Nesting depth for QiTransaction (0 = none, 1 = outermost BEGIN, >1 = SAVEPOINT)
@@ -416,6 +416,10 @@ QiError QiConnection::lastError(){
 }
 
 int QiConnection::addChangeHook(std::function<void(const QString&)> hook){
+    return addRowChangeHook([hook](const QiChange &change) { hook(change.table); });
+}
+
+int QiConnection::addRowChangeHook(std::function<void(const QiChange&)> hook){
     QMutexLocker lock(&d->mutex);
     int id = d->nextHookId++;
     d->changeHooks.append(qMakePair(id, std::move(hook)));
@@ -433,8 +437,15 @@ void QiConnection::removeChangeHook(int id){
 }
 
 void QiConnection::notifyChanged(const QString &table){
+    QiChange change;
+    change.table = table;
+    change.kind = QiChange::Many;
+    notifyChanged(change);
+}
+
+void QiConnection::notifyChanged(const QiChange &change){
     // Snapshot under lock, then invoke outside it (a hook may add/remove hooks).
-    QVector<QPair<int, std::function<void(const QString&)>>> hooks;
+    QVector<QPair<int, std::function<void(const QiChange&)>>> hooks;
     {
         QMutexLocker lock(&d->mutex);
         if (d->changeHooks.isEmpty())
@@ -442,7 +453,7 @@ void QiConnection::notifyChanged(const QString &table){
         hooks = d->changeHooks;
     }
     for (const auto &h : hooks)
-        h.second(table);
+        h.second(change);
 }
 
 void QiConnection::setLastError(const QiError &error){

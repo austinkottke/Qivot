@@ -6,6 +6,8 @@
 #include <QByteArray>
 #include <QStringList>
 #include <QVector>
+#include <QMutex>
+#include <QSet>
 #include <functional>
 #include <qisharedlist.h>
 #include <qilist.h>
@@ -59,6 +61,10 @@ public:
     /// event loop) whenever any of `tables` changes on `connection` — so a bound
     /// ListView updates by itself after any save / remove / update, from
     /// anywhere. Pass empty `tables` to react to every table.
+    /** The new result is compared with the old one by id, and only the rows
+        that differ are inserted, removed, moved or changed — the view keeps its
+        delegates and scroll position. That still re-runs the whole query; for
+        thousands of rows use QiLiveListModel, which doesn't. */
     void setLive(QiConnection connection, const QStringList &tables,
                  std::function<QiSharedList()> query);
 
@@ -92,8 +98,10 @@ private:
     void rebuildRoles();
     void scheduleRefresh();
     void refreshNow();
+    bool applyDifferences(const QiSharedList &list);
 
     QiSharedList m_list;
+    QVector<QiAbstractModel *> m_rows;    // what the view sees, row by row
     QiModelMetaInfo *m_metaInfo;
     QHash<int, QByteArray> m_roleNames;   // role id  -> field name (bytes, for QML)
     QHash<int, QString>    m_roleFields;  // role id  -> field name (string, for lookup)
@@ -248,6 +256,151 @@ private:
     mutable QVector<int>             m_lru;    // page load/use order for eviction
 
     QiModelMetaInfo *m_metaInfo = nullptr;
+    QHash<int, QByteArray> m_roleNames;
+    QHash<int, QString>    m_roleFields;
+};
+
+/// A live list for **large** results: thousands of rows, kept up to date one
+/// row at a time, like iOS's NSFetchedResultsController.
+/**
+  It holds the ids of the matching records in order, and nothing else until
+  the view asks: records are read `batchSize` at a time, by id, for the rows on
+  screen, and the oldest batches are dropped again. When a record is saved or
+  removed anywhere through the same connection, the model works out what that
+  means for the list and emits just that row's signal:
+
+  - removed: the row goes; no query at all.
+  - saved: one query asks the database where the record now falls in the
+    list's order (ROW_NUMBER()). The row is inserted there, moved there, or
+    refreshed in place; or removed, if it no longer matches the filter.
+  - a bulk write (QiQuery::update(), remove() on a query, a batch save): the
+    id column is read again and compared, and only the differences are
+    signalled.
+
+  So with 10,000 contacts, renaming one costs one small query and one
+  `dataChanged`, and a ListView keeps its delegates and its scroll position.
+
+\code
+    auto *contacts = new QiLiveListModel(this);
+    contacts->setQuery( Contact::objects().filter(Contact::col().archived == false)
+                                          .orderBy(QStringList{ "lastName", "firstName" }) );
+
+    // anywhere later, through the same connection:
+    ada.lastName = "Byron";
+    ada.save();          // the list moves Ada's row to the B's: one rowsMoved
+\endcode
+
+\code
+    // QML: the roles are the model's field names
+    ListView { model: contacts; delegate: Text { text: lastName + ", " + firstName } }
+\endcode
+
+  Changes are applied on the next pass of the event loop, so several writes in
+  a row are worked out together; call flush() to apply them straight away.
+
+  Row positions need window functions: SQLite 3.25, MySQL 8, MariaDB 10.2,
+  PostgreSQL or SQL Server. Where they're missing, and for queries with a
+  limit, offset, DISTINCT or GROUP BY, every change re-reads the ids instead —
+  still one column, and still only the differences reach the view.
+
+  Writes made with raw SQL aren't seen; call
+  `connection.notifyChanged("table")` or refresh() after them.
+ */
+class QiLiveListModel : public QAbstractListModel {
+    Q_OBJECT
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
+public:
+    explicit QiLiveListModel(QObject *parent = nullptr);
+    ~QiLiveListModel() override;
+
+    /// Show the records of `query`, kept up to date. Reads the ids now.
+    /** @param batchSize How many records to read at once as the view scrolls. */
+    void setQuery(const QiSharedQuery &query, int batchSize = 100);
+
+    /// Typed convenience overload
+    template <typename T>
+    void setQuery(QiQuery<T> query, int batchSize = 100) {
+        setQuery(static_cast<const QiSharedQuery &>(query), batchSize);
+    }
+
+    /// Other tables whose changes can change this list (a joined table, say).
+    /// A change to one of them re-reads the ids.
+    void setWatchedTables(const QStringList &tables);
+
+    /// Read the ids again and apply the differences (after a raw SQL write).
+    Q_INVOKABLE void refresh();
+
+    /// Apply the changes waiting for the event loop now.
+    void flush();
+
+    /// Number of rows: every matching record, whether it has been read or not
+    int count() const;
+
+    /// The id of the record at `row`
+    Q_INVOKABLE QVariant idAt(int row) const;
+
+    /// The row of the record with `id`, or -1
+    Q_INVOKABLE int indexOf(const QVariant &id) const;
+
+    /// One field of the record at `row`, reading its batch if needed
+    Q_INVOKABLE QVariant valueAt(int row, const QString &field) const;
+
+    /// The record at `row`, reading its batch if needed. The model owns it,
+    /// and may drop it once it has scrolled far away: don't keep the pointer.
+    QiAbstractModel *recordAt(int row) const;
+
+    /// The records kept in memory at most (default 2,000), in whole batches
+    void setMaxCachedRecords(int records);
+
+    /// How many records are in memory now
+    int cachedRecords() const;
+
+    /// How many queries the model has run since setQuery(): ids, positions
+    /// and batches. Handy for tests and for seeing what a change cost.
+    int queryCount() const { return m_queries; }
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+signals:
+    void countChanged();
+
+private:
+    struct Cached {
+        int batch;            // the batch it came in, for eviction
+        QiAbstractModel *record;
+    };
+
+    void onChange(const QiChange &change);
+    void schedule();
+    void applyPending();
+    bool applyRows(const QVector<QiChange> &changes);
+    void applyIds(const QVariantList &ids, bool allValues, const QSet<QString> &touched = QSet<QString>());
+    QiAbstractModel *load(int row) const;
+    void forget(const QString &key) const;
+
+    QiSharedQuery m_query;
+    QiConnection  m_conn;
+    QiModelMetaInfo *m_metaInfo = nullptr;
+    QString       m_table;
+    QStringList   m_watch;
+    int           m_hookId = -1;
+    int           m_batchSize = 100;
+    int           m_maxCached = 2000;
+
+    QVariantList  m_ids;        // the rows, in order
+    QStringList   m_keys;       // the same ids as text, for comparing
+
+    mutable QHash<QString, Cached>  m_records;   // id -> record, for the rows read so far
+    mutable QList<QPair<int, QiSharedList>> m_batches;  // the lists that own them, oldest first
+    mutable int   m_nextBatch = 0;
+    mutable int   m_queries = 0;
+
+    QMutex             m_pendingLock;
+    QVector<QiChange>  m_pending;
+    bool               m_scheduled = false;
+
     QHash<int, QByteArray> m_roleNames;
     QHash<int, QString>    m_roleFields;
 };

@@ -374,6 +374,22 @@ QString QiSqlStatement::select(QiSharedQuery query) {
     return sql.join(" ");
 }
 
+QString QiSqlStatement::rowPosition(QiSharedQuery query) {
+    QiQueryRules rules;
+    rules = query;
+    const QString idColumn = rules.metaInfo()->name() + QLatin1String(".id");
+    QStringList order = rules.orderBy();
+    order << idColumn;              // a total order: ties broken by id
+
+    QiSharedQuery numbered = query.select(QStringList{
+        idColumn + QLatin1String(" AS qi_id"),
+        QString("ROW_NUMBER() OVER (ORDER BY %1) AS qi_rn").arg(order.join(", ")) });
+    QiQueryRules numberedRules;
+    numberedRules = numbered;
+
+    return QString("SELECT qi_rn FROM (%1) qi_pos WHERE qi_id = :qi_id ;").arg(selectCore(numberedRules));
+}
+
 QString QiSqlStatement::deleteFrom(QiSharedQuery query) {
     QiQueryRules rules;
     rules =  query;

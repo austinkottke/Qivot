@@ -227,6 +227,21 @@ public:
     /// Execute the query and return all the record retrieved
     QiSharedList all();
 
+    /// The ids of the matching records, in the query's order (ties broken by id).
+    /** Reads one column, so it is cheap even for many thousands of rows.
+        @param ok Set to false when the query fails. */
+    QVariantList ids(bool *ok = nullptr);
+
+    /// Where the record with `id` sits in the query's order: a 0-based row, or
+    /// -1 when it doesn't match the filter.
+    /** One query, using ROW_NUMBER(). `ok` is false when that can't be answered
+        this way: the query failed (an older database without window functions),
+        or the query has a limit, offset, DISTINCT or GROUP BY. Read ids() then. */
+    int rowOf(const QVariant &id, bool *ok = nullptr);
+
+    /// The connection the query runs on
+    QiConnection connection() const;
+
     /// Returns the QSqlQuery object being used
     QSqlQuery lastQuery();
 
@@ -237,6 +252,10 @@ protected:
 
     /// Set the associated data model
     void setMetaInfo(QiModelMetaInfo *info);
+
+    /// Whether remove() and update() tell the connection's change hooks
+    /// (default true). Off when the caller reports a more precise change.
+    void setNotifyChanges(bool notify);
 
     /* The design of QiSharedQuery do not allow user to pass QiModel to any argument.
        Prevent invalid pointer type passed
@@ -254,6 +273,8 @@ protected:
 
 
 private:
+    void bindAll(QSqlQuery &query);
+
     QSharedDataPointer<QiSharedQueryPriv> data;
 
     friend class QiQueryRules;

@@ -231,7 +231,8 @@ void DialectTests::upsert() {
     QVERIFY(mssqlS.contains("MERGE INTO model1"));
     QVERIFY(mssqlS.contains("ON (target.key = source.key)"));
     QVERIFY(mssqlS.contains("WHEN MATCHED THEN UPDATE SET value = source.value"));
-    QVERIFY(mssqlS.contains("WHEN NOT MATCHED THEN INSERT (id, key, value) VALUES (source.id, source.key, source.value)"));
+    // id is an IDENTITY column: SQL Server refuses a MERGE whose insert names it
+    QVERIFY(mssqlS.contains("WHEN NOT MATCHED THEN INSERT (key, value) VALUES (source.key, source.value)"));
     QVERIFY(mssqlS.trimmed().endsWith(";"));   // T-SQL's MERGE requires the terminator
 
     const QString oraS = ora.upsertInto(info, fields, conflict);

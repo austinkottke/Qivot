@@ -16,6 +16,8 @@ public:
         return *this;
     }
 
+    using QiSharedQuery::setNotifyChanges;
+
     bool recordTo(QiModel *model) {
         return QiSharedQuery::recordTo(model);
     }
