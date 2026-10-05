@@ -132,7 +132,13 @@ QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, 
         setList << QString("%1 = source.%1").arg(f);
     }
 
+    // The id is an IDENTITY column, and SQL Server refuses a MERGE whose insert
+    // names it (IDENTITY_INSERT is off) even when the row matches and only the
+    // update runs. So the id is matched on but never inserted: a record whose
+    // row has gone is inserted again under a new id.
     foreach (QString f, fields) {
+        if (f == QLatin1String("id"))
+            continue;
         insertCols << f;
         insertVals << QString("source.%1").arg(f);
     }
@@ -145,8 +151,11 @@ QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, 
     // omitting WHEN MATCHED entirely rather than requiring a no-op SET like MySQL does.
     if (!setList.isEmpty())
         sql << QString("WHEN MATCHED THEN UPDATE SET %1").arg(setList.join(", "));
-    sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2);")
-               .arg(insertCols.join(", "), insertVals.join(", "));
+    if (insertCols.isEmpty())
+        sql << QStringLiteral("WHEN NOT MATCHED THEN INSERT DEFAULT VALUES;");
+    else
+        sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2);")
+                   .arg(insertCols.join(", "), insertVals.join(", "));
 
     return sql.join(" ");
 }

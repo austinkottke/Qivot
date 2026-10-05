@@ -13,6 +13,7 @@ Page {
     property string phone: ""
 
     signal back()
+    signal edit()
 
     readonly property string fullName: (firstName + " " + lastName).trim()
     readonly property string dialable: phone.replace(/[^0-9+]/g, "")
@@ -186,6 +187,17 @@ Page {
                    anchors.verticalCenter: parent.verticalCenter }
         }
         MouseArea { id: backMouse; anchors.fill: parent; onClicked: page.back() }
+    }
+    Item {
+        anchors { right: parent.right; top: parent.top; topMargin: page.safeTop }
+        width: editText.width + 32; height: 44
+        Text {
+            id: editText
+            anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+            text: "Edit"; font.pixelSize: 17; color: "#007AFF"
+            opacity: editMouse.pressed ? 0.4 : 1
+        }
+        MouseArea { id: editMouse; objectName: "editButton"; anchors.fill: parent; onClicked: page.edit() }
     }
 
     // ---- iOS-style action sheet to confirm the delete ----

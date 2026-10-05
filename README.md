@@ -115,6 +115,10 @@ HTTP on a worker thread**, writing the results into your database.
   a query result to a `ListView` with `QiListModel`.
 - ⚡ **[Reactive queries](#reactive-queries-live-models)** — a live `QiListModel`
   re-runs itself on any change, so bound views update automatically. No reload.
+- 📇 **[Large live lists](#large-live-lists-qilivelistmodel)** — `QiLiveListModel`
+  keeps 10,000 contacts up to date one row at a time, like iOS's
+  `NSFetchedResultsController`: a rename is one small query and one `rowsMoved`.
+  → [`examples/contacts`](examples/contacts)
 - ♾️ **[Infinite scroll](#infinite-scroll-lazy-paging)** — `QiLazyListModel` pages
   the DB in as a `ListView` scrolls, so huge tables load lazily, not all at once.
 - 🎯 **Modern & portable** — Qt **5.15 and 6** from one codebase, C++17,
@@ -165,7 +169,7 @@ step-by-step example:
   are resumable. → [`examples/keyset`](examples/keyset)
 - 🪟 **Windowed list model** — `QiWindowedListModel` counts once, then fetches only
   the pages you scroll to (and evicts old ones) — a 10k-row list on a tiny memory
-  footprint, with a working A–Z jump. → [`examples/contacts`](examples/contacts)
+  footprint, with a working A–Z jump.
 - ✅ **Validation and forms** — rules on the fields (`QiEmail()`, `QiLength(2, 80)`,
   `QiRequiredIf`, `QiUniqueIn`, `QiNoOverlap`, `QiMinAge(18)`, `QiBusinessDay`, …),
   errors per field, warnings, contexts, CHECK constraints from the same rules, and
@@ -1972,6 +1976,65 @@ int id = connection.addChangeHook([](const QString &table) {
 
 The runnable [`examples/reactive`](examples/reactive) app is a to-do list whose
 view never calls reload — tick "auto-add" and watch rows appear on their own.
+
+A live `QiListModel` compares the new result with the old one by id, so the view
+only hears about the rows that were added, removed, moved or edited: delegates and
+the scroll position stay put. It still re-runs the whole query, which is fine for
+a few hundred rows. For more, use `QiLiveListModel`.
+
+### Large live lists (QiLiveListModel)
+
+`QiLiveListModel` is the live list for thousands of rows, built like iOS's
+`NSFetchedResultsController`. It keeps only the **ids** of the matching records in
+memory, in order, and reads the records themselves a batch at a time, by id, for
+the rows on screen. When a record is saved or removed through the connection, the
+model works out what that means for the list and signals just that row:
+
+| What happened | What the model does | Queries |
+|---|---|---|
+| `remove()` | removes the row | none |
+| `save()` of a record in the list | one `ROW_NUMBER()` query finds its new row: `dataChanged` in place, or `rowsMoved` | 1 |
+| `save()` of a new record | inserted at its row in the order (`rowsInserted`) | 2 (its row, and a count to check) |
+| `save()` that takes it out of the filter | removes the row | 1 |
+| a bulk `update()` / `remove()` / batch save | reads the id column again and signals only the differences | 1 |
+
+```c++
+auto *contacts = new QiLiveListModel(this);
+contacts->setQuery( Contact::objects()
+                        .filter(Contact::col().archived == false)
+                        .orderBy(QStringList{ "lastName", "firstName" }) );   // 10,000 ids: one query
+
+// anywhere later, through the same connection:
+ada.lastName = "Byron";
+ada.save();        // the view gets one rowsMoved; nothing else is re-read
+```
+
+```qml
+ListView { model: contacts; delegate: Text { text: lastName + ", " + firstName } }
+```
+
+The [`contacts`](examples/contacts) example is a step-by-step tutorial for it:
+editing, row animations, a simulated sync, and a read-out of what each change
+cost.
+
+Changes are applied on the next turn of the event loop, so a burst of writes is
+worked out together; `flush()` applies them at once. `idAt(row)`, `indexOf(id)`
+and `valueAt(row, field)` are there for QML, and `setMaxCachedRecords()` bounds
+memory (2,000 records by default). `queryCount()` tells you what a change cost.
+
+Row positions use window functions: SQLite 3.25+, MySQL 8, MariaDB 10.2+,
+PostgreSQL and SQL Server. On older servers, and for queries with a limit, offset,
+`DISTINCT` or `GROUP BY`, each change re-reads the ids instead. That is still one
+column, and still only the differences reach the view. Raw SQL writes aren't
+seen: call `connection.notifyChanged("contact")` or `refresh()` after them.
+
+Your own code can watch row-level changes too:
+
+```c++
+connection.addRowChangeHook([](const QiChange &change) {
+    // change.table, change.kind (Inserted / Updated / Removed / Many), change.id
+});
+```
 
 ### Infinite scroll (lazy paging)
 

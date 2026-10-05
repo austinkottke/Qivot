@@ -168,7 +168,8 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
     m_connection.setLastQuery(sql.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+        // reactive: views watching this table update the one row
+        m_connection.notifyChanged(QiChange{ tableName(), created ? QiChange::Inserted : QiChange::Updated, id() });
         afterSave(created);
     }
 
@@ -216,7 +217,12 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     m_connection.setLastQuery(sql.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(tableName());   // reactive
+        // An upsert may have updated an existing row even without an id: report
+        // Updated, which a live list treats as "insert it if it's new to me".
+        if (id->isNull())
+            m_connection.notifyChanged(tableName());   // reactive
+        else
+            m_connection.notifyChanged(QiChange{ tableName(), QiChange::Updated, id() });
         afterSave(created);
     }
 
@@ -295,7 +301,9 @@ bool QiModel::remove() {
     _QiMetaInfoQuery query( info ,  m_connection);
 
     query = query.filter( filter );
+    query.setNotifyChanges(false);      // reported below, with the record's id
 
+    const QVariant removedId = id->isNull() ? QVariant() : id();
     bool res = query.remove();
     if (res){
         id->clear();
@@ -306,7 +314,11 @@ bool QiModel::remove() {
     m_connection.setLastQuery( query.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(info->name());   // reactive
+        // reactive: a record with an id is one row; a composite key, any
+        if (removedId.isValid())
+            m_connection.notifyChanged(QiChange{ info->name(), QiChange::Removed, removedId });
+        else
+            m_connection.notifyChanged(info->name());
         afterRemove();
     }
 

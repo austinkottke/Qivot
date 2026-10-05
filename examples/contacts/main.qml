@@ -15,6 +15,25 @@ ApplicationWindow {
     property int safeTop: 0
     property int safeBottom: 0
 
+    // The contact to scroll to and flash when you come back from editing it.
+    property int revealId: -1
+    property int flashId: -1
+    Timer { id: flashTimer; interval: 1200; onTriggered: win.flashId = -1 }
+    function reveal(id) { win.revealId = id }
+
+    // "Sync": another device changing the contacts you're looking at.
+    property bool syncing: false
+
+    // Open the card for a row, as tapping it does (the screenshot run uses these).
+    function openRow(row) {
+        var c = contactStore.contactAt(row);
+        stack.push(detailPage, { contactId: c.id, firstName: c.firstName,
+                                 lastName: c.lastName, phone: c.phone });
+    }
+    function editOpenCard() { addSheet.edit(stack.currentItem) }
+    function scrollTo(row) { stack.get(0).showRow(row) }
+    function goBack() { stack.pop() }
+
     // Android's back button (and closing on desktop) pops a pushed card first.
     onClosing: function(close) {
         if (stack.depth > 1) { close.accepted = false; stack.pop() }
@@ -38,10 +57,12 @@ ApplicationWindow {
             store: contactStore
             safeTop: win.safeTop; safeBottom: win.safeBottom
             onBack: stack.pop()
+            onEdit: addSheet.edit(this)
         }
     }
 
-    AddSheet { id: addSheet; store: contactStore; safeTop: win.safeTop }
+    AddSheet { id: addSheet; store: contactStore; safeTop: win.safeTop
+               onSaved: function(id) { win.reveal(id) } }
 
     // =====================================================================
     //  The list screen
@@ -62,6 +83,34 @@ ApplicationWindow {
 
             Timer { id: hudTimer; interval: 700; onTriggered: page.showHud = false }
             function pokeHud() { page.showHud = true; hudTimer.restart() }
+
+            // Back on the list after an edit: show where the contact went.
+            StackView.onActivated: {
+                if (win.revealId < 0) return;
+                var row = contactStore.rowOf(win.revealId);
+                if (row >= 0) {
+                    list.positionViewAtIndex(row, ListView.Center);
+                    win.flashId = win.revealId; flashTimer.restart();
+                }
+                win.revealId = -1;
+            }
+
+            function showRow(row) {
+                if (row <= 0) list.positionViewAtBeginning();     // with the title and search
+                else list.positionViewAtIndex(row, ListView.Beginning);
+            }
+
+            Timer {
+                objectName: "syncTimer"
+                interval: 1400; repeat: true; running: win.syncing && page.StackView.status === StackView.Active
+                onTriggered: {
+                    var first = list.indexAt(list.width / 2, list.contentY + 40);
+                    var last  = list.indexAt(list.width / 2, list.contentY + list.height - 40);
+                    if (first < 0) first = 0;
+                    if (last < first) last = first + 8;
+                    contactStore.simulateChange(first, last);
+                }
+            }
 
             // Which contact sits at the top of the viewport.
             function refreshSection() {
@@ -141,8 +190,9 @@ ApplicationWindow {
                     readonly property int contactId: model.id
 
                     background: Rectangle {
-                        color: row.pressed ? "#E5E5EA" : "white"
-                        Behavior on color { ColorAnimation { duration: 140 } }
+                        color: row.pressed ? "#E5E5EA"
+                             : row.contactId === win.flashId ? "#DCEBFF" : "white"
+                        Behavior on color { ColorAnimation { duration: 300 } }
                     }
                     contentItem: Item {
                         Avatar {
@@ -183,6 +233,21 @@ ApplicationWindow {
                         stack.push(detailPage, { contactId: model.id, firstName: firstName,
                                                  lastName: lastName, phone: phone })
                     }
+                }
+
+                // The model only ever inserts, removes and moves single rows, so
+                // the view can animate each one like a table view does.
+                add: Transition {
+                    NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 260 }
+                    NumberAnimation { property: "x"; from: list.width * 0.25; to: 0; duration: 300; easing.type: Easing.OutCubic }
+                }
+                remove: Transition {
+                    NumberAnimation { property: "opacity"; to: 0; duration: 220 }
+                    NumberAnimation { property: "x"; to: -list.width * 0.3; duration: 240; easing.type: Easing.InCubic }
+                }
+                displaced: Transition {
+                    NumberAnimation { properties: "x,y"; duration: 260; easing.type: Easing.OutCubic }
+                    NumberAnimation { property: "opacity"; to: 1; duration: 120 }
                 }
 
                 ScrollIndicator.vertical: ScrollIndicator { }
@@ -255,6 +320,36 @@ ApplicationWindow {
                     text: "Contacts"; font.pixelSize: 17; font.weight: Font.DemiBold
                     opacity: page.collapse
                 }
+                // "Sync" toggle: another device starts changing what's on screen.
+                Rectangle {
+                    id: syncBtn
+                    objectName: "syncButton"
+                    anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 9 }
+                    width: syncRow.width + 20; height: 30; radius: 15
+                    color: win.syncing ? "#007AFF" : "#EEEEF0"
+                    opacity: syncMouse.pressed ? 0.6 : 1
+                    Behavior on color { ColorAnimation { duration: 160 } }
+                    Row {
+                        id: syncRow
+                        anchors.centerIn: parent; spacing: 6
+                        Rectangle {
+                            width: 8; height: 8; radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: win.syncing ? "white" : "#8E8E93"
+                            SequentialAnimation on opacity {
+                                running: win.syncing; loops: Animation.Infinite
+                                NumberAnimation { to: 0.25; duration: 500 }
+                                NumberAnimation { to: 1; duration: 500 }
+                                onRunningChanged: if (!running) parent.opacity = 1
+                            }
+                        }
+                        Text { text: "Sync"; font.pixelSize: 15; font.weight: Font.DemiBold
+                               color: win.syncing ? "white" : "#007AFF" }
+                    }
+                    MouseArea { id: syncMouse; anchors.fill: parent; anchors.margins: -6
+                                onClicked: win.syncing = !win.syncing }
+                }
+
                 // "+" drawn as two bars, so it's crisp at any density.
                 Item {
                     id: addBtn
@@ -264,6 +359,39 @@ ApplicationWindow {
                     Rectangle { anchors.centerIn: parent; width: 20; height: 2.4; radius: 1.2; color: "#007AFF" }
                     Rectangle { anchors.centerIn: parent; width: 2.4; height: 20; radius: 1.2; color: "#007AFF" }
                     MouseArea { id: addMouse; anchors.fill: parent; onClicked: addSheet.open() }
+                }
+            }
+
+            // ---- What the last change did, and what it cost ----
+            Rectangle {
+                id: activityPill
+                objectName: "activityPill"
+                property bool shown: false
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: parent.height - win.safeBottom - height - (shown ? 18 : -height)
+                width: Math.min(parent.width - 24, activityText.implicitWidth + 32)
+                height: activityText.implicitHeight + 18; radius: 16
+                color: "#EB1C1C1E"
+                opacity: shown ? 1 : 0
+                Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+                Text {
+                    id: activityText
+                    anchors.centerIn: parent
+                    width: Math.min(implicitWidth, activityPill.parent.width - 56)
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    lineHeight: 1.15
+                    text: contactStore.activity
+                    font.pixelSize: 13; color: "white"
+                }
+                Timer { id: pillTimer; interval: 3200; onTriggered: activityPill.shown = false }
+                Connections {
+                    target: contactStore
+                    function onActivityChanged() {
+                        if (contactStore.activity.length === 0) return;
+                        activityPill.shown = true; pillTimer.restart()
+                    }
                 }
             }
 

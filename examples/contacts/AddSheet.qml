@@ -2,10 +2,41 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 
 /// "New Contact" card that slides up from the bottom. Drag it down to dismiss.
+/// edit(card) opens it as "Edit Contact" for the contact a detail card shows.
 Drawer {
     id: sheet
+    objectName: "contactSheet"
     property var store
     property int safeTop: 0
+
+    property var card: null                 // the detail card being edited, or null for a new contact
+    readonly property bool editing: card !== null
+    signal saved(int id)
+
+    function edit(detail) {
+        card = detail
+        firstField.text = detail.firstName
+        lastField.text = detail.lastName
+        phoneField.text = detail.phone
+        open()
+    }
+
+    function fill(first, last, phone) {
+        firstField.text = first; lastField.text = last; phoneField.text = phone
+    }
+
+    function save() {
+        if (editing) {
+            store.update(card.contactId, firstField.text, lastField.text, phoneField.text)
+            card.firstName = firstField.text.trim()
+            card.lastName = lastField.text.trim()
+            card.phone = phoneField.text.trim()
+            saved(card.contactId)
+        } else {
+            store.add(firstField.text, lastField.text, phoneField.text)
+        }
+        close()
+    }
 
     edge: Qt.BottomEdge
     dragMargin: 0                       // open only from the + button, never by an edge swipe
@@ -16,7 +47,7 @@ Drawer {
 
     readonly property bool canSave: firstField.text.trim().length > 0 || lastField.text.trim().length > 0
 
-    function reset() { firstField.clear(); lastField.clear(); phoneField.clear() }
+    function reset() { firstField.clear(); lastField.clear(); phoneField.clear(); card = null }
     onOpened: firstField.forceActiveFocus()
     onClosed: reset()
 
@@ -46,7 +77,7 @@ Drawer {
             }
             Text {
                 anchors.centerIn: parent
-                text: "New Contact"; font.pixelSize: 17; font.weight: Font.DemiBold
+                text: sheet.editing ? "Edit Contact" : "New Contact"; font.pixelSize: 17; font.weight: Font.DemiBold
             }
             Text {
                 anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
@@ -56,7 +87,7 @@ Drawer {
                 MouseArea {
                     id: doneMouse; anchors.fill: parent; anchors.margins: -10
                     enabled: sheet.canSave
-                    onClicked: { sheet.store.add(firstField.text, lastField.text, phoneField.text); sheet.close() }
+                    onClicked: sheet.save()
                 }
             }
         }

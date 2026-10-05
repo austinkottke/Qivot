@@ -2,12 +2,17 @@
 
     - Alphabetical sticky sections + an A–Z scrubber on the right (drag to jump).
     - Live search that filters as you type.
-    - "+" adds a contact that appears in the correct section instantly (reactive).
+    - "+" adds a contact; Edit renames one. Only that row changes: it slides
+      in, moves, or refreshes, and the rest of the list stays put.
+    - "Sync" makes changes on screen the way another device would.
 
-    The list is windowed: 10,000 rows are counted up front, but only the pages
-    you scroll to are fetched (LIMIT/OFFSET) — set QIVOT_LOG=1 to watch the SQL.
+    The list is live (QiLiveListModel): the 10,000 ids are read once, records a
+    batch at a time as you scroll, and each change costs one small query —
+    set QIVOT_LOG=1 to watch the SQL.
 
-    QIVOT_SELFTEST=1 drives search/add/jump then quits (for headless checks).
+    QIVOT_SELFTEST=1 checks that a rename, an add and a delete each reach the
+    view as one row signal, then quits (for headless checks).
+    QIVOT_SHOTS=<dir> walks through an edit and a sync and saves screenshots.
  */
 #include "contact.h"
 #include "contactstore.h"
@@ -23,6 +28,8 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTimer>
+#include <QMap>
+#include <cstdio>
 
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
@@ -137,16 +144,91 @@ int main(int argc, char **argv) {
     }
 #endif
 
-    if (qEnvironmentVariableIsSet("QIVOT_SELFTEST")) {
-        QObject *root = engine.rootObjects().first();
-        ContactStore *store = root->findChild<ContactStore *>();
-        QTimer::singleShot(300, &app, [store]{
-            if (!store) return;
-            store->add("Zoe", "Zephyr", "(555) 010-2020");    // reactive add
-            store->setFilter("smith");                          // live search
-            store->indexForLetter("S");                         // jump index
+    QObject *root = engine.rootObjects().first();
+    ContactStore *store = root->findChild<ContactStore *>();
+
+    if (qEnvironmentVariableIsSet("QIVOT_SELFTEST") && store) {
+        // Each change must reach the view as one row signal, never a reset.
+        auto *model = store->contacts();
+        auto *counts = new QMap<QString, int>();
+        QObject::connect(model, &QAbstractItemModel::modelReset, [counts] { (*counts)["reset"]++; });
+        QObject::connect(model, &QAbstractItemModel::rowsInserted, [counts] { (*counts)["inserted"]++; });
+        QObject::connect(model, &QAbstractItemModel::rowsRemoved, [counts] { (*counts)["removed"]++; });
+        QObject::connect(model, &QAbstractItemModel::rowsMoved, [counts] { (*counts)["moved"]++; });
+        auto *failures = new int(0);
+        auto check = [failures](bool ok, const QString &what) {
+            std::printf("  %s  %s\n", ok ? "PASS" : "FAIL", qPrintable(what));
+            if (!ok) ++*failures;
+        };
+        QTimer::singleShot(300, &app, [store, counts, check] {
+            const QVariantMap first = store->contactAt(1);
+            store->update(first.value("id").toInt(), first.value("firstName").toString(),
+                          "Zimmerman", first.value("phone").toString());
+            QTimer::singleShot(50, [store, counts, check, first] {
+                check((*counts)["moved"] == 1 && (*counts)["reset"] == 0,
+                      "a rename moves one row, without a reset");
+                check(store->rowOf(first.value("id").toInt()) == store->count() - 1,
+                      "and it lands at the end, in Z");
+                check(store->activity().contains("Moved row 2"), "activity: " + store->activity().replace('\n', " | "));
+                store->add("Zoe", "Aardvark", "(555) 010-2020");
+            });
+            QTimer::singleShot(100, [store, counts, check] {
+                check((*counts)["inserted"] == 1 && store->rowOf(store->contactAt(0).value("id").toInt()) == 0
+                      && store->contactAt(0).value("lastName") == "Aardvark", "a new contact is inserted at row 1");
+                store->remove(store->contactAt(0).value("id").toInt());
+            });
+            QTimer::singleShot(150, [store, counts, check] {
+                check((*counts)["removed"] == 1, "a deletion removes one row");
+                check(store->activity().contains("no query"), "activity: " + store->activity().replace('\n', " | "));
+                store->setFilter("smith");
+                check(store->count() == 100, QString("search: %1 Smiths").arg(store->count()));
+                store->indexForLetter("S");
+                check((*counts)["reset"] == 1, "only the new search reset the list");
+            });
         });
-        QTimer::singleShot(900, &app, &QCoreApplication::quit);
+        QTimer::singleShot(900, &app, [failures] {
+            std::printf("%s\n", *failures ? "SELFTEST FAILED" : "SELFTEST PASSED");
+            QCoreApplication::exit(*failures ? 1 : 0);
+        });
     }
+
+    // QIVOT_SHOTS=<dir>: walk through an edit and a sync, saving screenshots.
+    // Run offscreen at 2x:  QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 QIVOT_SEED=10000 QIVOT_SHOTS=. ./contacts
+    const QString shots = qEnvironmentVariable("QIVOT_SHOTS");
+    if (!shots.isEmpty() && store) {
+        auto *window = qobject_cast<QQuickWindow *>(root);
+        auto grab = [window, shots, store](const QString &name) {
+            window->grabWindow().save(QDir(shots).filePath(name + ".png"));
+            std::printf("saved %s.png  (%s)\n", qPrintable(name), qPrintable(store->activity().replace('\n', " | ")));
+        };
+        auto call = [root](const char *fn, QVariant arg = QVariant()) {
+            if (arg.isValid())
+                QMetaObject::invokeMethod(root, fn, Q_ARG(QVariant, arg));
+            else
+                QMetaObject::invokeMethod(root, fn);
+        };
+        auto sheet = root->findChild<QObject *>("contactSheet");
+        QTimer::singleShot(450,  &app, [grab] { grab("contacts"); });
+        QTimer::singleShot(500,  &app, [call] { call("openRow", 1); });
+        QTimer::singleShot(1000, &app, [call] { call("editOpenCard"); });
+        QTimer::singleShot(1400, &app, [sheet] {
+            QMetaObject::invokeMethod(sheet, "fill", Q_ARG(QVariant, "Patricia"),
+                                      Q_ARG(QVariant, "Young"), Q_ARG(QVariant, "(415) 555-0142"));
+        });
+        QTimer::singleShot(1700, &app, [grab] { grab("contacts-edit"); });
+        QTimer::singleShot(1800, &app, [sheet, call] {
+            QMetaObject::invokeMethod(sheet, "save");
+            call("goBack");                      // back to the list, which shows where it went
+        });
+        QTimer::singleShot(2500, &app, [grab] { grab("contacts-moved"); });
+        QTimer::singleShot(5200, &app, [call] { call("scrollTo", 0); });
+        QTimer::singleShot(5600, &app, [store, root] {
+            root->setProperty("syncing", true);  // its first random change comes 1.4 s later
+            store->simulate("relative", 1);      // a relative of Amanda's: right on screen
+        });
+        QTimer::singleShot(6500, &app, [grab] { grab("contacts-sync"); });
+        QTimer::singleShot(6700, &app, &QCoreApplication::quit);
+    }
+
     return app.exec();
 }

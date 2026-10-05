@@ -18,6 +18,7 @@ public:
         limit = -1; // No limit
         offset = -1; // No offset
         distinct = false;
+        notify = true;
     }
 
     QiConnection connection;
@@ -31,6 +32,10 @@ public:
 
     /// TRUE if the query should emit SELECT DISTINCT
     bool distinct;
+
+    /// FALSE when the caller reports the change itself (QiModel::remove()
+    /// tells listeners which record went, rather than "any rows")
+    bool notify;
 
     QSqlQuery query;
 

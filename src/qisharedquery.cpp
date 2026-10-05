@@ -138,23 +138,14 @@ QiSharedQuery QiSharedQuery::orderBy(QString term){
     return query;
 }
 
-bool QiSharedQuery::exec() {
-    data->query = data->connection.query();
-
-    Q_ASSERT(data->connection.isOpen());
-
-    QString sql;
-    sql = data->connection.sql().statement()->select(*this);
-
-    data->query.prepare(sql);
-
+void QiSharedQuery::bindAll(QSqlQuery &query) {
     QiExpression& expression = data->expression;
     QMap<QString,QVariant> values = expression.bindValues();
     QMapIterator<QString, QVariant> iter(values);
 
     while (iter.hasNext()) {
         iter.next();
-        data->query.bindValue(iter.key() , iter.value());
+        query.bindValue(iter.key() , iter.value());
     }
 
     // Bind the values found in the ON condition of each JOIN clause. Their
@@ -174,7 +165,7 @@ bool QiSharedQuery::exec() {
             onIter.next();
             QString key = onIter.key();
             key.replace(QLatin1String(":arg") , QString(":j%1arg").arg(j));
-            data->query.bindValue(key , onIter.value());
+            query.bindValue(key , onIter.value());
         }
     }
 
@@ -188,9 +179,21 @@ bool QiSharedQuery::exec() {
             hIter.next();
             QString key = hIter.key();
             key.replace(QLatin1String(":arg") , QLatin1String(":harg"));
-            data->query.bindValue(key , hIter.value());
+            query.bindValue(key , hIter.value());
         }
     }
+}
+
+bool QiSharedQuery::exec() {
+    data->query = data->connection.query();
+
+    Q_ASSERT(data->connection.isOpen());
+
+    QString sql;
+    sql = data->connection.sql().statement()->select(*this);
+
+    data->query.prepare(sql);
+    bindAll(data->query);
 
     QElapsedTimer timer;
     timer.start();
@@ -230,7 +233,7 @@ bool QiSharedQuery::remove(){
 
     data->connection.setLastQuery(data->query);
 
-    if (res) {
+    if (res && data->notify) {
         QiQueryRules rules; rules = *this;
         if (rules.metaInfo())
             data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
@@ -269,7 +272,7 @@ int QiSharedQuery::update(const QVariantMap &values) {
 
     data->connection.setLastQuery(data->query);
 
-    if (ok) {
+    if (ok && data->notify) {
         QiQueryRules rules; rules = *this;
         if (rules.metaInfo())
             data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
@@ -289,6 +292,57 @@ QiSharedList QiSharedQuery::all(){
     }
 
     return res;
+}
+
+QVariantList QiSharedQuery::ids(bool *ok) {
+    QVariantList res;
+    QiModelMetaInfo *info = data->metaInfo;
+    if (!info) {
+        if (ok) *ok = false;
+        return res;
+    }
+    const QString idColumn = info->name() + QLatin1String(".id");
+    QiSharedQuery q(*this);
+    q.data->func.clear();
+    q.data->fields = QStringList{ idColumn };
+    q.data->orderBy << idColumn;   // the same total order rowOf() uses
+    const bool good = q.exec();
+    if (good) {
+        while (q.next())
+            res << q.value(0);
+    }
+    if (ok) *ok = good;
+    return res;
+}
+
+int QiSharedQuery::rowOf(const QVariant &id, bool *ok) {
+    if (ok) *ok = false;
+    if (!data->metaInfo || data->distinct || data->limit > 0 || data->offset > 0
+            || !data->groupBy.isEmpty() || !data->func.isEmpty())
+        return -1;
+
+    QSqlQuery q = data->connection.query();
+    if (!q.prepare(data->connection.sql().statement()->rowPosition(*this)))
+        return -1;
+    bindAll(q);
+    q.bindValue(QStringLiteral(":qi_id"), id);
+
+    QElapsedTimer timer;
+    timer.start();
+    const bool good = q.exec();
+    QiLog::logQuery(q, timer.nsecsElapsed());
+    if (!good)
+        return -1;
+    if (ok) *ok = true;
+    return q.next() ? q.value(0).toInt() - 1 : -1;
+}
+
+void QiSharedQuery::setNotifyChanges(bool notify) {
+    data->notify = notify;
+}
+
+QiConnection QiSharedQuery::connection() const {
+    return data->connection;
 }
 
 QSqlQuery QiSharedQuery::lastQuery(){
@@ -320,27 +374,36 @@ QVariant QiSharedQuery::value(int index) {
 }
 
 int QiSharedQuery::count(){
-    int res = 0;
-    data->func = "count";
+    // On a copy: the query itself stays as it was, for all() afterwards. And
+    // without its ORDER BY, which SQL Server and PostgreSQL refuse next to an
+    // aggregate.
+    QiSharedQuery q(*this);
+    q.data->func = "count";
+    q.data->orderBy.clear();
 
-    if (exec()) {
-        if (next()){
-            res = value().toInt();
+    int res = 0;
+    if (q.exec()) {
+        if (q.next()){
+            res = q.value().toInt();
         }
     }
+    data->query = q.data->query;
     return res;
 }
 
 QVariant QiSharedQuery::call(QString func , QStringList fields){
-    data->func = func;
-    data->fields = fields;
+    QiSharedQuery q(*this);
+    q.data->func = func;
+    q.data->fields = fields;
+    q.data->orderBy.clear();
 
     QVariant res;
-    if (exec()) {
-        if (next()){
-            res = value();
+    if (q.exec()) {
+        if (q.next()){
+            res = q.value();
         }
     }
+    data->query = q.data->query;
 
     return res;
 }

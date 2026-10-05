@@ -1210,6 +1210,20 @@ private:
 class QiModelMetaInfo;
 class QiSql;
 class QiConnectionPriv;
+
+/// What a write through Qivot changed: one record, or many at once.
+/** Delivered to the hooks added with QiConnection::addRowChangeHook(). */
+struct QiChange {
+    enum Kind {
+        Inserted,   ///< save() created the record `id`
+        Updated,    ///< save() or upsert() wrote the existing record `id`
+        Removed,    ///< remove() deleted the record `id`
+        Many        ///< a bulk write (update(), remove() on a query, a batch save, raw SQL): any rows of `table`
+    };
+    QString table;
+    Kind kind = Many;
+    QVariant id;
+};
 template <typename T> inline QiModelMetaInfo* qiMetaInfo();
 
 /// Connection to QSqlDatabase
@@ -1469,13 +1483,22 @@ public:
         live mode; you rarely call it directly. */
     int addChangeHook(std::function<void(const QString &table)> hook);
 
-    /// Remove a change hook registered with addChangeHook().
+    /// Like addChangeHook(), but told which record changed and how.
+    /** A save() or remove() reports the record's id, so a list can update that
+        one row; bulk writes report QiChange::Many. Used by QiLiveListModel.
+        @return An id you can pass to removeChangeHook(). */
+    int addRowChangeHook(std::function<void(const QiChange &change)> hook);
+
+    /// Remove a change hook registered with addChangeHook() or addRowChangeHook().
     void removeChangeHook(int id);
 
     /// Notify listeners that a table changed. Called internally by the write
     /// operations; call it yourself only after a raw SQL write you want views
     /// to react to.
     void notifyChanged(const QString &table);
+
+    /// Notify listeners that one record changed (or, with QiChange::Many, any).
+    void notifyChanged(const QiChange &change);
 
 signals:
 
@@ -2226,6 +2249,21 @@ public:
     /// Execute the query and return all the record retrieved
     QiSharedList all();
 
+    /// The ids of the matching records, in the query's order (ties broken by id).
+    /** Reads one column, so it is cheap even for many thousands of rows.
+        @param ok Set to false when the query fails. */
+    QVariantList ids(bool *ok = nullptr);
+
+    /// Where the record with `id` sits in the query's order: a 0-based row, or
+    /// -1 when it doesn't match the filter.
+    /** One query, using ROW_NUMBER(). `ok` is false when that can't be answered
+        this way: the query failed (an older database without window functions),
+        or the query has a limit, offset, DISTINCT or GROUP BY. Read ids() then. */
+    int rowOf(const QVariant &id, bool *ok = nullptr);
+
+    /// The connection the query runs on
+    QiConnection connection() const;
+
     /// Returns the QSqlQuery object being used
     QSqlQuery lastQuery();
 
@@ -2236,6 +2274,10 @@ protected:
 
     /// Set the associated data model
     void setMetaInfo(QiModelMetaInfo *info);
+
+    /// Whether remove() and update() tell the connection's change hooks
+    /// (default true). Off when the caller reports a more precise change.
+    void setNotifyChanges(bool notify);
 
     /* The design of QiSharedQuery do not allow user to pass QiModel to any argument.
        Prevent invalid pointer type passed
@@ -2253,6 +2295,8 @@ protected:
 
 
 private:
+    void bindAll(QSqlQuery &query);
+
     QSharedDataPointer<QiSharedQueryPriv> data;
 
     friend class QiQueryRules;
@@ -2458,6 +2502,13 @@ public:
 
     /// Select statement
     virtual QString select(QiSharedQuery query);
+
+    /// Where one record falls in a query's order: SELECT its 1-based row number.
+    /** The record is the one whose id is bound to `:qi_id`; no row comes back
+        when it doesn't match the query's filter. Ties in the query's order are
+        broken by id. Uses ROW_NUMBER(), so it needs SQLite 3.25, MySQL 8,
+        MariaDB 10.2, PostgreSQL or SQL Server. Used by QiLiveListModel. */
+    virtual QString rowPosition(QiSharedQuery query);
 
     /// Delete from statement
     virtual QString deleteFrom(QiSharedQuery query);
@@ -6290,6 +6341,8 @@ public:
         return *this;
     }
 
+    using QiSharedQuery::setNotifyChanges;
+
     bool recordTo(QiModel *model) {
         return QiSharedQuery::recordTo(model);
     }
@@ -6314,6 +6367,7 @@ public:
         limit = -1; // No limit
         offset = -1; // No offset
         distinct = false;
+        notify = true;
     }
 
     QiConnection connection;
@@ -6327,6 +6381,10 @@ public:
 
     /// TRUE if the query should emit SELECT DISTINCT
     bool distinct;
+
+    /// FALSE when the caller reports the change itself (QiModel::remove()
+    /// tells listeners which record went, rather than "any rows")
+    bool notify;
 
     QSqlQuery query;
 
@@ -6577,7 +6635,7 @@ class QiConnectionPriv : public QSharedData
     QiError lastError;
 
     /// Reactive change listeners (id -> callback)
-    QVector<QPair<int, std::function<void(const QString&)>>> changeHooks;
+    QVector<QPair<int, std::function<void(const QiChange&)>>> changeHooks;
     int nextHookId = 1;
 
     /// Nesting depth for QiTransaction (0 = none, 1 = outermost BEGIN, >1 = SAVEPOINT)
@@ -6959,6 +7017,10 @@ QiError QiConnection::lastError(){
 }
 
 int QiConnection::addChangeHook(std::function<void(const QString&)> hook){
+    return addRowChangeHook([hook](const QiChange &change) { hook(change.table); });
+}
+
+int QiConnection::addRowChangeHook(std::function<void(const QiChange&)> hook){
     QMutexLocker lock(&d->mutex);
     int id = d->nextHookId++;
     d->changeHooks.append(qMakePair(id, std::move(hook)));
@@ -6976,8 +7038,15 @@ void QiConnection::removeChangeHook(int id){
 }
 
 void QiConnection::notifyChanged(const QString &table){
+    QiChange change;
+    change.table = table;
+    change.kind = QiChange::Many;
+    notifyChanged(change);
+}
+
+void QiConnection::notifyChanged(const QiChange &change){
     // Snapshot under lock, then invoke outside it (a hook may add/remove hooks).
-    QVector<QPair<int, std::function<void(const QString&)>>> hooks;
+    QVector<QPair<int, std::function<void(const QiChange&)>>> hooks;
     {
         QMutexLocker lock(&d->mutex);
         if (d->changeHooks.isEmpty())
@@ -6985,7 +7054,7 @@ void QiConnection::notifyChanged(const QString &table){
         hooks = d->changeHooks;
     }
     for (const auto &h : hooks)
-        h.second(table);
+        h.second(change);
 }
 
 void QiConnection::setLastError(const QiError &error){
@@ -8714,7 +8783,8 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
     m_connection.setLastQuery(sql.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(tableName());   // reactive: views watching this table refresh
+        // reactive: views watching this table update the one row
+        m_connection.notifyChanged(QiChange{ tableName(), created ? QiChange::Inserted : QiChange::Updated, id() });
         afterSave(created);
     }
 
@@ -8762,7 +8832,12 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     m_connection.setLastQuery(sql.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(tableName());   // reactive
+        // An upsert may have updated an existing row even without an id: report
+        // Updated, which a live list treats as "insert it if it's new to me".
+        if (id->isNull())
+            m_connection.notifyChanged(tableName());   // reactive
+        else
+            m_connection.notifyChanged(QiChange{ tableName(), QiChange::Updated, id() });
         afterSave(created);
     }
 
@@ -8841,7 +8916,9 @@ bool QiModel::remove() {
     _QiMetaInfoQuery query( info ,  m_connection);
 
     query = query.filter( filter );
+    query.setNotifyChanges(false);      // reported below, with the record's id
 
+    const QVariant removedId = id->isNull() ? QVariant() : id();
     bool res = query.remove();
     if (res){
         id->clear();
@@ -8852,7 +8929,11 @@ bool QiModel::remove() {
     m_connection.setLastQuery( query.lastQuery());
 
     if (res) {
-        m_connection.notifyChanged(info->name());   // reactive
+        // reactive: a record with an id is one row; a composite key, any
+        if (removedId.isValid())
+            m_connection.notifyChanged(QiChange{ info->name(), QiChange::Removed, removedId });
+        else
+            m_connection.notifyChanged(info->name());
         afterRemove();
     }
 
@@ -9191,7 +9272,13 @@ QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, 
         setList << QString("%1 = source.%1").arg(f);
     }
 
+    // The id is an IDENTITY column, and SQL Server refuses a MERGE whose insert
+    // names it (IDENTITY_INSERT is off) even when the row matches and only the
+    // update runs. So the id is matched on but never inserted: a record whose
+    // row has gone is inserted again under a new id.
     foreach (QString f, fields) {
+        if (f == QLatin1String("id"))
+            continue;
         insertCols << f;
         insertVals << QString("source.%1").arg(f);
     }
@@ -9204,8 +9291,11 @@ QString QiMsSqlStatement::upsertInto(QiModelMetaInfo *info, QStringList fields, 
     // omitting WHEN MATCHED entirely rather than requiring a no-op SET like MySQL does.
     if (!setList.isEmpty())
         sql << QString("WHEN MATCHED THEN UPDATE SET %1").arg(setList.join(", "));
-    sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2);")
-               .arg(insertCols.join(", "), insertVals.join(", "));
+    if (insertCols.isEmpty())
+        sql << QStringLiteral("WHEN NOT MATCHED THEN INSERT DEFAULT VALUES;");
+    else
+        sql << QString("WHEN NOT MATCHED THEN INSERT (%1) VALUES (%2);")
+                   .arg(insertCols.join(", "), insertVals.join(", "));
 
     return sql.join(" ");
 }
@@ -11281,23 +11371,14 @@ QiSharedQuery QiSharedQuery::orderBy(QString term){
     return query;
 }
 
-bool QiSharedQuery::exec() {
-    data->query = data->connection.query();
-
-    Q_ASSERT(data->connection.isOpen());
-
-    QString sql;
-    sql = data->connection.sql().statement()->select(*this);
-
-    data->query.prepare(sql);
-
+void QiSharedQuery::bindAll(QSqlQuery &query) {
     QiExpression& expression = data->expression;
     QMap<QString,QVariant> values = expression.bindValues();
     QMapIterator<QString, QVariant> iter(values);
 
     while (iter.hasNext()) {
         iter.next();
-        data->query.bindValue(iter.key() , iter.value());
+        query.bindValue(iter.key() , iter.value());
     }
 
     // Bind the values found in the ON condition of each JOIN clause. Their
@@ -11317,7 +11398,7 @@ bool QiSharedQuery::exec() {
             onIter.next();
             QString key = onIter.key();
             key.replace(QLatin1String(":arg") , QString(":j%1arg").arg(j));
-            data->query.bindValue(key , onIter.value());
+            query.bindValue(key , onIter.value());
         }
     }
 
@@ -11331,9 +11412,21 @@ bool QiSharedQuery::exec() {
             hIter.next();
             QString key = hIter.key();
             key.replace(QLatin1String(":arg") , QLatin1String(":harg"));
-            data->query.bindValue(key , hIter.value());
+            query.bindValue(key , hIter.value());
         }
     }
+}
+
+bool QiSharedQuery::exec() {
+    data->query = data->connection.query();
+
+    Q_ASSERT(data->connection.isOpen());
+
+    QString sql;
+    sql = data->connection.sql().statement()->select(*this);
+
+    data->query.prepare(sql);
+    bindAll(data->query);
 
     QElapsedTimer timer;
     timer.start();
@@ -11373,7 +11466,7 @@ bool QiSharedQuery::remove(){
 
     data->connection.setLastQuery(data->query);
 
-    if (res) {
+    if (res && data->notify) {
         QiQueryRules rules; rules = *this;
         if (rules.metaInfo())
             data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
@@ -11412,7 +11505,7 @@ int QiSharedQuery::update(const QVariantMap &values) {
 
     data->connection.setLastQuery(data->query);
 
-    if (ok) {
+    if (ok && data->notify) {
         QiQueryRules rules; rules = *this;
         if (rules.metaInfo())
             data->connection.notifyChanged(rules.metaInfo()->name());   // reactive
@@ -11432,6 +11525,57 @@ QiSharedList QiSharedQuery::all(){
     }
 
     return res;
+}
+
+QVariantList QiSharedQuery::ids(bool *ok) {
+    QVariantList res;
+    QiModelMetaInfo *info = data->metaInfo;
+    if (!info) {
+        if (ok) *ok = false;
+        return res;
+    }
+    const QString idColumn = info->name() + QLatin1String(".id");
+    QiSharedQuery q(*this);
+    q.data->func.clear();
+    q.data->fields = QStringList{ idColumn };
+    q.data->orderBy << idColumn;   // the same total order rowOf() uses
+    const bool good = q.exec();
+    if (good) {
+        while (q.next())
+            res << q.value(0);
+    }
+    if (ok) *ok = good;
+    return res;
+}
+
+int QiSharedQuery::rowOf(const QVariant &id, bool *ok) {
+    if (ok) *ok = false;
+    if (!data->metaInfo || data->distinct || data->limit > 0 || data->offset > 0
+            || !data->groupBy.isEmpty() || !data->func.isEmpty())
+        return -1;
+
+    QSqlQuery q = data->connection.query();
+    if (!q.prepare(data->connection.sql().statement()->rowPosition(*this)))
+        return -1;
+    bindAll(q);
+    q.bindValue(QStringLiteral(":qi_id"), id);
+
+    QElapsedTimer timer;
+    timer.start();
+    const bool good = q.exec();
+    QiLog::logQuery(q, timer.nsecsElapsed());
+    if (!good)
+        return -1;
+    if (ok) *ok = true;
+    return q.next() ? q.value(0).toInt() - 1 : -1;
+}
+
+void QiSharedQuery::setNotifyChanges(bool notify) {
+    data->notify = notify;
+}
+
+QiConnection QiSharedQuery::connection() const {
+    return data->connection;
 }
 
 QSqlQuery QiSharedQuery::lastQuery(){
@@ -11463,27 +11607,36 @@ QVariant QiSharedQuery::value(int index) {
 }
 
 int QiSharedQuery::count(){
-    int res = 0;
-    data->func = "count";
+    // On a copy: the query itself stays as it was, for all() afterwards. And
+    // without its ORDER BY, which SQL Server and PostgreSQL refuse next to an
+    // aggregate.
+    QiSharedQuery q(*this);
+    q.data->func = "count";
+    q.data->orderBy.clear();
 
-    if (exec()) {
-        if (next()){
-            res = value().toInt();
+    int res = 0;
+    if (q.exec()) {
+        if (q.next()){
+            res = q.value().toInt();
         }
     }
+    data->query = q.data->query;
     return res;
 }
 
 QVariant QiSharedQuery::call(QString func , QStringList fields){
-    data->func = func;
-    data->fields = fields;
+    QiSharedQuery q(*this);
+    q.data->func = func;
+    q.data->fields = fields;
+    q.data->orderBy.clear();
 
     QVariant res;
-    if (exec()) {
-        if (next()){
-            res = value();
+    if (q.exec()) {
+        if (q.next()){
+            res = q.value();
         }
     }
+    data->query = q.data->query;
 
     return res;
 }
@@ -12490,6 +12643,22 @@ QString QiSqlStatement::select(QiSharedQuery query) {
     sql << ";";
 
     return sql.join(" ");
+}
+
+QString QiSqlStatement::rowPosition(QiSharedQuery query) {
+    QiQueryRules rules;
+    rules = query;
+    const QString idColumn = rules.metaInfo()->name() + QLatin1String(".id");
+    QStringList order = rules.orderBy();
+    order << idColumn;              // a total order: ties broken by id
+
+    QiSharedQuery numbered = query.select(QStringList{
+        idColumn + QLatin1String(" AS qi_id"),
+        QString("ROW_NUMBER() OVER (ORDER BY %1) AS qi_rn").arg(order.join(", ")) });
+    QiQueryRules numberedRules;
+    numberedRules = numbered;
+
+    return QString("SELECT qi_rn FROM (%1) qi_pos WHERE qi_id = :qi_id ;").arg(selectCore(numberedRules));
 }
 
 QString QiSqlStatement::deleteFrom(QiSharedQuery query) {
