@@ -1,0 +1,99 @@
+# Publishes a GitHub release with downloadable files:
+#   qivot.hpp               the single header (header-only, Qt Core + Sql)
+#   qivot-<version>.zip     the single header plus the full sources
+#   qivot-<version>.tar.gz  the same, as a tarball
+#   SHA256SUMS
+#
+# Push a tag to release:   git tag v1.1.0 && git push origin v1.1.0
+# or run it by hand from the Actions tab ("Release", Run workflow) with a version;
+# that creates the tag on the commit it runs on.
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.1.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0               # the history, for the release notes
+
+      - name: Install Qt and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qt6-base-dev libqt6sql6-sqlite cmake zip
+
+      - name: Version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ inputs.version }}"
+            V="${V#v}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+      # Regenerates the single header from src/, compiles and runs a smoke test
+      # against it, then builds the packages.
+      - name: Package
+        run: tools/package-release.sh "${{ steps.v.outputs.version }}" dist/release
+
+      - name: Release notes
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          VERSION="${{ steps.v.outputs.version }}"
+          REPO="${{ github.repository }}"
+          # The commits since the previous release tag
+          PREV=$(git tag --list 'v*' --sort=-version:refname | grep -vx "$TAG" | head -1 || true)
+          RANGE="${PREV:+$PREV..}HEAD"
+          {
+            echo "## Downloads"
+            echo
+            echo "| File | What it is |"
+            echo "|---|---|"
+            echo "| **qivot.hpp** | The single header. Copy it into your project and link Qt Core + Sql; in one \`.cpp\` put \`#define QIVOT_IMPLEMENTATION\` before \`#include \"qivot.hpp\"\`. |"
+            echo "| **qivot-$VERSION.zip** / **.tar.gz** | The single header plus the full sources, for qmake (\`include(src/qivot.pri)\`) or CMake (\`add_subdirectory\`, \`Qivot::qivot\`). Includes the list models and the QML forms. See \`INSTALL.txt\`. |"
+            echo "| SHA256SUMS | Checksums of the files above. |"
+            echo
+            echo "The latest single header is always at \`https://github.com/$REPO/releases/latest/download/qivot.hpp\`."
+            echo
+            echo "## Changes"
+            echo
+            git log --no-merges --pretty='- %s' "$RANGE" | head -200
+            if [ -n "$PREV" ]; then
+              echo
+              echo "**Full changelog:** https://github.com/$REPO/compare/$PREV...$TAG"
+            fi
+          } > dist/release-notes.md
+          cat dist/release-notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          FILES=(dist/release/qivot.hpp dist/release/qivot-*.zip dist/release/qivot-*.tar.gz dist/release/SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running for a release that exists: replace its files and notes
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+            gh release edit "$TAG" --notes-file dist/release-notes.md
+          else
+            gh release create "$TAG" "${FILES[@]}" \
+              --title "Qivot ${{ steps.v.outputs.version }}" \
+              --notes-file dist/release-notes.md \
+              --target "${{ github.sha }}"
+          fi

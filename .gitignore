@@ -46,3 +46,6 @@ examples/insider/
 
 # macOS
 .DS_Store
+
+# tools/package-release.sh output
+dist/release/

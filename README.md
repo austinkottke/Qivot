@@ -296,7 +296,15 @@ cmake --install build --prefix /usr/local
 
 **Header-only — a single header, no library to build**. Drop
 [`dist/qivot.hpp`](dist/qivot.hpp) into your project, link
-Qt Core + Sql, and in **exactly one** `.cpp` define the implementation:
+Qt Core + Sql, and in **exactly one** `.cpp` define the implementation.
+Each [release](https://github.com/austinkottke/Qivot/releases) has it as a
+download, and the newest one is always at
+`https://github.com/austinkottke/Qivot/releases/latest/download/qivot.hpp`:
+
+```sh
+curl -LO https://github.com/austinkottke/Qivot/releases/latest/download/qivot.hpp
+```
+
 
 ```c++
 // in one .cpp only:
@@ -314,6 +322,11 @@ ORM (models, `col()`, queries, joins, transactions, FTS, the synchronous JSON
 mapper). The two `Q_OBJECT` add-ons — the threaded `QiJsonRequest` and the QML
 `QiListModel` — need moc-generated code, so they aren't header-only; use the
 compiled build for those.
+
+The release's `qivot-<version>.zip` has the single header **and** the full
+sources (with `INSTALL.txt`), for the compiled build and its extras.
+`tools/package-release.sh <version>` builds the same files locally, and pushing a
+`v*` tag publishes them (`.github/workflows/release.yml`).
 
 See [Project setup](#project-setup-qmake) for more.
 
