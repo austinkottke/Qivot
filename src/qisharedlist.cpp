@@ -120,10 +120,23 @@ bool QiSharedList::save(bool forceInsert,bool forceAllField) {
     bool ownTransaction = connection.transaction();
     bool res = true;
 
-    for (int g = 0 ; g < groups.size() ; g++) {
-        if (!connection.sql().insertIntoBatch(groupMeta.at(g), groups.at(g), groupFields.at(g), true)) {
-            res = false;
-            break;
+    // New records go in as one prepared INSERT per group. Records that have an
+    // id, and models keyed on their own primary key, are saved one by one with
+    // UPDATE / upsert: a REPLACE would delete them first.
+    for (int g = 0 ; g < groups.size() && res ; g++) {
+        QiModelMetaInfo *info = groupMeta.at(g);
+        const QStringList &fields = groupFields.at(g);
+        const bool existing = !info->primaryKeyFields().contains(QStringLiteral("id"))
+                              || fields.contains(QStringLiteral("id"));
+        if (!existing) {
+            res = connection.sql().insertIntoBatch(info, groups.at(g), fields, false);
+            continue;
+        }
+        foreach (QiModel *model, groups.at(g)) {
+            if (!connection.sql().saveRecord(info, model, fields, forceInsert)) {
+                res = false;
+                break;
+            }
         }
     }
 

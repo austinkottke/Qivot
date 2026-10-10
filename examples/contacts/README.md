@@ -199,7 +199,7 @@ means for the list. In the screenshots, Amanda Adams (row 2) became Patricia
 Young, which belongs at row 9,977:
 
 ```
-REPLACE INTO contact (firstName,id,lastName,phone) values (…)       the save
+UPDATE contact SET firstName = :firstName, lastName = :lastName, phone = :phone WHERE id = :id      the save
 SELECT qi_rn FROM (SELECT ALL contact.id AS qi_id,
                           ROW_NUMBER() OVER (ORDER BY lastName asc, firstName asc, contact.id) AS qi_rn
                    FROM contact) qi_pos
@@ -274,9 +274,9 @@ void ContactStore::remove(int id) {
 ```
 
 A new contact costs two queries: its row (`ROW_NUMBER()`), and a `count(*)`.
-The count is a safety check. On SQLite and MySQL, `save()` is a `REPLACE`, and a
-new record that clashes with a unique column replaces the other row. If the count
-doesn't add up, the model reads the ids again rather than show a row that's gone.
+The count is a safety check: if something else changed the table at the same
+time (a raw `REPLACE`, another process), the numbers won't add up, and the model
+reads the ids again rather than show a row that's gone.
 
 A deletion costs **no query at all**. The model knows the id, so it knows the row.
 

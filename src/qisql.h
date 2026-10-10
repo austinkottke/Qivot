@@ -100,6 +100,22 @@ public:
      */
     bool replaceInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,bool updateId);
 
+    /// Save one record the safe way: INSERT a new one, UPDATE an existing one
+    /**
+      A new record (`isNew`, or no id among `fields`) is INSERTed, so a clash
+      with a unique column fails rather than replacing the other row. A record
+      with an id is UPDATEd in place; only if no row has that id is it inserted.
+      A model without an `id` column is upserted on its primary key.
+
+      This never deletes a row. REPLACE INTO did, on SQLite and MySQL: it is a
+      delete and an insert, so updating a parent fired ON DELETE CASCADE and
+      emptied its children, ran DELETE triggers, and replaced whichever row a
+      unique value clashed with.
+
+      @return TRUE if the record was written.
+     */
+    bool saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields, bool isNew);
+
     /// Upsert the record : insert, or update in place on a conflict key
     /**
       @param info The meta information of writing model

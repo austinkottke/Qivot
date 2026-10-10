@@ -289,6 +289,56 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
     return res;
 }
 
+bool QiSql::saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields, bool isNew){
+    const QStringList keys = info->primaryKeyFields();
+    const bool hasId = keys.contains(QStringLiteral("id"));
+
+    // No id column: the declared primary key identifies the row.
+    if (!hasId) {
+        bool keyed = !keys.isEmpty();
+        foreach (QString k, keys)
+            keyed = keyed && fields.contains(k);
+        return keyed ? upsertInto(info, model, fields, keys, false)
+                     : insertInto(info, model, fields, true, false);
+    }
+
+    if (isNew || !fields.contains(QStringLiteral("id")) || model->id.get().isNull()) {
+        QStringList insertFields = fields;
+        insertFields.removeAll(QStringLiteral("id"));
+        return insertInto(info, model, insertFields, true, false);
+    }
+
+    // An existing record: update it where it is.
+    QString sql = d->m_statement->updateByKey(info, fields, QStringList() << QStringLiteral("id")).trimmed();
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
+    QSqlQuery q = query();
+    if (!q.prepare(sql)) { setLastQuery(q); return false; }
+    foreach (QString field, fields)
+        q.bindValue(":" + field, info->value(model, field, true));
+    const bool ok = q.exec();
+    setLastQuery(q);                        // also logs it
+    if (!ok)
+        return false;
+    if (q.numRowsAffected() > 0)
+        return true;
+
+    // No row changed: either the values were the same (MySQL counts only rows it
+    // changed) or no row has this id any more.
+    QSqlQuery exists = query();
+    exists.prepare(QString("SELECT COUNT(*) FROM %1 WHERE id = :id").arg(info->name()));
+    exists.bindValue(":id", model->id.get());
+    if (exists.exec() && exists.next() && exists.value(0).toInt() > 0)
+        return true;
+    exists.finish();
+
+    // Gone: insert it again, under its own id where the database allows that.
+    if (d->m_statement->insertsExplicitId())
+        return insertInto(info, model, fields, false, false);
+    QStringList insertFields = fields;
+    insertFields.removeAll(QStringLiteral("id"));
+    return insertInto(info, model, insertFields, true, false);
+}
+
 bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,QStringList fields,bool replace){
     QString sql;
     if (fields.isEmpty()) {

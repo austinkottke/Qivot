@@ -610,7 +610,7 @@ CREATE TABLE IF NOT EXISTS contact (
 );
 ```
 
-`save()` (REPLACE on the key), `load()`, queries and `remove()` all work off the
+`save()` (an upsert on the key), `load()`, queries and `remove()` all work off the
 declared primary key — e.g. `contact.load( Contact::col().contactId == id )`. A
 foreign key can reference this string key too (see
 [Foreign keys](#foreign-keys)). Because there's no `id` column, `Contact::col()`
@@ -917,9 +917,9 @@ int changed = User::objects()
 // UPDATE user SET karma = 0, name = 'reset' WHERE karma < 0
 ```
 
-**Upsert** — `save()` is already *insert-or-replace* by primary/unique key. For a
-**non-destructive** update-or-insert on a natural key (keeping the row's primary
-key rather than deleting and re-inserting it), use `upsert()`:
+**Upsert** — `save()` inserts a new record and updates an existing one by its
+id, in place. To update-or-insert by a **natural key** instead (a record you
+haven't loaded, matched on a unique column), use `upsert()`:
 
 ```c++
 User user;
@@ -1262,8 +1262,8 @@ connection.dropFtsIndex("article_fts");
 ```
 
 > Requires SQLite built with FTS5 (Qt's bundled SQLite includes it). Qivot turns
-> on `PRAGMA recursive_triggers` when it opens a connection so that
-> `REPLACE`-based `save()` updates keep the index in sync.
+> on `PRAGMA recursive_triggers` when it opens a connection, so the index's
+> triggers also follow rows changed by `REPLACE` or `upsert()`.
 
 ### Validation
 
@@ -1333,10 +1333,8 @@ A list of records is checked together with
 `validate()` runs the database rules (and checks `QiUnique` columns and references);
 `save()` runs the explicit database rules (`QiUniqueIn`, `QiExists`, `QiNoOverlap`)
 and leaves `QiUnique` to the database, whose refusal comes back on the field
-("UNIQUE constraint failed: member.email" becomes *email: is already taken*). Note
-that on SQLite and MySQL `save()` is a `REPLACE`: a new record with a taken unique
-value replaces the old row rather than failing, so call `validate()` first (forms
-do) or use `upsert()`.
+("UNIQUE constraint failed: member.email" becomes *email: is already taken*, on
+every backend). `validate()` checks `QiUnique` itself, before anything is written.
 
 ### Forms in QML
 
@@ -1444,7 +1442,7 @@ QiLog::enableAll();         // everything, at Debug level
 ```
 
 ```text
-[2026-07-21 12:34:10.885] [SQL ] DEBUG REPLACE INTO user (karma,name,userId) values (:karma,:name,:userId);  | args: [:karma=120, :name=Ada, :userId=ada]  | rows: 1
+[2026-07-21 12:34:10.885] [SQL ] DEBUG INSERT INTO user (karma,name,userId) values (:karma,:name,:userId);  | args: [:karma=120, :name=Ada, :userId=ada]  | rows: 1
 [2026-07-21 12:34:10.885] [SQL ] DEBUG SELECT ALL * FROM user WHERE karma > :arg0 ORDER BY karma desc ;  | args: [:arg0=100]  | rows: 1  | 0.01ms
 [2026-07-21 12:34:10.886] [SQL ] ERROR INSERT INTO ...  | error: UNIQUE constraint failed: user.userId
 ```
@@ -2132,9 +2130,10 @@ Modernization:
 - Multithreading uses one connection per thread — [`QiConnectionPool`](examples/dashboard)
   (and `QiAsync`) handle this for you; a `:memory:` database can't be shared across
   threads, so async needs a file-based database.
-- `save()` uses `REPLACE`, so updating a row that is referenced by a foreign key is
-  rejected under FK enforcement — use [`upsert()`](#updating-and-deleting)
-  (non-destructive) or `connection.setForeignKeysEnforced(false)`.
+- Before 1.0.1, `save()` used `REPLACE` on SQLite and MySQL, which deletes the row
+  and inserts it again: updating a parent record fired `ON DELETE CASCADE` and
+  removed its children, and a clashing unique value replaced the other row. Since
+  1.0.1 it inserts new records and updates existing ones in place, on every backend.
 
 ## Credits & license
 

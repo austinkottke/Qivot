@@ -4,6 +4,7 @@
 #include <qivot.h>
 #include <qilistmodel.h>
 #include "livelisttests.h"
+#include "../integration/savesuite.h"
 
 class LContact : public QiModel {
     QI_MODEL
@@ -316,4 +317,13 @@ void LiveListTests::cacheIsBounded()
         QVERIFY(model.valueAt(row, "last").isValid());
     QVERIFY(model.cachedRecords() <= 300);
     QCOMPARE(model.queryCount(), 1 + 2000 / 50);
+}
+
+void LiveListTests::saveNeverDeletes()
+{
+    QStringList failures;
+    SaveSuite::run(g_conn, "sqlite", [&failures](bool ok, const QString &what) {
+        if (!ok) failures << what;
+    });
+    QVERIFY2(failures.isEmpty(), qPrintable(failures.join("\n")));
 }
