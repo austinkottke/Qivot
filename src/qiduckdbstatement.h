@@ -47,6 +47,11 @@ public:
     using QiSqlStatement::lastInsertIdQuery;
     QString lastInsertIdQuery(QiModelMetaInfo *info) const override;
 
+    // DuckDB runs an UPDATE of an indexed column (a primary or unique key) as a
+    // delete and an insert, which a referencing foreign key refuses even when the
+    // value is the same. So save() sets only what changed.
+    bool updatesOnlyChangedColumns() const override { return true; }
+
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
 

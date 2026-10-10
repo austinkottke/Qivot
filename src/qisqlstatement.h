@@ -172,6 +172,11 @@ public:
     /// then re-inserts a vanished record under a new id.
     virtual bool insertsExplicitId() const { return true; }
 
+    /// Whether an UPDATE of an indexed column is run as a delete and an insert,
+    /// so that a row other rows reference can't have it set (DuckDB). Then
+    /// QiSql::saveRecord() sets only the columns whose values changed.
+    virtual bool updatesOnlyChangedColumns() const { return false; }
+
 protected:
     /// The real function for create table if not exists. The base implementation is a
     /// portable generator that calls the dialect hooks above; SQLite overrides it.

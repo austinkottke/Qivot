@@ -2120,7 +2120,8 @@ Modernization:
 
 ## Limitations
 
-- SQLite only (FTS5, `WITHOUT ROWID`, savepoints and the SQL dialect assume it).
+- Full-text search (FTS5) and `WITHOUT ROWID` tables are SQLite-only; see
+  [Databases](docs/Databases.md) for what each backend supports.
 - Builds with **GCC, Clang, and MSVC** across **Qt 5.15 and Qt 6**, on **x86_64 and
   arm64** (Apple Silicon + arm64 Linux) — all in CI.
 - The typed query builder doesn't cover every construct (correlated subqueries,
@@ -2134,6 +2135,10 @@ Modernization:
   and inserts it again: updating a parent record fired `ON DELETE CASCADE` and
   removed its children, and a clashing unique value replaced the other row. Since
   1.0.1 it inserts new records and updates existing ones in place, on every backend.
+- DuckDB has no `ON DELETE CASCADE` / `SET NULL`, and it refuses changing a
+  primary or unique column of a row another table references (DuckDB runs that
+  update as a delete and an insert). Qivot's `save()` writes only the columns that
+  changed on DuckDB, so ordinary edits of a referenced record work.
 
 ## Credits & license
 
