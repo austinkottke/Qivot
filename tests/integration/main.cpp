@@ -29,6 +29,7 @@
 #include "migrationsuite.h"
 #include "validationsuite.h"
 #include "livelistsuite.h"
+#include "savesuite.h"
 
 #include <qimysqlstatement.h>
 #include <qipgstatement.h>
@@ -254,6 +255,7 @@ int main(int argc, char **argv) {
     MigrationSuite::run(conn, dialect, check);
     ValidationSuite::run(conn, dialect, check);
     LiveListSuite::run(conn, dialect, check);
+    SaveSuite::run(conn, dialect, check);
 
     conn.close();
     qInfo().noquote() << (failures == 0 ? "ALL PASSED\n" : QString("%1 CHECK(S) FAILED\n").arg(failures));

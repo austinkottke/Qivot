@@ -82,14 +82,12 @@ static void run(QiConnection &conn, const QString &backend, const Check &check)
     twin.name = "Ada Two";
     twin.club = 1;
     check(twin.validate().error("email") == "is already taken", "validation: QiUnique is checked against the table");
-    // save() leaves QiUnique to the database. On SQLite, DuckDB and MySQL save() is a
-    // REPLACE, which would remove Ada instead, so there it's validate() that matters.
-    if (backend == "postgres" || backend == "sqlserver") {
-        check(!twin.save(), "validation: the database refuses the duplicate");
-        if (backend == "postgres")
-            check(twin.validation().error("email") == "is already taken",
-                  QString("validation: the database's refusal comes back on the field (%1)").arg(twin.lastError().text().left(80)));
-    }
+    // save() leaves QiUnique to the database, which refuses the duplicate on every
+    // backend (it inserts; it never REPLACEs Ada).
+    check(!twin.save(), "validation: the database refuses the duplicate");
+    check(twin.validation().error("email") == "is already taken",
+          QString("validation: the database's refusal comes back on the field (%1)").arg(twin.lastError().text().left(80)));
+    Q_UNUSED(backend);
 
     VsMember sameClub;
     sameClub.email = "grace@example.com"; sameClub.name = "Grace"; sameClub.club = 1; sameClub.nickname = "countess";

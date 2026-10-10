@@ -42,6 +42,7 @@ public:
     using QiSqlStatement::lastInsertIdQuery;
     QString lastInsertIdQuery() const override;
     bool keepsStatementTerminator() const override { return true; }
+    bool insertsExplicitId() const override { return false; }   // id is an IDENTITY column
 
     QString select(QiSharedQuery query) override;
 

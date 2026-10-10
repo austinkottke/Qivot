@@ -295,6 +295,19 @@ QString QiSqlStatement::insertInto(QiModelMetaInfo *info,QStringList fields){
     return _insertInto(info,"INSERT",fields);
 }
 
+QString QiSqlStatement::updateByKey(QiModelMetaInfo *info, QStringList fields, QStringList keyColumns){
+    QStringList sets, where;
+    foreach (QString f, fields) {
+        if (!keyColumns.contains(f))
+            sets << QString("%1 = :%1").arg(f);
+    }
+    foreach (QString k, keyColumns)
+        where << QString("%1 = :%1").arg(k);
+    if (sets.isEmpty())                     // nothing but the key: a no-op that still finds the row
+        sets << QString("%1 = %1").arg(keyColumns.first());
+    return QString("UPDATE %1 SET %2 WHERE %3;").arg(info->name(), sets.join(", "), where.join(" AND "));
+}
+
 QString QiSqlStatement::replaceInto(QiModelMetaInfo *info,QStringList fields){
     return _insertInto(info,"REPLACE",fields);
 }

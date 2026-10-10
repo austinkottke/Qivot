@@ -19,6 +19,9 @@ private slots:
     void severalAtOnce();
     void bulkWrite();
     void cacheIsBounded();
+
+    /// save() never deletes a row (no REPLACE): the integration suite, on SQLite
+    void saveNeverDeletes();
 };
 
 #endif // LIVELISTTESTS_H

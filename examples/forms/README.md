@@ -237,9 +237,8 @@ QI_DECLARE_MODEL(Booking, "booking",
 
 When the database itself refuses a write — two people saving the same email at
 once — its error comes back on the field: *duplicate key … Key (email)* becomes
-*email: is already taken*. (On SQLite and MySQL, Qivot's `save()` is a `REPLACE`,
-which replaces the other row instead of refusing: forms call `validate()` first,
-which catches it.)
+*email: is already taken*, on every backend. Forms also call `validate()` first,
+which catches the duplicate before anything is written.
 
 ## 7. Fields that depend on each other
 

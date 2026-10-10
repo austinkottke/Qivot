@@ -2477,6 +2477,11 @@ public:
      */
     virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
 
+    /// UPDATE one record by its key: "UPDATE t SET a = :a, b = :b WHERE k = :k"
+    /** `fields` are bound by name, as insertInto() binds them; the key columns
+        among them go in the WHERE clause rather than the SET. */
+    virtual QString updateByKey(QiModelMetaInfo *info, QStringList fields, QStringList keyColumns);
+
     /// Replace into statement
     /**
       @param with_id TRUE if the "id" field should be included.
@@ -2560,6 +2565,11 @@ public:
     /// MERGE statement is a syntax error without one, unlike every other statement shape
     /// every other dialect emits. Everything else is fine either way, hence the default.
     virtual bool keepsStatementTerminator() const { return false; }
+
+    /// Whether an INSERT may name the id column. False where it's an IDENTITY
+    /// column the database fills in itself (SQL Server); QiSql::saveRecord()
+    /// then re-inserts a vanished record under a new id.
+    virtual bool insertsExplicitId() const { return true; }
 
 protected:
     /// The real function for create table if not exists. The base implementation is a
@@ -4091,6 +4101,7 @@ private:
     QiError m_error;
     QiValidation m_validation;
     bool runValidation(const QString &context, const QStringList &fields, bool uniqueKeys);
+    void mapDatabaseError();     // put a refused write's error on its field
 };
 
 template<>
@@ -5194,6 +5205,7 @@ public:
     using QiSqlStatement::lastInsertIdQuery;
     QString lastInsertIdQuery() const override;
     bool keepsStatementTerminator() const override { return true; }
+    bool insertsExplicitId() const override { return false; }   // id is an IDENTITY column
 
     QString select(QiSharedQuery query) override;
 
@@ -6112,6 +6124,22 @@ public:
       @param updateId TRUE if the ID of the model should be updated after operation
      */
     bool replaceInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,bool updateId);
+
+    /// Save one record the safe way: INSERT a new one, UPDATE an existing one
+    /**
+      A new record (`isNew`, or no id among `fields`) is INSERTed, so a clash
+      with a unique column fails rather than replacing the other row. A record
+      with an id is UPDATEd in place; only if no row has that id is it inserted.
+      A model without an `id` column is upserted on its primary key.
+
+      This never deletes a row. REPLACE INTO did, on SQLite and MySQL: it is a
+      delete and an insert, so updating a parent fired ON DELETE CASCADE and
+      emptied its children, ran DELETE triggers, and replaced whichever row a
+      unique value clashed with.
+
+      @return TRUE if the record was written.
+     */
+    bool saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields, bool isNew);
 
     /// Upsert the record : insert, or update in place on a conflict key
     /**
@@ -8618,6 +8646,7 @@ QStringList QiMigrator::splitStatements(const QString &sql, const QString &drive
 }
 
 // ---- src/qimodel.cpp ---------------------------------------------
+#include <QRegularExpression>
 #include <QtCore>
 #include <QMetaObject>
 #include <QMetaProperty>
@@ -8731,6 +8760,31 @@ QiValidation QiModel::validateFields(const QStringList &fields, const QString &c
     return m_validation;
 }
 
+void QiModel::mapDatabaseError() {
+    const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
+    if (!fe.field.isEmpty()) {
+        m_validation.add(fe);
+        return;
+    }
+    // The message doesn't name the column (SQL Server names the constraint
+    // instead): for a duplicate, ask the database which unique field clashes.
+    static const QRegularExpression duplicate(QStringLiteral("duplicate|unique|already exists"),
+                                              QRegularExpression::CaseInsensitiveOption);
+    if (!duplicate.match(m_error.text()).hasMatch())
+        return;
+    QiConnection conn = connection();
+    QiValidator::Options o;
+    o.context = id->isNull() ? QStringLiteral("create") : QStringLiteral("update");
+    o.uniqueKeys = true;
+    const QiValidation found = QiValidator::validate(this, metaInfo(), &conn, o);
+    for (const QiFieldError &e : found.errors()) {
+        if (e.rule == QLatin1String("unique")) {
+            m_validation.add(e);
+            return;
+        }
+    }
+}
+
 bool QiModel::save(bool forceInsert,bool forceAllField) {
     const bool creating = forceInsert || id->isNull();
     if (!runValidation(creating ? QStringLiteral("create") : QStringLiteral("update"), QStringList(), false))
@@ -8766,18 +8820,14 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     QiSql sql = m_connection.sql();
 
-    if (forceInsert || id->isNull() ) {
-        res = sql.replaceInto(info,this,nonNullFields,true);
-    } else {
-        res = sql.replaceInto(info,this,nonNullFields,false);
-    }
+    // INSERT a new record, UPDATE an existing one: never REPLACE, which deletes
+    // the row first (cascading to its children on SQLite and MySQL).
+    res = sql.saveRecord(info, this, nonNullFields, forceInsert || id->isNull());
 
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
     if (!res) {
-        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
-        if (!fe.field.isEmpty())
-            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+        mapDatabaseError();           // "UNIQUE constraint failed: user.email" -> email: is already taken
     }
 
     m_connection.setLastQuery(sql.lastQuery());
@@ -8824,9 +8874,7 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
     if (!res) {
-        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
-        if (!fe.field.isEmpty())
-            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+        mapDatabaseError();           // "UNIQUE constraint failed: user.email" -> email: is already taken
     }
 
     m_connection.setLastQuery(sql.lastQuery());
@@ -11205,10 +11253,23 @@ bool QiSharedList::save(bool forceInsert,bool forceAllField) {
     bool ownTransaction = connection.transaction();
     bool res = true;
 
-    for (int g = 0 ; g < groups.size() ; g++) {
-        if (!connection.sql().insertIntoBatch(groupMeta.at(g), groups.at(g), groupFields.at(g), true)) {
-            res = false;
-            break;
+    // New records go in as one prepared INSERT per group. Records that have an
+    // id, and models keyed on their own primary key, are saved one by one with
+    // UPDATE / upsert: a REPLACE would delete them first.
+    for (int g = 0 ; g < groups.size() && res ; g++) {
+        QiModelMetaInfo *info = groupMeta.at(g);
+        const QStringList &fields = groupFields.at(g);
+        const bool existing = !info->primaryKeyFields().contains(QStringLiteral("id"))
+                              || fields.contains(QStringLiteral("id"));
+        if (!existing) {
+            res = connection.sql().insertIntoBatch(info, groups.at(g), fields, false);
+            continue;
+        }
+        foreach (QiModel *model, groups.at(g)) {
+            if (!connection.sql().saveRecord(info, model, fields, forceInsert)) {
+                res = false;
+                break;
+            }
         }
     }
 
@@ -11969,6 +12030,56 @@ bool QiSql::upsertInto(QiModelMetaInfo* info,QiModel *model,QStringList fields,Q
     return res;
 }
 
+bool QiSql::saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields, bool isNew){
+    const QStringList keys = info->primaryKeyFields();
+    const bool hasId = keys.contains(QStringLiteral("id"));
+
+    // No id column: the declared primary key identifies the row.
+    if (!hasId) {
+        bool keyed = !keys.isEmpty();
+        foreach (QString k, keys)
+            keyed = keyed && fields.contains(k);
+        return keyed ? upsertInto(info, model, fields, keys, false)
+                     : insertInto(info, model, fields, true, false);
+    }
+
+    if (isNew || !fields.contains(QStringLiteral("id")) || model->id.get().isNull()) {
+        QStringList insertFields = fields;
+        insertFields.removeAll(QStringLiteral("id"));
+        return insertInto(info, model, insertFields, true, false);
+    }
+
+    // An existing record: update it where it is.
+    QString sql = d->m_statement->updateByKey(info, fields, QStringList() << QStringLiteral("id")).trimmed();
+    if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);
+    QSqlQuery q = query();
+    if (!q.prepare(sql)) { setLastQuery(q); return false; }
+    foreach (QString field, fields)
+        q.bindValue(":" + field, info->value(model, field, true));
+    const bool ok = q.exec();
+    setLastQuery(q);                        // also logs it
+    if (!ok)
+        return false;
+    if (q.numRowsAffected() > 0)
+        return true;
+
+    // No row changed: either the values were the same (MySQL counts only rows it
+    // changed) or no row has this id any more.
+    QSqlQuery exists = query();
+    exists.prepare(QString("SELECT COUNT(*) FROM %1 WHERE id = :id").arg(info->name()));
+    exists.bindValue(":id", model->id.get());
+    if (exists.exec() && exists.next() && exists.value(0).toInt() > 0)
+        return true;
+    exists.finish();
+
+    // Gone: insert it again, under its own id where the database allows that.
+    if (d->m_statement->insertsExplicitId())
+        return insertInto(info, model, fields, false, false);
+    QStringList insertFields = fields;
+    insertFields.removeAll(QStringLiteral("id"));
+    return insertInto(info, model, insertFields, true, false);
+}
+
 bool QiSql::insertIntoBatch(QiModelMetaInfo* info,const QList<QiModel*>& models,QStringList fields,bool replace){
     QString sql;
     if (fields.isEmpty()) {
@@ -12564,6 +12675,19 @@ QStringList QiSqlStatement::dropFtsIndex(QString name){
 
 QString QiSqlStatement::insertInto(QiModelMetaInfo *info,QStringList fields){
     return _insertInto(info,"INSERT",fields);
+}
+
+QString QiSqlStatement::updateByKey(QiModelMetaInfo *info, QStringList fields, QStringList keyColumns){
+    QStringList sets, where;
+    foreach (QString f, fields) {
+        if (!keyColumns.contains(f))
+            sets << QString("%1 = :%1").arg(f);
+    }
+    foreach (QString k, keyColumns)
+        where << QString("%1 = :%1").arg(k);
+    if (sets.isEmpty())                     // nothing but the key: a no-op that still finds the row
+        sets << QString("%1 = %1").arg(keyColumns.first());
+    return QString("UPDATE %1 SET %2 WHERE %3;").arg(info->name(), sets.join(", "), where.join(" AND "));
 }
 
 QString QiSqlStatement::replaceInto(QiModelMetaInfo *info,QStringList fields){

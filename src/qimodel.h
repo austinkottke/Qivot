@@ -231,6 +231,7 @@ private:
     QiError m_error;
     QiValidation m_validation;
     bool runValidation(const QString &context, const QStringList &fields, bool uniqueKeys);
+    void mapDatabaseError();     // put a refused write's error on its field
 };
 
 template<>

@@ -1,3 +1,4 @@
+#include <QRegularExpression>
 #include <QtCore>
 #include <QMetaObject>
 #include <QMetaProperty>
@@ -116,6 +117,31 @@ QiValidation QiModel::validateFields(const QStringList &fields, const QString &c
     return m_validation;
 }
 
+void QiModel::mapDatabaseError() {
+    const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
+    if (!fe.field.isEmpty()) {
+        m_validation.add(fe);
+        return;
+    }
+    // The message doesn't name the column (SQL Server names the constraint
+    // instead): for a duplicate, ask the database which unique field clashes.
+    static const QRegularExpression duplicate(QStringLiteral("duplicate|unique|already exists"),
+                                              QRegularExpression::CaseInsensitiveOption);
+    if (!duplicate.match(m_error.text()).hasMatch())
+        return;
+    QiConnection conn = connection();
+    QiValidator::Options o;
+    o.context = id->isNull() ? QStringLiteral("create") : QStringLiteral("update");
+    o.uniqueKeys = true;
+    const QiValidation found = QiValidator::validate(this, metaInfo(), &conn, o);
+    for (const QiFieldError &e : found.errors()) {
+        if (e.rule == QLatin1String("unique")) {
+            m_validation.add(e);
+            return;
+        }
+    }
+}
+
 bool QiModel::save(bool forceInsert,bool forceAllField) {
     const bool creating = forceInsert || id->isNull();
     if (!runValidation(creating ? QStringLiteral("create") : QStringLiteral("update"), QStringList(), false))
@@ -151,18 +177,14 @@ bool QiModel::save(bool forceInsert,bool forceAllField) {
 
     QiSql sql = m_connection.sql();
 
-    if (forceInsert || id->isNull() ) {
-        res = sql.replaceInto(info,this,nonNullFields,true);
-    } else {
-        res = sql.replaceInto(info,this,nonNullFields,false);
-    }
+    // INSERT a new record, UPDATE an existing one: never REPLACE, which deletes
+    // the row first (cascading to its children on SQLite and MySQL).
+    res = sql.saveRecord(info, this, nonNullFields, forceInsert || id->isNull());
 
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
     if (!res) {
-        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
-        if (!fe.field.isEmpty())
-            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+        mapDatabaseError();           // "UNIQUE constraint failed: user.email" -> email: is already taken
     }
 
     m_connection.setLastQuery(sql.lastQuery());
@@ -209,9 +231,7 @@ bool QiModel::upsert(const QStringList &conflictColumns, bool forceAllField) {
     if (!res)
         m_error = QiError(QiError::StatementError, sql.lastQuery().lastError().text());
     if (!res) {
-        const QiFieldError fe = QiValidator::fromDatabaseError(m_error.text(), metaInfo());
-        if (!fe.field.isEmpty())
-            m_validation.add(fe);     // "UNIQUE constraint failed: user.email" -> email: is already taken
+        mapDatabaseError();           // "UNIQUE constraint failed: user.email" -> email: is already taken
     }
 
     m_connection.setLastQuery(sql.lastQuery());

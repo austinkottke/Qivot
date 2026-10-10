@@ -699,8 +699,8 @@ bool QiLiveListModel::applyRows(const QVector<QiChange> &changes) {
         ids.insert(p.first, p.second);
     }
 
-    // On SQLite and MySQL save() is a REPLACE: a new record that clashes with a
-    // unique column removes the other row. Check the count after an insert.
+    // Something else may have changed the table meanwhile (a raw REPLACE that
+    // removed a clashing row, another process): check the count after an insert.
     if (inserted) {
         QiSharedQuery counter(m_query);
         const int total = counter.count();

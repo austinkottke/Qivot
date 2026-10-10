@@ -68,7 +68,9 @@ truncated. (SQLite and Postgres use `TEXT` for both — no length limit there.)
 - **Full-text search (FTS) is SQLite-only.** SQLite uses FTS5 virtual tables + triggers, which have
   no portable equivalent. On MySQL/Postgres, `createFtsIndex` is a no-op with a warning. Native FTS
   (MySQL `FULLTEXT`, Postgres `tsvector`) is a possible future addition.
-- **`REPLACE INTO`** is SQLite/MySQL only; prefer `upsert()` on Postgres.
+- **`save()` never uses `REPLACE INTO`** (since 1.0.1): it inserts new records and updates
+  existing ones in place on every backend, so foreign-key cascades and DELETE triggers don't fire
+  on an update. `upsert()` matches on a natural key instead.
 - **JSON is stored as `TEXT`** (a serialized string) on every backend — Qivot serializes
   `QJsonObject`/`QJsonArray` to a string and never queries into it. Native `JSONB`/`JSON` columns
   were tried but reverted: Postgres won't implicitly cast a *bound text parameter* into `JSONB`,

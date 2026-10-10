@@ -78,6 +78,11 @@ public:
      */
     virtual QString insertInto(QiModelMetaInfo *info,QStringList fields);
 
+    /// UPDATE one record by its key: "UPDATE t SET a = :a, b = :b WHERE k = :k"
+    /** `fields` are bound by name, as insertInto() binds them; the key columns
+        among them go in the WHERE clause rather than the SET. */
+    virtual QString updateByKey(QiModelMetaInfo *info, QStringList fields, QStringList keyColumns);
+
     /// Replace into statement
     /**
       @param with_id TRUE if the "id" field should be included.
@@ -161,6 +166,11 @@ public:
     /// MERGE statement is a syntax error without one, unlike every other statement shape
     /// every other dialect emits. Everything else is fine either way, hence the default.
     virtual bool keepsStatementTerminator() const { return false; }
+
+    /// Whether an INSERT may name the id column. False where it's an IDENTITY
+    /// column the database fills in itself (SQL Server); QiSql::saveRecord()
+    /// then re-inserts a vanished record under a new id.
+    virtual bool insertsExplicitId() const { return true; }
 
 protected:
     /// The real function for create table if not exists. The base implementation is a
