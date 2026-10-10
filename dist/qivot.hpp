@@ -2571,6 +2571,11 @@ public:
     /// then re-inserts a vanished record under a new id.
     virtual bool insertsExplicitId() const { return true; }
 
+    /// Whether an UPDATE of an indexed column is run as a delete and an insert,
+    /// so that a row other rows reference can't have it set (DuckDB). Then
+    /// QiSql::saveRecord() sets only the columns whose values changed.
+    virtual bool updatesOnlyChangedColumns() const { return false; }
+
 protected:
     /// The real function for create table if not exists. The base implementation is a
     /// portable generator that calls the dialect hooks above; SQLite overrides it.
@@ -2643,6 +2648,11 @@ public:
     // qimssqlstatement.h for why this is needed.
     using QiSqlStatement::lastInsertIdQuery;
     QString lastInsertIdQuery(QiModelMetaInfo *info) const override;
+
+    // DuckDB runs an UPDATE of an indexed column (a primary or unique key) as a
+    // delete and an insert, which a referencing foreign key refuses even when the
+    // value is the same. So save() sets only what changed.
+    bool updatesOnlyChangedColumns() const override { return true; }
 
     QStringList createFtsIndex(const QiBaseFtsIndex &index) override;
     QStringList dropFtsIndex(QString name) override;
@@ -12047,6 +12057,33 @@ bool QiSql::saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields
         QStringList insertFields = fields;
         insertFields.removeAll(QStringLiteral("id"));
         return insertInto(info, model, insertFields, true, false);
+    }
+
+    // DuckDB: leave out the columns whose values haven't changed (see
+    // updatesOnlyChangedColumns()). This also finds out whether the row exists.
+    if (d->m_statement->updatesOnlyChangedColumns()) {
+        QSqlQuery current = query();
+        current.prepare(QString("SELECT * FROM %1 WHERE id = :id").arg(info->name()));
+        current.bindValue(":id", model->id.get());
+        if (current.exec() && current.next()) {
+            const QSqlRecord row = current.record();
+            QStringList changed;
+            foreach (QString field, fields) {
+                const QVariant now = row.value(field);
+                const QVariant value = info->value(model, field, true);
+                if (field == QLatin1String("id") || now.isNull() != value.isNull()
+                        || now.toString() != value.toString())
+                    changed << field;
+            }
+            current.finish();
+            if (changed.size() <= 1)            // only the id: nothing to write
+                return true;
+            fields = changed;
+        } else {
+            current.finish();
+            QStringList insertFields = fields;  // gone: insert it again
+            return insertInto(info, model, insertFields, false, false);
+        }
     }
 
     // An existing record: update it where it is.
