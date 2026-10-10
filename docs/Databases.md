@@ -71,6 +71,9 @@ truncated. (SQLite and Postgres use `TEXT` for both — no length limit there.)
 - **`save()` never uses `REPLACE INTO`** (since 1.0.1): it inserts new records and updates
   existing ones in place on every backend, so foreign-key cascades and DELETE triggers don't fire
   on an update. `upsert()` matches on a natural key instead.
+- **DuckDB** has no `ON DELETE` actions (`QiFkCascade` / `QiFkSetNull` tables fail to
+  create), and it refuses an UPDATE of a primary or unique column on a row another table
+  references. `save()` sets only the changed columns there, so other edits go through.
 - **JSON is stored as `TEXT`** (a serialized string) on every backend — Qivot serializes
   `QJsonObject`/`QJsonArray` to a string and never queries into it. Native `JSONB`/`JSON` columns
   were tried but reverted: Postgres won't implicitly cast a *bound text parameter* into `JSONB`,

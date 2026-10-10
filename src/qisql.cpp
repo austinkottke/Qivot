@@ -308,6 +308,33 @@ bool QiSql::saveRecord(QiModelMetaInfo* info, QiModel *model, QStringList fields
         return insertInto(info, model, insertFields, true, false);
     }
 
+    // DuckDB: leave out the columns whose values haven't changed (see
+    // updatesOnlyChangedColumns()). This also finds out whether the row exists.
+    if (d->m_statement->updatesOnlyChangedColumns()) {
+        QSqlQuery current = query();
+        current.prepare(QString("SELECT * FROM %1 WHERE id = :id").arg(info->name()));
+        current.bindValue(":id", model->id.get());
+        if (current.exec() && current.next()) {
+            const QSqlRecord row = current.record();
+            QStringList changed;
+            foreach (QString field, fields) {
+                const QVariant now = row.value(field);
+                const QVariant value = info->value(model, field, true);
+                if (field == QLatin1String("id") || now.isNull() != value.isNull()
+                        || now.toString() != value.toString())
+                    changed << field;
+            }
+            current.finish();
+            if (changed.size() <= 1)            // only the id: nothing to write
+                return true;
+            fields = changed;
+        } else {
+            current.finish();
+            QStringList insertFields = fields;  // gone: insert it again
+            return insertInto(info, model, insertFields, false, false);
+        }
+    }
+
     // An existing record: update it where it is.
     QString sql = d->m_statement->updateByKey(info, fields, QStringList() << QStringLiteral("id")).trimmed();
     if (sql.endsWith(QLatin1Char(';')) && !d->m_statement->keepsStatementTerminator()) sql.chop(1);

@@ -40,6 +40,14 @@ public:
 };
 QI_DECLARE_MODEL(SvReview, "sv_review", QI_FIELD(body), QI_FIELD(author));
 
+class SvPlainBook : public QiModel {                 // for DuckDB, which has no ON DELETE actions
+    QI_MODEL
+public:
+    QiField<QString> title;
+    QiForeignKey<SvAuthor> author;                   // a plain foreign key
+};
+QI_DECLARE_MODEL(SvPlainBook, "sv_pbook", QI_FIELD(title), QI_FIELD(author));
+
 class SvSetting : public QiModel {                   // keyed on its own column, no id
     QI_MODEL
 public:
@@ -63,18 +71,25 @@ static int countOf(QiConnection &conn, const QString &sql)
 
 static void dropAll(QiConnection &conn)
 {
-    for (const char *t : { "sv_review", "sv_book", "sv_setting", "sv_author" })
+    for (const char *t : { "sv_review", "sv_book", "sv_pbook", "sv_setting", "sv_author" })
         conn.query().exec(QString("DROP TABLE IF EXISTS %1").arg(t));
 }
 
 static void run(QiConnection &conn, const QString &backend, const Check &check)
 {
-    Q_UNUSED(backend);
     qInfo().noquote() << "--- save ---";
+    // DuckDB refuses ON DELETE CASCADE / SET NULL, so there the children use a
+    // plain foreign key: the update still has to leave them alone.
+    const bool fkActions = backend != "duckdb";
+    const QString books = fkActions ? "sv_book" : "sv_pbook";
     dropAll(conn);
     conn.addModel<SvAuthor>();
-    conn.addModel<SvBook>();
-    conn.addModel<SvReview>();
+    if (fkActions) {
+        conn.addModel<SvBook>();
+        conn.addModel<SvReview>();
+    } else {
+        conn.addModel<SvPlainBook>();
+    }
     conn.addModel<SvSetting>();
     check(conn.createTables(), QString("save: the tables are created %1").arg(conn.lastError().text()));
 
@@ -85,21 +100,29 @@ static void run(QiConnection &conn, const QString &backend, const Check &check)
     const QVariant adaId = ada.id();
 
     for (const char *title : { "Notes", "Engine" }) {
-        SvBook b; b.title = title; b.author = ada.id();
-        check(b.save(), QString("save: a book (%1)").arg(b.lastError().text()));
+        if (fkActions) {
+            SvBook b; b.title = title; b.author = ada.id();
+            check(b.save(), QString("save: a book (%1)").arg(b.lastError().text()));
+        } else {
+            SvPlainBook b; b.title = title; b.author = ada.id();
+            check(b.save(), QString("save: a book (%1)").arg(b.lastError().text()));
+        }
     }
-    SvReview r; r.body = "Visionary"; r.author = ada.id();
-    check(r.save(), QString("save: a review (%1)").arg(r.lastError().text()));
+    if (fkActions) {
+        SvReview r; r.body = "Visionary"; r.author = ada.id();
+        check(r.save(), QString("save: a review (%1)").arg(r.lastError().text()));
+    }
 
     // The bug: updating the parent deleted it and inserted it again.
     ada.name = "Ada Lovelace";
     check(ada.save(), QString("save: the author is updated (%1)").arg(ada.lastError().text()));
     check(ada.id() == adaId, "save: and keeps its id");
-    check(countOf(conn, "SELECT COUNT(*) FROM sv_book") == 2,
-          QString("save: ON DELETE CASCADE children survive the update (%1 of 2 books)")
-              .arg(countOf(conn, "SELECT COUNT(*) FROM sv_book")));
-    check(countOf(conn, QString("SELECT COUNT(*) FROM sv_review WHERE author = %1").arg(adaId.toInt())) == 1,
-          "save: ON DELETE SET NULL children keep their link");
+    check(countOf(conn, "SELECT COUNT(*) FROM " + books) == 2,
+          QString("save: %1 children survive the update (%2 of 2 books)")
+              .arg(fkActions ? "ON DELETE CASCADE" : "referencing").arg(countOf(conn, "SELECT COUNT(*) FROM " + books)));
+    if (fkActions)
+        check(countOf(conn, QString("SELECT COUNT(*) FROM sv_review WHERE author = %1").arg(adaId.toInt())) == 1,
+              "save: ON DELETE SET NULL children keep their link");
     SvAuthor reloaded;
     check(reloaded.load(SvAuthor::col().id == adaId) && reloaded.name.get().toString() == "Ada Lovelace",
           "save: the change is in the database");
@@ -115,7 +138,7 @@ static void run(QiConnection &conn, const QString &backend, const Check &check)
     check(twin.validation().error("email") == "is already taken",
           QString("save: and the refusal comes back on the field (%1)").arg(twin.validation().error("email")));
     check(countOf(conn, "SELECT COUNT(*) FROM sv_author") == 1
-          && countOf(conn, "SELECT COUNT(*) FROM sv_book") == 2,
+          && countOf(conn, "SELECT COUNT(*) FROM " + books) == 2,
           "save: the existing author and their books are untouched");
 
     // An update that clashes fails too.
@@ -144,7 +167,7 @@ static void run(QiConnection &conn, const QString &backend, const Check &check)
     newcomer->email = "hedy@example.com";
     all.append(newcomer);
     check(all.save(), "save: a batch of edited and new records");
-    check(countOf(conn, "SELECT COUNT(*) FROM sv_book") == 2,
+    check(countOf(conn, "SELECT COUNT(*) FROM " + books) == 2,
           "save: a batch update keeps the children too");
     check(countOf(conn, "SELECT COUNT(*) FROM sv_author") == 3 && !newcomer->id->isNull(),
           "save: and inserts the new one with an id");
