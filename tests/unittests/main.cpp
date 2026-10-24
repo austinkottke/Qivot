@@ -8,6 +8,7 @@
 #include "schematests.h"
 #include "validationtests.h"
 #include "livelisttests.h"
+#include "sharedchangetests.h"
 
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
 // A phone app is launched through Qt's platform plugin, which only starts
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
     runner.add<SchemaTests>();
     runner.add<ValidationTests>();
     runner.add<LiveListTests>();
+    runner.add<SharedChangeTests>();
 
     return runner.exec(a.arguments());
 }

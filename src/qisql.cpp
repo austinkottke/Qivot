@@ -244,6 +244,7 @@ bool QiSql::exists(QiModelMetaInfo* info){
         if (q.next())
             res = true;
     }
+    q.finish();                 // release SQLite's read lock
 
     setLastQuery(q);
 

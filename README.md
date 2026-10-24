@@ -1973,15 +1973,34 @@ Task t; t.title = "buy milk"; t.save();     // the ListView bound to `tasks` upd
 ```
 
 How it works: every Qivot write (`save`, `remove`, `update`, batch `QiList::save`)
-notifies its connection which table changed; live models watching that table
-re-run their query, **coalesced** to one refresh per event-loop turn (a burst of
-writes = a single update). It runs on the connection's thread — great for the
-usual GUI-thread app. You can also observe changes directly:
+reports which table changed; live models watching that table re-run their query,
+**coalesced** to one refresh per event-loop turn (a burst of writes = a single
+update).
+
+The report reaches **every connection to the same database**, not only the one
+that wrote. So a save made on a worker thread, through a
+[`QiAsync`](examples/asyncquery) or `QiConnectionPool` connection to the same
+SQLite file (or the same server database), updates the list on the UI thread,
+and is delivered on the UI thread. Writes inside a transaction are reported when
+it commits, and not at all if it rolls back (or, inside a savepoint, if that
+savepoint does).
+
+```c++
+// a background import; the ListView updates as each batch commits
+QiAsync::run([rows](QiConnection &c) {
+    QiTransaction t(c);
+    for (const auto &row : rows) { Task task; task.setConnection(c); /* … */ task.save(); }
+    return t.commit();
+});
+```
+
+You can also observe changes directly. Pass a context object to have the hook
+run on its thread (and dropped when it's destroyed):
 
 ```c++
 int id = connection.addChangeHook([](const QString &table) {
     qDebug() << table << "changed";
-});
+}, this);
 // connection.removeChangeHook(id);
 ```
 
@@ -2036,8 +2055,10 @@ memory (2,000 records by default). `queryCount()` tells you what a change cost.
 Row positions use window functions: SQLite 3.25+, MySQL 8, MariaDB 10.2+,
 PostgreSQL and SQL Server. On older servers, and for queries with a limit, offset,
 `DISTINCT` or `GROUP BY`, each change re-reads the ids instead. That is still one
-column, and still only the differences reach the view. Raw SQL writes aren't
-seen: call `connection.notifyChanged("contact")` or `refresh()` after them.
+column, and still only the differences reach the view. Saves from worker threads
+(`QiAsync`, `QiConnectionPool`) reach it too, on the UI thread, once they commit.
+Raw SQL writes and other processes aren't seen: call
+`connection.notifyChanged("contact")` or `refresh()` after them.
 
 Your own code can watch row-level changes too:
 

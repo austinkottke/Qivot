@@ -387,6 +387,7 @@ int QiSharedQuery::count(){
             res = q.value().toInt();
         }
     }
+    q.data->query.finish();     // release SQLite's read lock (see QiModel::load)
     data->query = q.data->query;
     return res;
 }
@@ -403,6 +404,7 @@ QVariant QiSharedQuery::call(QString func , QStringList fields){
             res = q.value();
         }
     }
+    q.data->query.finish();     // release SQLite's read lock (see QiModel::load)
     data->query = q.data->query;
 
     return res;
@@ -444,6 +446,7 @@ bool QiSharedQuery::get(QiAbstractModel* model){
             res = recordTo(model);
         }
     }
+    data->query.finish();       // release SQLite's read lock (see QiModel::load)
 
     return res;
 }

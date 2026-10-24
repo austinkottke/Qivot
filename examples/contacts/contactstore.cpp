@@ -59,7 +59,7 @@ ContactStore::ContactStore(QObject *parent) : QObject(parent) {
     m_hookId = QiConnection::defaultConnection().addRowChangeHook([this](const QiChange &) {
         if (!m_reportPending && m_events.isEmpty())
             m_queriesBefore = m_model.queryCount();
-    });
+    }, this);
 }
 
 ContactStore::~ContactStore() {

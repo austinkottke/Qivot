@@ -283,17 +283,28 @@ public:
     QiError lastError();
 
     // --- Reactive change notifications --------------------------------------
-    /// Register a callback fired (on the connection's thread) whenever a table
-    /// is changed through Qivot (save / remove / update / batch save).
-    /** @return An id you can pass to removeChangeHook(). Used by QiListModel's
+    /// Register a callback fired whenever a table is changed through Qivot
+    /// (save / remove / update / batch save).
+    /**
+      The hook hears about writes made through **any** connection to the same
+      database, not just this one: a QiAsync worker or a QiConnectionPool
+      connection saving to the same SQLite file (or the same server database)
+      reaches it too. Writes inside a transaction are reported once it commits,
+      and not at all if it rolls back.
+
+      @param context Where the hook runs. With a context, a write made on another
+             thread is delivered on the context's thread (queued), and the hook is
+             dropped once the context is destroyed. Without one, the hook runs on
+             whichever thread made the write.
+      @return An id you can pass to removeChangeHook(). Used by QiListModel's
         live mode; you rarely call it directly. */
-    int addChangeHook(std::function<void(const QString &table)> hook);
+    int addChangeHook(std::function<void(const QString &table)> hook, QObject *context = nullptr);
 
     /// Like addChangeHook(), but told which record changed and how.
     /** A save() or remove() reports the record's id, so a list can update that
         one row; bulk writes report QiChange::Many. Used by QiLiveListModel.
         @return An id you can pass to removeChangeHook(). */
-    int addRowChangeHook(std::function<void(const QiChange &change)> hook);
+    int addRowChangeHook(std::function<void(const QiChange &change)> hook, QObject *context = nullptr);
 
     /// Remove a change hook registered with addChangeHook() or addRowChangeHook().
     void removeChangeHook(int id);
