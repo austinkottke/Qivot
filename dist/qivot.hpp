@@ -1534,6 +1534,9 @@ private:
 #include <QMutex>
 #include <QMutexLocker>
 #include <QSqlDatabase>
+#include <QHash>
+#include <QAtomicInteger>
+#include <QCoreApplication>
 
 /// A pool of database connections — one per thread.
 /**
@@ -1595,11 +1598,37 @@ public:
     }
 
 private:
-    // Unique per (pool instance, thread) so distinct pools never collide.
+    // The connections a thread has been given, one name per pool, for as long
+    // as the thread lives. The name used to be the thread's native id, but ids
+    // are reused once a thread ends (a QThreadPool retires idle threads, and
+    // Android hands the id out again at once): a new thread then found the
+    // finished one's connection under its name, and Qt refuses a connection
+    // from another thread, so its queries failed. When a worker thread ends,
+    // its connections are closed and removed with it.
+    struct ThreadConnections {
+        QHash<const QiConnectionPool *, QString> names;
+        bool mainThread = false;
+        ~ThreadConnections() {
+            if (mainThread)
+                return;     // process exit: Qt's connection registry may be gone already
+            for (auto it = names.cbegin(); it != names.cend(); ++it)
+                QSqlDatabase::removeDatabase(it.value());
+        }
+    };
+
     QString connectionName() const {
-        return QStringLiteral("qivot_pool_%1_%2")
+        static thread_local ThreadConnections thread;
+        auto it = thread.names.constFind(this);
+        if (it != thread.names.constEnd())
+            return it.value();
+        static QAtomicInteger<quint64> next(1);
+        QCoreApplication *app = QCoreApplication::instance();
+        thread.mainThread = app && QThread::currentThread() == app->thread();
+        const QString name = QStringLiteral("qivot_pool_%1_%2")
             .arg(reinterpret_cast<quintptr>(this), 0, 16)
-            .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()), 0, 16);
+            .arg(next.fetchAndAddRelaxed(1));
+        thread.names.insert(this, name);
+        return name;
     }
 
     QString m_driver;
@@ -6406,6 +6435,7 @@ public:
 #define QiABSTRACTQUERY_P_H
 
 #include <QSqlQuery>
+#include <QSqlResult>
 
 /// QiSharedQuery private data
 
@@ -6435,7 +6465,10 @@ public:
     /// tells listeners which record went, rather than "any rows")
     bool notify;
 
-    QSqlQuery query;
+    /// The last statement run. Starts out inert: a default-constructed QSqlQuery
+    /// looks up Qt's default database connection, which on a worker thread
+    /// belongs to another thread (Qt warns, and it isn't safe). exec() replaces it.
+    QSqlQuery query{ static_cast<QSqlResult *>(nullptr) };
 
     QiExpression expression;
 

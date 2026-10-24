@@ -7,6 +7,7 @@
 #include <qiasync.h>
 #include <qilistmodel.h>
 #include <qitransaction.h>
+#include <qiconnectionpool.h>
 #include "sharedchangetests.h"
 
 class SContact : public QiModel {
@@ -222,6 +223,29 @@ void SharedChangeTests::otherDatabasesStayQuiet()
     QCoreApplication::processEvents();
     QCOMPARE(heard, 0);
     g_conn.removeChangeHook(hook);
+}
+
+void SharedChangeTests::poolThreadsComeAndGo()
+{
+    // Threads that start, use the pool and end, one after another, as a
+    // QThreadPool retires idle threads. A new thread often gets a finished
+    // one's native id, and must not be handed that thread's connection.
+    QiConnectionPool pool;
+    pool.configure("QSQLITE", m_dir.filePath("shared.db"));
+    int worked = 0;
+    for (int i = 0; i < 20; i++) {
+        bool ok = false;
+        QThread *t = QThread::create([&pool, &ok] {
+            QiConnection c = pool.connection();
+            ok = c.isOpen() && SContact::objects(c).count() > 0;
+        });
+        t->start();
+        t->wait();
+        delete t;
+        if (ok)
+            worked++;
+    }
+    QCOMPARE(worked, 20);
 }
 
 void SharedChangeTests::cleanupTestCase()

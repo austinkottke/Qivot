@@ -146,20 +146,30 @@ android_run() {
     local pkg; pkg="$(android_pkg unittests)"
     "$adb" install -r "$(android_apk unittests)" >/dev/null
     "$adb" logcat -c
+    local log="$BUILD_DIR/unittests.log" waited=0 started=0 ended="timed out after ${TEST_TIMEOUT}s, still running (hung?)"
+    # Record the test output as it happens. Dumping logcat afterwards loses the
+    # early lines on a long run: its ring buffer fills with emulator chatter.
+    "$adb" logcat -v raw -s QTestLib:I default:D >"$log" 2>/dev/null &
+    local logger=$!
     "$adb" shell am start -n "$pkg/$ACTIVITY" >/dev/null
-    local log="$BUILD_DIR/unittests.log" waited=0 started=0
     while [ "$waited" -lt "$TEST_TIMEOUT" ]; do
         sleep 3; waited=$((waited + 3))
-        "$adb" logcat -d -v raw -s QTestLib:I default:D >"$log" 2>/dev/null || true
-        grep -qE 'All test cases passed|Error found' "$log" && break
+        if grep -qE 'All test cases passed|Error found' "$log"; then ended="finished"; break; fi
         # Died without a verdict (crash before the end)? Give it a moment to start first.
         if "$adb" shell pidof "$pkg" >/dev/null 2>&1; then started=1
-        elif [ "$started" = 1 ]; then break; fi
+        elif [ "$started" = 1 ]; then ended="the app exited without a verdict after ${waited}s (crashed?)"; break; fi
     done
+    kill "$logger" 2>/dev/null || true
     grep -E "$TEST_LINES" "$log" || true
     # The process aborts in Android's render thread as main() returns — after the
     # results are written — so judge by the output, not the exit status.
-    grep -q "All test cases passed" "$log" || fail "Android unit tests did not pass (full log: $log)"
+    if ! grep -q "All test cases passed" "$log"; then
+        printf '\n-- %s; the last test output:\n' "$ended"
+        tail -40 "$log"
+        printf '\n-- Android crash log:\n'
+        "$adb" logcat -d -b crash 2>/dev/null | tail -60 || true
+        fail "Android unit tests did not pass (full log: $log)"
+    fi
 
     # ---- Contacts: must start and stay up with no QML errors ----
     say "Android: Contacts smoke test"
