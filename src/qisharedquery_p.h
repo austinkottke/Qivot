@@ -2,6 +2,7 @@
 #define QiABSTRACTQUERY_P_H
 
 #include <QSqlQuery>
+#include <QSqlResult>
 #include "qiconnection.h"
 #include "qimodel.h"
 #include "qimodelmetainfo.h"
@@ -37,7 +38,10 @@ public:
     /// tells listeners which record went, rather than "any rows")
     bool notify;
 
-    QSqlQuery query;
+    /// The last statement run. Starts out inert: a default-constructed QSqlQuery
+    /// looks up Qt's default database connection, which on a worker thread
+    /// belongs to another thread (Qt warns, and it isn't safe). exec() replaces it.
+    QSqlQuery query{ static_cast<QSqlResult *>(nullptr) };
 
     QiExpression expression;
 

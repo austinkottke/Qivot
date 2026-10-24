@@ -20,6 +20,7 @@ private slots:
     void rollbackSaysNothing();
     void savepointRollbackForgetsItsChanges();
     void otherDatabasesStayQuiet();
+    void poolThreadsComeAndGo();
     void cleanupTestCase();
 private:
     QTemporaryDir m_dir;
