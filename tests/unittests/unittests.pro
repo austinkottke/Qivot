@@ -26,7 +26,8 @@ SOURCES += main.cpp \
     dialecttests.cpp \
     schematests.cpp \
     validationtests.cpp \
-    livelisttests.cpp
+    livelisttests.cpp \
+    sharedchangetests.cpp
 
 HEADERS += \
     testobjectrunner.h \
@@ -35,7 +36,8 @@ HEADERS += \
     dialecttests.h \
     schematests.h \
     validationtests.h \
-    livelisttests.h
+    livelisttests.h \
+    sharedchangetests.h
 
 include (../../src/qivot.pri)
 include(../models/models.pri)

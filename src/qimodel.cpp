@@ -271,7 +271,11 @@ bool QiModel::load(QiWhere where){
     if (!res)
         id->clear();
 
-    m_connection.setLastQuery(query.lastQuery());
+    // Done with the one row: an open SELECT holds SQLite's read lock, which
+    // stops another connection (a worker thread) from committing.
+    QSqlQuery done = query.lastQuery();
+    done.finish();
+    m_connection.setLastQuery(done);
 
     return res;
 }

@@ -169,7 +169,7 @@ void QiListModel::setLive(QiConnection connection, const QStringList &tables,
             return;                    // model gone
         if (m_watch.isEmpty() || m_watch.contains(table))
             scheduleRefresh();
-    });
+    }, this);                          // on this model's thread, whichever thread wrote
 }
 
 void QiListModel::scheduleRefresh() {
@@ -599,7 +599,7 @@ void QiLiveListModel::setQuery(const QiSharedQuery &query, int batchSize) {
     m_hookId = m_conn.addRowChangeHook([self, this](const QiChange &change) {
         if (self)
             onChange(change);
-    });
+    }, this);                          // on this model's thread, whichever thread wrote
 }
 
 void QiLiveListModel::setWatchedTables(const QStringList &tables) {
