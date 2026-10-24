@@ -248,6 +248,26 @@ void SharedChangeTests::poolThreadsComeAndGo()
     QCOMPARE(worked, 20);
 }
 
+void SharedChangeTests::poolFollowsConfigure()
+{
+    // A thread that already has a connection follows configure() to a new file.
+    QiConnectionPool pool;
+    pool.configure("QSQLITE", m_dir.filePath("elsewhere.db"));
+    QString second;
+    QThread *t = QThread::create([&] {
+        QiConnection a = pool.connection();         // this thread's connection, to elsewhere.db
+        (void) SContact::objects(a).count();
+        pool.configure("QSQLITE", m_dir.filePath("shared.db"));
+        QiConnection b = pool.connection();         // now to shared.db, where Dan is
+        if (SContact::objects(b).filter(SContact::col().name == "Dan").count() == 1)
+            second = QStringLiteral("shared");
+    });
+    t->start();
+    t->wait();
+    delete t;
+    QCOMPARE(second, QString("shared"));
+}
+
 void SharedChangeTests::cleanupTestCase()
 {
     QThreadPool::globalInstance()->waitForDone();

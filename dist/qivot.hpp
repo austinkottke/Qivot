@@ -1584,7 +1584,20 @@ public:
             // QSqlDatabase's registry isn't safe to mutate from many threads.
             QMutexLocker lock(&m_mutex);
             if (QSqlDatabase::contains(name)) {
-                db = QSqlDatabase::database(name);
+                db = QSqlDatabase::database(name, false);
+                // configure() may have pointed the pool elsewhere since this
+                // thread opened its connection: follow it.
+                if (db.driverName() != driver) {
+                    db = QSqlDatabase();
+                    QSqlDatabase::removeDatabase(name);
+                    db = QSqlDatabase::addDatabase(driver, name);
+                    db.setDatabaseName(database);
+                } else if (db.databaseName() != database) {
+                    db.close();
+                    db.setDatabaseName(database);
+                }
+                if (!db.isOpen())
+                    db.open();
             } else {
                 db = QSqlDatabase::addDatabase(driver, name);
                 db.setDatabaseName(database);
