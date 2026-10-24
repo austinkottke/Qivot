@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(Qivot
-    VERSION 1.0.3
+    VERSION 1.0.4
     DESCRIPTION "A modern C++17 Qt ORM for SQLite with JSON-over-HTTP"
     LANGUAGES CXX)
 
