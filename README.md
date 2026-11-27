@@ -411,9 +411,10 @@ vcpkg install qivot --overlay-ports=path/to/Qivot/vcpkg/ports
 conan create path/to/Qivot/conan --build=missing
 ```
 
-The vcpkg port fetches a release tag, so it starts working with the first release
-after 1.0.4. After tagging one, `tools/update-package-recipes.sh <version>` fills
-in its version and checksum.
+The vcpkg port builds from a release tag (1.0.5 or later). After tagging a release,
+`tools/update-package-recipes.sh <version>` fills in its version and checksum.
+The ConanCenter recipe lives in `conan/center/`. The steps for submitting Qivot to
+both registries are in [docs/registry-submission.md](docs/registry-submission.md).
 
 ## Guide
 

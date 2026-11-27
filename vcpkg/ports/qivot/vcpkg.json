@@ -1,6 +1,6 @@
 {
   "name": "qivot",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Qt ORM: declare models in C++, query and migrate SQLite, PostgreSQL, MySQL, SQL Server and DuckDB, and map JSON (optionally over HTTP) onto them.",
   "homepage": "https://github.com/austinkottke/Qivot",
   "license": "MIT",

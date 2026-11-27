@@ -1,3 +1,56 @@
+Release 1.0.6
+=============
+
+ * QiCborMapper: models to and from CBOR (RFC 8949), the binary twin of
+   QiJsonMapper. Raw bytes stay raw, date-times and 64-bit integers keep their
+   types, and decoding streams straight into models. Roughly 20-35% smaller and
+   twice as fast to encode as JSON; built into Qt Core, so no new dependency.
+ * Packaging: a working vcpkg port (vcpkg/ports/qivot) and Conan 2 recipe
+   (conan/), both giving find_package(Qivot) / Qivot::qivot. The CMake install
+   now ships every public header (qikeyset.h, qiconnectionpool.h, qiasync.h)
+   and passes -Wno-invalid-offsetof on to consumers.
+ * Release workflow refuses a tag that disagrees with CMakeLists.txt.
+
+Release 1.0.5
+=============
+
+ * Conan dependency files. The library reports itself as 1.0.4 (the version in
+   CMakeLists.txt was not bumped).
+
+Release 1.0.4
+=============
+
+ * Connection pool: threads that already hold a connection follow configure()
+   (fixes iOS).
+
+Release 1.0.3
+=============
+
+ * Connection pool: one connection per thread lifetime, removed when the thread
+   ends (fixes Android). Queries start inert, with no cross-thread lookup of the
+   default connection.
+ * Change notifications reach every connection to the same database, on the
+   hook's thread, after commit. One-row reads release SQLite's read lock.
+
+Release 1.0.2
+=============
+
+ * DuckDB: save() writes only the changed columns.
+
+Release 1.0.1
+=============
+
+ * save() never deletes rows: new records are INSERTed and existing ones
+   UPDATEd (no REPLACE). Duplicate-key errors reach the field on SQL Server.
+
+Release 1.0.0
+=============
+
+ * First release: single header (qivot.hpp) and full sources on every v* tag.
+
+Each GitHub release also lists every commit since the previous tag.
+
+
 Release 0.2
 ===========
 

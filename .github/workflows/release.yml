@@ -47,6 +47,16 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
 
+      # find_package(Qivot <version>) and the Conan recipe both read the version
+      # from CMakeLists.txt, so a tag that disagrees with it ships a wrong number.
+      - name: Tag matches CMakeLists.txt
+        run: |
+          CMAKE_V=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9.]+).*/\1/p' CMakeLists.txt | head -1)
+          if [ "$CMAKE_V" != "${{ steps.v.outputs.version }}" ]; then
+            echo "::error::CMakeLists.txt says $CMAKE_V but the release is ${{ steps.v.outputs.version }}. Bump project(VERSION) first."
+            exit 1
+          fi
+
       # Regenerates the single header from src/, compiles and runs a smoke test
       # against it, then builds the packages.
       - name: Package
