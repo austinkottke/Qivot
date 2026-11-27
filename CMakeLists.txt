@@ -64,7 +64,9 @@ set(QIVOT_PUBLIC_HEADERS
     src/qiwhere.h src/qisql.h src/qifield.h src/qiforeignkey.h src/qisharedquery.h
     src/qiquery.h src/qiqueryrules.h src/qiexpression.h src/qilist.h src/qiabstractmodel.h
     src/qisharedlist.h src/qiindex.h src/qistream.h src/qilistwriter.h src/qijoin.h
-    src/qifieldref.h src/qicolumns.h src/qirelation.h src/qiftsindex.h src/qitransaction.h src/qigadget.h src/qilistmodel.h
+    src/qifieldref.h src/qicolumns.h src/qirelation.h src/qikeyset.h src/qiconnectionpool.h
+    src/qiftsindex.h src/qitransaction.h src/qigadget.h src/qilistmodel.h
+    src/qiasync.h  # header-only and opt-in: a program that includes it links Qt Concurrent itself
     src/qijsonmapper.h src/qimigrator.h src/qirecorder.h src/qirule.h src/qivalidation.h src/qischema.h src/qivot.h)
 
 if(QIVOT_WITH_NETWORK)
@@ -101,10 +103,11 @@ if(QIVOT_WITH_QML)
 endif()
 
 # QiModel uses offsetof on a polymorphic type on purpose (see the reflection
-# design); silence the warning to match the qmake build.
-if(NOT MSVC)
-    target_compile_options(qivot PRIVATE -Wno-invalid-offsetof)
-endif()
+# design); silence the warning to match the qmake build. It is PUBLIC because
+# QI_DECLARE_MODEL expands in the program's own files; the generator expression
+# is evaluated against the compiler of whoever links Qivot::qivot.
+target_compile_options(qivot PUBLIC
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wno-invalid-offsetof>)
 
 set_target_properties(qivot PROPERTIES
     VERSION ${PROJECT_VERSION}

@@ -397,8 +397,23 @@ target_link_libraries(app PRIVATE Qivot::qivot)
 ```
 
 Or use one of the ways under [Install](#install): the sources, the static library,
-or the single header. (The recipes in [`vcpkg/`](vcpkg) and [`conan/`](conan) are
-drafts for a future submission and don't work yet.)
+or the single header.
+
+The repository also carries a **vcpkg port** and a **Conan recipe** you can use
+before Qivot is in either registry. Both build the static library and give you the
+same `find_package(Qivot)` / `Qivot::qivot` as above.
+
+```sh
+# vcpkg, as an overlay port (features: network, sqlite — sqlite is on by default)
+vcpkg install qivot --overlay-ports=path/to/Qivot/vcpkg/ports
+
+# Conan 2, from a checkout: builds it, runs conan/test_package, and caches qivot/<version>
+conan create path/to/Qivot/conan --build=missing
+```
+
+The vcpkg port fetches a release tag, so it starts working with the first release
+after 1.0.4. After tagging one, `tools/update-package-recipes.sh <version>` fills
+in its version and checksum.
 
 ## Guide
 

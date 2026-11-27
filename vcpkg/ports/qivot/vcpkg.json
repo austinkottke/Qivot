@@ -1,26 +1,52 @@
 {
   "name": "qivot",
-  "version": "1.0.0",
-  "description": "Qt ORM with JSON-over-HTTP — declare models in C++, query them, and pull REST APIs straight into SQLite",
+  "version": "1.0.5",
+  "description": "Qt ORM: declare models in C++, query and migrate SQLite, PostgreSQL, MySQL, SQL Server and DuckDB, and map JSON (optionally over HTTP) onto them.",
   "homepage": "https://github.com/austinkottke/Qivot",
-  "documentation": "https://austinkottke.github.io/Qivot/",
   "license": "MIT",
-  "maintainers": [
-    "Austin Kottke <austinkottke@gmail.com>"
-  ],
+  "supports": "!uwp",
   "dependencies": [
     {
-      "name": "qt",
-      "version>=": "5.15"
+      "name": "qtbase",
+      "default-features": false,
+      "features": [
+        "sql"
+      ]
+    },
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
     }
+  ],
+  "default-features": [
+    "sqlite"
   ],
   "features": {
     "network": {
-      "description": "Enable JSON-over-HTTP loader (requires QtNetwork)",
+      "description": "QiJsonRequest: load JSON over HTTP on a worker thread (Qt Network)",
       "dependencies": [
         {
-          "name": "qt",
-          "features": [ "network" ]
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "network"
+          ]
+        }
+      ]
+    },
+    "sqlite": {
+      "description": "Qt's SQLite driver (QSQLITE), so the default database works out of the box",
+      "dependencies": [
+        {
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "sql-sqlite"
+          ]
         }
       ]
     }
