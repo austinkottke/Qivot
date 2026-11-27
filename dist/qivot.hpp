@@ -1038,14 +1038,32 @@ public:
      */
     template <typename T>
     static T deserialize(const QByteArray &cbor, QCborParserError *error = nullptr) {
-        return map<T>(decode(cbor, error).toMap());
+        T model;
+        decodeInto(&model, cbor, error);
+        return model;
     }
 
     /// Deserialize an encoded CBOR *array* of maps into a QiList<T>.
+    /**
+      Elements that are not maps are skipped. If the bytes are not valid CBOR the
+      list is empty and `error` (when given) says why.
+     */
     template <typename T>
     static QiList<T> deserializeList(const QByteArray &cbor, QCborParserError *error = nullptr) {
-        return map<T>(decode(cbor, error).toArray());
+        return QiList<T>( decodeList(qiMetaInfo<T>(), cbor, error) );
     }
+
+    /// Populate an existing model from an encoded CBOR map (see deserialize()).
+    /**
+      Reads the bytes as a stream, straight into the model, without building a
+      QCborMap first. @return TRUE if at least one field was assigned.
+     */
+    static bool decodeInto(QiAbstractModel *model, const QByteArray &cbor,
+                           QCborParserError *error = nullptr);
+
+    /// Decode an encoded CBOR array of maps into models of the given meta type.
+    static QiSharedList decodeList(QiModelMetaInfo *metaInfo, const QByteArray &cbor,
+                                   QCborParserError *error = nullptr);
 
     /// Serialize a model to an encoded CBOR map.
     static QByteArray serialize(const QiAbstractModel *model);
@@ -1053,8 +1071,6 @@ public:
     /// Serialize a list of models to an encoded CBOR array of maps.
     static QByteArray serialize(const QiSharedList &list);
 
-private:
-    static QCborValue decode(const QByteArray &cbor, QCborParserError *error);
 };
 
 #endif // QiCBORMAPPER_H
@@ -6736,6 +6752,8 @@ QVariant QiBaseField::operator() () const {
 // ---- src/qicbormapper.cpp ----------------------------------------
 #include <QDate>
 #include <QDateTime>
+#include <QHash>
+#include <QCborStreamReader>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -6820,27 +6838,33 @@ QVariant QiCborMapper::cborToVariant(const QCborValue &value, int targetType) {
     if (value.isNull() || value.isUndefined() || value.isInvalid())
         return QVariant();
 
-    const QVariant v = value.toVariant();
-
-    // Coerce to the field's declared type, as QiJsonMapper does, so the model
-    // holds what it was designed for and saves cleanly to SQL.
+    // The common case, a value already of the field's type, is read straight
+    // from the CBOR value; anything else goes through QVariant's conversions.
     switch (targetType) {
     case QMetaType::Int:
-        return v.toInt();
+        if (value.isInteger()) return int(value.toInteger());
+        return value.toVariant().toInt();
     case QMetaType::UInt:
-        return v.toUInt();
+        if (value.isInteger()) return uint(value.toInteger());
+        return value.toVariant().toUInt();
     case QMetaType::LongLong:
-        return v.toLongLong();
+        if (value.isInteger()) return qlonglong(value.toInteger());
+        return value.toVariant().toLongLong();
     case QMetaType::ULongLong:
-        return v.toULongLong();
+        if (value.isInteger()) return qulonglong(value.toInteger());
+        return value.toVariant().toULongLong();
     case QMetaType::Double:
-        return v.toDouble();
+        if (value.isDouble() || value.isInteger()) return value.toDouble(double(value.toInteger()));
+        return value.toVariant().toDouble();
     case QMetaType::Float:
-        return v.toFloat();
+        if (value.isDouble() || value.isInteger()) return float(value.toDouble(double(value.toInteger())));
+        return value.toVariant().toFloat();
     case QMetaType::Bool:
-        return v.toBool();
+        if (value.isBool()) return value.toBool();
+        return value.toVariant().toBool();
     case QMetaType::QString:
-        return v.toString();
+        if (value.isString()) return value.toString();
+        return value.toVariant().toString();
     case QMetaType::QDateTime:
         if (value.isDateTime())
             return value.toDateTime();
@@ -6882,12 +6906,41 @@ QVariant QiCborMapper::cborToVariant(const QCborValue &value, int targetType) {
     case QMetaType::QVariantList:
         return value.isArray() ? QVariant(value.toArray().toVariantList()) : QVariant();
     case QMetaType::QStringList:
-        return value.isArray() ? QVariant(v.toStringList()) : QVariant();
+        return value.isArray() ? QVariant(value.toVariant().toStringList()) : QVariant();
     default:
         break;
     }
 
-    return v;
+    return value.toVariant();
+}
+
+/// Field name -> index, built once per call so each CBOR map is walked a single
+/// time. (QCborMap looks keys up by scanning, so asking it for every field in
+/// turn costs fields x keys string comparisons per row.)
+static QHash<QString, int> qiFieldIndex(const QiModelMetaInfo *metaInfo) {
+    QHash<QString, int> index;
+    const int n = metaInfo->size();
+    index.reserve(n);
+    for (int i = 0 ; i < n ; i++)
+        index.insert(metaInfo->at(i)->name, i);
+    return index;
+}
+
+static bool qiFromCbor(QiModelMetaInfo *metaInfo, const QHash<QString, int> &index,
+                       QiAbstractModel *model, const QCborMap &map) {
+    bool assigned = false;
+    for (auto it = map.constBegin() ; it != map.constEnd() ; ++it) {
+        const QCborValue key = it.key();
+        if (!key.isString())
+            continue;
+        const auto found = index.constFind(key.toString());
+        if (found == index.constEnd())
+            continue;                                   // not a declared field: ignored
+        const int i = found.value();
+        metaInfo->setValue(model, i, QiCborMapper::cborToVariant(it.value(), metaInfo->at(i)->type));
+        assigned = true;
+    }
+    return assigned;
 }
 
 bool QiCborMapper::fromCbor(QiAbstractModel *model, const QCborMap &map) {
@@ -6898,20 +6951,7 @@ bool QiCborMapper::fromCbor(QiAbstractModel *model, const QCborMap &map) {
     if (!metaInfo)
         return false;
 
-    bool assigned = false;
-    const int n = metaInfo->size();
-
-    for (int i = 0 ; i < n ; i++) {
-        const QiModelMetaInfoField *field = metaInfo->at(i);
-        if (!map.contains(field->name))
-            continue;
-
-        QVariant value = cborToVariant(map.value(field->name), field->type);
-        metaInfo->setValue(model, field->name, value);
-        assigned = true;
-    }
-
-    return assigned;
+    return qiFromCbor(metaInfo, qiFieldIndex(metaInfo), model, map);
 }
 
 QiAbstractModel *QiCborMapper::fromCbor(QiModelMetaInfo *metaInfo, const QCborMap &map) {
@@ -6928,12 +6968,13 @@ QiSharedList QiCborMapper::fromCbor(QiModelMetaInfo *metaInfo, const QCborArray 
     if (!metaInfo)
         return list;
 
+    const QHash<QString, int> index = qiFieldIndex(metaInfo);
     for (const QCborValue &value : array) {
         if (!value.isMap())
             continue;
-        QiAbstractModel *model = fromCbor(metaInfo, value.toMap());
-        if (model)
-            list.append(model);
+        QiAbstractModel *model = metaInfo->create();
+        qiFromCbor(metaInfo, index, model, value.toMap());
+        list.append(model);
     }
 
     return list;
@@ -6971,12 +7012,170 @@ QByteArray QiCborMapper::serialize(const QiSharedList &list) {
     return QCborValue(array).toCbor();
 }
 
-QCborValue QiCborMapper::decode(const QByteArray &cbor, QCborParserError *error) {
-    QCborParserError local;
-    QCborValue value = QCborValue::fromCbor(cbor, &local);
+// --- streaming decode: bytes -> models without an intermediate QCborValue tree.
+// Qt's tree parser (QCborValue::fromCbor) is several times slower than reading
+// the same bytes with QCborStreamReader, so the byte-level calls stream.
+
+static QString qiReadString(QCborStreamReader &reader) {
+    QString out;
+    auto chunk = reader.readString();
+    while (chunk.status == QCborStreamReader::Ok) {
+        out += chunk.data;
+        chunk = reader.readString();
+    }
+    return out;
+}
+
+static QByteArray qiReadByteArray(QCborStreamReader &reader) {
+    QByteArray out;
+    auto chunk = reader.readByteArray();
+    while (chunk.status == QCborStreamReader::Ok) {
+        out += chunk.data;
+        chunk = reader.readByteArray();
+    }
+    return out;
+}
+
+/// Reads the value at the reader's position as a field of `targetType`.
+/**
+  Scalars are read straight off the stream. Text and bytes go directly into a
+  field of the same type; only when they need converting (an ISO string into a
+  QDateTime, say) are they wrapped in a QCborValue, as are tags and containers.
+ */
+static QVariant qiStreamValue(QCborStreamReader &reader, int targetType) {
+    QCborValue value;
+    switch (reader.type()) {
+    case QCborStreamReader::UnsignedInteger:
+    case QCborStreamReader::NegativeInteger:
+        value = QCborValue(reader.toInteger());
+        reader.next();
+        break;
+    case QCborStreamReader::Float16:
+    case QCborStreamReader::Float:
+    case QCborStreamReader::Double:
+        value = QCborValue(reader.isDouble() ? reader.toDouble()
+                           : reader.isFloat() ? double(reader.toFloat())
+                           : double(reader.toFloat16()));
+        reader.next();
+        break;
+    case QCborStreamReader::SimpleType:
+        if (reader.isBool()) {
+            value = QCborValue(reader.toBool());
+            reader.next();
+        } else if (reader.isNull() || reader.isUndefined()) {
+            reader.next();
+            return QVariant();
+        } else {
+            value = QCborValue::fromCbor(reader);
+        }
+        break;
+    case QCborStreamReader::String: {
+        const QString text = qiReadString(reader);
+        if (targetType == QMetaType::QString)
+            return text;
+        value = QCborValue(text);
+        break;
+    }
+    case QCborStreamReader::ByteArray: {
+        const QByteArray bytes = qiReadByteArray(reader);
+        if (targetType == QMetaType::QByteArray)
+            return bytes;
+        value = QCborValue(bytes);
+        break;
+    }
+    default:                                       // tags, arrays, maps
+        value = QCborValue::fromCbor(reader);
+        break;
+    }
+    return QiCborMapper::cborToVariant(value, targetType);
+}
+
+/// Reads one map at the reader's position into `model`. The reader must be on a map.
+static bool qiStreamMap(QCborStreamReader &reader, QiModelMetaInfo *metaInfo,
+                        const QHash<QString, int> &index, QiAbstractModel *model) {
+    bool assigned = false;
+    reader.enterContainer();
+    while (reader.lastError() == QCborError::NoError && reader.hasNext()) {
+        if (!reader.isString()) {                  // a non-text key: skip key and value
+            reader.next();
+            reader.next();
+            continue;
+        }
+        const auto found = index.constFind(qiReadString(reader));
+        if (found == index.constEnd()) {
+            reader.next();                         // not a declared field: skip its value
+            continue;
+        }
+        const int i = found.value();
+        metaInfo->setValue(model, i, qiStreamValue(reader, metaInfo->at(i)->type));
+        assigned = true;
+    }
+    if (reader.lastError() == QCborError::NoError)
+        reader.leaveContainer();
+    return assigned;
+}
+
+static void qiReportError(QCborStreamReader &reader, QCborParserError *error) {   // lastError() isn't const on Qt 5
+    if (!error)
+        return;
+    error->error = reader.lastError();
+    error->offset = reader.currentOffset();
+}
+
+bool QiCborMapper::decodeInto(QiAbstractModel *model, const QByteArray &cbor, QCborParserError *error) {
     if (error)
-        *error = local;
-    return value;
+        *error = QCborParserError();
+    if (!model || !model->metaInfo())
+        return false;
+
+    QiModelMetaInfo *metaInfo = model->metaInfo();
+    QCborStreamReader reader(cbor);
+    bool assigned = false;
+    if (reader.isMap())
+        assigned = qiStreamMap(reader, metaInfo, qiFieldIndex(metaInfo), model);
+    else if (reader.lastError() == QCborError::NoError && reader.isValid())
+        reader.next();                             // valid CBOR but not a map: nothing to read
+
+    if (reader.lastError() != QCborError::NoError) {
+        qiReportError(reader, error);
+        return false;
+    }
+    return assigned;
+}
+
+QiSharedList QiCborMapper::decodeList(QiModelMetaInfo *metaInfo, const QByteArray &cbor,
+                                      QCborParserError *error) {
+    if (error)
+        *error = QCborParserError();
+    QiSharedList list;
+    if (!metaInfo)
+        return list;
+
+    QCborStreamReader reader(cbor);
+    if (!reader.isArray()) {
+        if (reader.lastError() != QCborError::NoError || !reader.isValid())
+            qiReportError(reader, error);
+        return list;                               // not an array: empty, like QiJsonMapper
+    }
+
+    const QHash<QString, int> index = qiFieldIndex(metaInfo);
+    reader.enterContainer();
+    while (reader.lastError() == QCborError::NoError && reader.hasNext()) {
+        if (!reader.isMap()) {
+            reader.next();                         // not a map: skipped
+            continue;
+        }
+        QiAbstractModel *model = metaInfo->create();
+        qiStreamMap(reader, metaInfo, index, model);
+        list.append(model);
+    }
+
+    if (reader.lastError() != QCborError::NoError) {
+        qiReportError(reader, error);
+        return QiSharedList();                     // bad bytes: nothing half-read
+    }
+    reader.leaveContainer();
+    return list;
 }
 
 // ---- src/qiclause.cpp --------------------------------------------

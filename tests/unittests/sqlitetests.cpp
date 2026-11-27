@@ -1739,6 +1739,17 @@ void SqliteTests::cborMapper() {
     AllType bad = QiCborMapper::deserialize<AllType>(QByteArray("\xff\x00 not cbor", 11), &err);
     QVERIFY(err.error != QCborError::NoError);
     QVERIFY(!bad.string->isValid() || bad.string->toString().isEmpty());
+
+    // A list cut off halfway is an error, and nothing half-read is returned.
+    QCborParserError cut;
+    QiList<User> partial = QiCborMapper::deserializeList<User>(listBytes.left(listBytes.size() / 2), &cut);
+    QVERIFY(cut.error != QCborError::NoError);
+    QVERIFY(partial.size() == 0);
+
+    // The stream reader and the QCborMap path agree.
+    QiList<User> viaMap = QiCborMapper::map<User>(QCborValue::fromCbor(listBytes).toArray());
+    QVERIFY(viaMap.size() == 2);
+    QVERIFY(viaMap.at(1)->name->toString() == "B");
 }
 
 void SqliteTests::reactive() {

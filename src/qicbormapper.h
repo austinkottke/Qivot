@@ -94,14 +94,32 @@ public:
      */
     template <typename T>
     static T deserialize(const QByteArray &cbor, QCborParserError *error = nullptr) {
-        return map<T>(decode(cbor, error).toMap());
+        T model;
+        decodeInto(&model, cbor, error);
+        return model;
     }
 
     /// Deserialize an encoded CBOR *array* of maps into a QiList<T>.
+    /**
+      Elements that are not maps are skipped. If the bytes are not valid CBOR the
+      list is empty and `error` (when given) says why.
+     */
     template <typename T>
     static QiList<T> deserializeList(const QByteArray &cbor, QCborParserError *error = nullptr) {
-        return map<T>(decode(cbor, error).toArray());
+        return QiList<T>( decodeList(qiMetaInfo<T>(), cbor, error) );
     }
+
+    /// Populate an existing model from an encoded CBOR map (see deserialize()).
+    /**
+      Reads the bytes as a stream, straight into the model, without building a
+      QCborMap first. @return TRUE if at least one field was assigned.
+     */
+    static bool decodeInto(QiAbstractModel *model, const QByteArray &cbor,
+                           QCborParserError *error = nullptr);
+
+    /// Decode an encoded CBOR array of maps into models of the given meta type.
+    static QiSharedList decodeList(QiModelMetaInfo *metaInfo, const QByteArray &cbor,
+                                   QCborParserError *error = nullptr);
 
     /// Serialize a model to an encoded CBOR map.
     static QByteArray serialize(const QiAbstractModel *model);
@@ -109,8 +127,6 @@ public:
     /// Serialize a list of models to an encoded CBOR array of maps.
     static QByteArray serialize(const QiSharedList &list);
 
-private:
-    static QCborValue decode(const QByteArray &cbor, QCborParserError *error);
 };
 
 #endif // QiCBORMAPPER_H
