@@ -50,6 +50,7 @@ set(QIVOT_SOURCES
     src/qistream.cpp
     src/qilistwriter.cpp
     src/qijsonmapper.cpp
+    src/qicbormapper.cpp
     src/qimigrator.cpp
     src/qirecorder.cpp
     src/qivalidation.cpp
@@ -67,7 +68,7 @@ set(QIVOT_PUBLIC_HEADERS
     src/qifieldref.h src/qicolumns.h src/qirelation.h src/qikeyset.h src/qiconnectionpool.h
     src/qiftsindex.h src/qitransaction.h src/qigadget.h src/qilistmodel.h
     src/qiasync.h  # header-only and opt-in: a program that includes it links Qt Concurrent itself
-    src/qijsonmapper.h src/qimigrator.h src/qirecorder.h src/qirule.h src/qivalidation.h src/qischema.h src/qivot.h)
+    src/qijsonmapper.h src/qicbormapper.h src/qimigrator.h src/qirecorder.h src/qirule.h src/qivalidation.h src/qischema.h src/qivot.h)
 
 if(QIVOT_WITH_NETWORK)
     list(APPEND QIVOT_SOURCES src/qijsonrequest.cpp)

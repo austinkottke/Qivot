@@ -459,6 +459,7 @@ thread (with a tiny local server so it runs offline).
 
 **JSON, HTTP & QML** ·
 [JSON mapping](#json-mapping) ·
+[CBOR mapping](#cbor-mapping) ·
 [HTTP import](#loading-json-over-http-on-a-worker-thread) ·
 [Expose to QML](#exposing-models-to-qml)
 
@@ -1791,6 +1792,49 @@ article.load(Article::col().remote_id == 42);             // full row from the D
 QJsonObject patch = QJsonDocument::fromJson(R"({"title":"Edited"})").object();
 QiJsonMapper::fromJson(&article, patch);                  // only `title` changes
 article.save();                                           // published_at etc. preserved
+```
+
+### CBOR mapping
+
+`QiCborMapper` is the binary twin of `QiJsonMapper`, with the same calls. CBOR
+(RFC 8949) has the same shape as JSON, but it's binary, and it's built into Qt
+Core, so there's nothing extra to install or link. Use it for caches, files and
+messages between your own programs, where nobody needs to read the bytes.
+
+```c++
+#include <qicbormapper.h>   // (also pulled in by <qivot.h>)
+
+QByteArray bytes = QiCborMapper::serialize(&user);               // object -> CBOR
+User       copy  = QiCborMapper::deserialize<User>(bytes);       // CBOR -> object
+
+QByteArray many  = QiCborMapper::serialize(User::objects().all());
+QiList<User> users = QiCborMapper::deserializeList<User>(many);  // a CBOR array
+
+QCborMap map = QiCborMapper::toCbor(&user);                      // object -> QCborMap
+User     u   = QiCborMapper::map<User>(map);                     // object <- QCborMap
+```
+
+What it keeps that JSON can't:
+
+| Field type | JSON | CBOR |
+|---|---|---|
+| `QByteArray` | base64 text (a third bigger) | raw bytes |
+| `QDateTime` | ISO text | a CBOR date-time (tag 0) |
+| `qint64` | a double on Qt 5 (exact only to 2^53) | an exact 64-bit integer |
+| `QStringList` | text | an array |
+| `QJsonObject`, `QJsonArray`, `QVariantMap`, `QVariantList` | nested JSON | nested CBOR |
+
+`QUrl` and `QUuid` use their CBOR tags; `QDate`, `QTime` and enums are written as
+ISO text and integers, as in JSON. Reading is as forgiving as JSON mapping: extra
+keys are ignored, missing keys leave the field alone, CBOR null clears it, and
+JSON-style values (an ISO string for a date, base64 for bytes) are converted to the
+field's type. Bad bytes give you a default model, and the error if you ask for it:
+
+```c++
+QCborParserError err;
+User u = QiCborMapper::deserialize<User>(bytes, &err);
+if (err.error != QCborError::NoError)
+    qWarning() << err.errorString();
 ```
 
 ### Loading JSON over HTTP on a worker thread

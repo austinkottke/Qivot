@@ -152,6 +152,8 @@ private Q_SLOTS:
 
     /// Test complex/nested JSON serialization into structured model fields
     void jsonComplex();
+    /// Test CBOR <-> model mapping (QiCborMapper)
+    void cborMapper();
 
     /// Test reactive change notifications (QiListModel live auto-refresh)
     void reactive();

@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QDir>
 #include <qijsonmapper.h>
+#include <qicbormapper.h>
 #include <qitransaction.h>
 #include <qifieldref.h>
 #include <qirelation.h>
@@ -1636,6 +1637,108 @@ void SqliteTests::jsonComplex() {
     QVERIFY(reparsed.value("meta").toObject().value("author").toString() == "Ada");
     QVERIFY(reparsed.value("meta").toObject().value("nested").toObject().value("deep").toBool());
     QVERIFY(reparsed.value("tags").toArray().size() == 3);
+}
+
+void SqliteTests::cborMapper() {
+    // 1) Every scalar type round-trips, and keeps its native CBOR type.
+    const QByteArray blob("\x00\x01\x02\xff binary", 11);
+    const QDateTime when = QDateTime::fromString("2026-03-04T05:06:07Z", Qt::ISODate);
+    AllType a;
+    a.string = "hello";
+    a.integer = 42;
+    a.d = 2.5;
+    a.real = -0.125;
+    a.lastModifiedTime = when;
+    a.data = blob;
+    a.b = true;
+    a.sl = QStringList{ "x", "y", "z" };
+
+    const QByteArray bytes = QiCborMapper::serialize(&a);
+    const QCborMap raw = QCborValue::fromCbor(bytes).toMap();
+    QVERIFY(raw.value(QStringLiteral("string")).isString());
+    QVERIFY(raw.value(QStringLiteral("integer")).isInteger());
+    QVERIFY(raw.value(QStringLiteral("d")).isDouble());
+    QVERIFY(raw.value(QStringLiteral("lastModifiedTime")).isDateTime());   // tag 0, not a plain string
+    QVERIFY(raw.value(QStringLiteral("data")).isByteArray());              // raw bytes, not base64
+    QVERIFY(raw.value(QStringLiteral("data")).toByteArray() == blob);
+    QVERIFY(raw.value(QStringLiteral("b")).isBool());
+    QVERIFY(raw.value(QStringLiteral("sl")).isArray());                    // a list, not "x,y,z"
+    QVERIFY(raw.value(QStringLiteral("id")).isNull());                     // unsaved: no id yet
+
+    // CBOR is smaller than the same model as compact JSON.
+    QVERIFY(bytes.size() < QiJsonMapper::serialize(&a, QJsonDocument::Compact).size());
+
+    AllType back = QiCborMapper::deserialize<AllType>(bytes);
+    QVERIFY(back.string->toString() == "hello");
+    QVERIFY(back.integer->toInt() == 42);
+    QVERIFY(qAbs(back.d->toDouble() - 2.5) < 1e-12);
+    QVERIFY(qAbs(back.real->toDouble() + 0.125) < 1e-12);
+    QVERIFY(back.lastModifiedTime->toDateTime() == when);
+    QVERIFY(back.data->toByteArray() == blob);
+    QVERIFY(back.b->toBool());
+    QVERIFY(back.sl->toStringList() == (QStringList{ "x", "y", "z" }));
+
+    // 2) An enum field is written as its integer and reads back.
+    Ticket t; t.subject = "cbor"; t.priority = PrHigh;
+    const QCborMap tmap = QiCborMapper::toCbor(&t);
+    QVERIFY(tmap.value(QStringLiteral("priority")).isInteger());
+    QVERIFY(tmap.value(QStringLiteral("priority")).toInteger() == PrHigh);
+    Ticket tback = QiCborMapper::map<Ticket>(tmap);
+    QVERIFY(tback.priority->toInt() == PrHigh);
+
+    // 3) Nested JSON fields are embedded as nested CBOR, not stringified.
+    Doc d;
+    d.docName = "nested";
+    d.meta = QJsonObject{ { "author", "Ada" }, { "inner", QJsonObject{ { "deep", true } } } };
+    d.tags = QJsonArray{ "a", "b" };
+    const QCborMap dmap = QiCborMapper::toCbor(&d);
+    QVERIFY(dmap.value(QStringLiteral("meta")).isMap());
+    QVERIFY(dmap.value(QStringLiteral("tags")).isArray());
+    Doc dback = QiCborMapper::map<Doc>(dmap);
+    QVERIFY(dback.meta->toJsonObject().value("inner").toObject().value("deep").toBool());
+    QVERIFY(dback.tags->toJsonArray().size() == 2);
+
+    // 4) A list round-trips and can then be persisted.
+    QiSharedList pair;                             // owns its models
+    User *u1 = new User; u1->userId = "cborA"; u1->name = "A"; u1->passwd = "12345678";
+    User *u2 = new User; u2->userId = "cborB"; u2->name = "B"; u2->passwd = "12345678";
+    pair.append(u1);
+    pair.append(u2);
+    const QByteArray listBytes = QiCborMapper::serialize(pair);
+    QiList<User> users = QiCborMapper::deserializeList<User>(listBytes);
+    QVERIFY(users.size() == 2);
+    QVERIFY(users.save());
+    User loaded;
+    QVERIFY(loaded.load(QiWhere("userId") == "cborB"));
+    QVERIFY(loaded.name->toString() == "B");
+
+    // 5) Reading is forgiving: extra keys ignored, missing keys untouched,
+    //    and JSON-style text (ISO date, base64 bytes) is coerced to the field type.
+    QCborMap loose;
+    loose.insert(QStringLiteral("string"), QStringLiteral("loose"));
+    loose.insert(QStringLiteral("lastModifiedTime"), QStringLiteral("2020-01-02T03:04:05"));
+    loose.insert(QStringLiteral("data"), QString::fromLatin1(blob.toBase64()));
+    loose.insert(QStringLiteral("notAField"), 1);
+    AllType l;
+    l.integer = 7;                                  // not in the map: left alone
+    QVERIFY(QiCborMapper::fromCbor(&l, loose));
+    QVERIFY(l.string->toString() == "loose");
+    QVERIFY(l.lastModifiedTime->toDateTime()
+            == QDateTime::fromString("2020-01-02T03:04:05", Qt::ISODate));
+    QVERIFY(l.data->toByteArray() == blob);
+    QVERIFY(l.integer->toInt() == 7);
+
+    // 6) CBOR null clears a field; bad bytes report an error and give a default model.
+    QCborMap nulls;
+    nulls.insert(QStringLiteral("string"), QCborValue(QCborValue::Null));
+    AllType n; n.string = "set";
+    QiCborMapper::fromCbor(&n, nulls);
+    QVERIFY(!n.string->isValid() || n.string->isNull());
+
+    QCborParserError err;
+    AllType bad = QiCborMapper::deserialize<AllType>(QByteArray("\xff\x00 not cbor", 11), &err);
+    QVERIFY(err.error != QCborError::NoError);
+    QVERIFY(!bad.string->isValid() || bad.string->toString().isEmpty());
 }
 
 void SqliteTests::reactive() {

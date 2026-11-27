@@ -51,6 +51,7 @@ QIVOT_HEADERS += \
     $$PWD/qigadget.h \
     $$PWD/qilistmodel.h \
     $$PWD/qijsonmapper.h \
+    $$PWD/qicbormapper.h \
     $$PWD/qivot.h
 
 QIVOT_PRIV_HEADERS = \
@@ -87,6 +88,7 @@ SOURCES += \
     $$PWD/qistream.cpp \
     $$PWD/qilistwriter.cpp \
     $$PWD/qijsonmapper.cpp \
+    $$PWD/qicbormapper.cpp \
     $$PWD/qimigrator.cpp \
     $$PWD/qirecorder.cpp \
     $$PWD/qivalidation.cpp \

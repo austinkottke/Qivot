@@ -425,138 +425,6 @@ QDebug operator<<(QDebug dbg, const QiBaseField &field);
 
 #endif // QiBASEFIELD_H
 
-// ---- src/qicolumns.h ---------------------------------------------
-#ifndef QiCOLUMNS_H
-#define QiCOLUMNS_H
-
-/** @file qicolumns.h
-    @brief Preprocessor helpers behind the automatic Model::col() descriptor.
-
-    QI_DECLARE_MODEL consumes each QI_FIELD(...) entry twice: once to build the
-    runtime metadata array, and once to generate a typed column descriptor so
-    you can name columns through the class instead of a hand-typed string:
-
-\code
-    auto U = User::col();
-    auto top = User::objects()
-                   .filter( U.karma > 100 && U.userId != "admin" )
-                   .all();
-
-    User u;
-    u.load( User::col().userId == "anonymous" );
-\endcode
-
-    Because each `.field` is a real member (plus the built-in `.id`), renaming a
-    column turns a stale query into a compile error at the use site. col() yields
-    a QiWhere, exactly like qiField(&User::field) (see qifieldref.h), so the two
-    styles mix freely.
-
-    This is wired in automatically for every model — there is nothing extra to
-    write. These macros are internal; do not use them directly.
- */
-
-// --- small preprocessor FOR_EACH (supports up to 50 columns) ---------------
-#define QI_COL_EXPAND(x) x
-
-#define QI_COL_FE_1(m, x)       m(x)
-#define QI_COL_FE_2(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_1(m, __VA_ARGS__))
-#define QI_COL_FE_3(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_2(m, __VA_ARGS__))
-#define QI_COL_FE_4(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_3(m, __VA_ARGS__))
-#define QI_COL_FE_5(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_4(m, __VA_ARGS__))
-#define QI_COL_FE_6(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_5(m, __VA_ARGS__))
-#define QI_COL_FE_7(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_6(m, __VA_ARGS__))
-#define QI_COL_FE_8(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_7(m, __VA_ARGS__))
-#define QI_COL_FE_9(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_8(m, __VA_ARGS__))
-#define QI_COL_FE_10(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_9(m, __VA_ARGS__))
-#define QI_COL_FE_11(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_10(m, __VA_ARGS__))
-#define QI_COL_FE_12(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_11(m, __VA_ARGS__))
-#define QI_COL_FE_13(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_12(m, __VA_ARGS__))
-#define QI_COL_FE_14(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_13(m, __VA_ARGS__))
-#define QI_COL_FE_15(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_14(m, __VA_ARGS__))
-#define QI_COL_FE_16(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_15(m, __VA_ARGS__))
-#define QI_COL_FE_17(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_16(m, __VA_ARGS__))
-#define QI_COL_FE_18(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_17(m, __VA_ARGS__))
-#define QI_COL_FE_19(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_18(m, __VA_ARGS__))
-#define QI_COL_FE_20(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_19(m, __VA_ARGS__))
-#define QI_COL_FE_21(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_20(m, __VA_ARGS__))
-#define QI_COL_FE_22(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_21(m, __VA_ARGS__))
-#define QI_COL_FE_23(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_22(m, __VA_ARGS__))
-#define QI_COL_FE_24(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_23(m, __VA_ARGS__))
-#define QI_COL_FE_25(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_24(m, __VA_ARGS__))
-#define QI_COL_FE_26(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_25(m, __VA_ARGS__))
-#define QI_COL_FE_27(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_26(m, __VA_ARGS__))
-#define QI_COL_FE_28(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_27(m, __VA_ARGS__))
-#define QI_COL_FE_29(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_28(m, __VA_ARGS__))
-#define QI_COL_FE_30(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_29(m, __VA_ARGS__))
-#define QI_COL_FE_31(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_30(m, __VA_ARGS__))
-#define QI_COL_FE_32(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_31(m, __VA_ARGS__))
-#define QI_COL_FE_33(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_32(m, __VA_ARGS__))
-#define QI_COL_FE_34(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_33(m, __VA_ARGS__))
-#define QI_COL_FE_35(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_34(m, __VA_ARGS__))
-#define QI_COL_FE_36(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_35(m, __VA_ARGS__))
-#define QI_COL_FE_37(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_36(m, __VA_ARGS__))
-#define QI_COL_FE_38(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_37(m, __VA_ARGS__))
-#define QI_COL_FE_39(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_38(m, __VA_ARGS__))
-#define QI_COL_FE_40(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_39(m, __VA_ARGS__))
-#define QI_COL_FE_41(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_40(m, __VA_ARGS__))
-#define QI_COL_FE_42(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_41(m, __VA_ARGS__))
-#define QI_COL_FE_43(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_42(m, __VA_ARGS__))
-#define QI_COL_FE_44(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_43(m, __VA_ARGS__))
-#define QI_COL_FE_45(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_44(m, __VA_ARGS__))
-#define QI_COL_FE_46(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_45(m, __VA_ARGS__))
-#define QI_COL_FE_47(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_46(m, __VA_ARGS__))
-#define QI_COL_FE_48(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_47(m, __VA_ARGS__))
-#define QI_COL_FE_49(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_48(m, __VA_ARGS__))
-#define QI_COL_FE_50(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_49(m, __VA_ARGS__))
-
-#define QI_COL_FE_NTH( \
-    _1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17, \
-    _18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33, \
-    _34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50, N, ...) N
-
-/// Apply macro `m` to each argument (each argument may itself be a (…) tuple).
-#define QI_COL_FOR_EACH(m, ...) QI_COL_EXPAND(QI_COL_FE_NTH(__VA_ARGS__, \
-    QI_COL_FE_50,QI_COL_FE_49,QI_COL_FE_48,QI_COL_FE_47,QI_COL_FE_46, \
-    QI_COL_FE_45,QI_COL_FE_44,QI_COL_FE_43,QI_COL_FE_42,QI_COL_FE_41, \
-    QI_COL_FE_40,QI_COL_FE_39,QI_COL_FE_38,QI_COL_FE_37,QI_COL_FE_36, \
-    QI_COL_FE_35,QI_COL_FE_34,QI_COL_FE_33,QI_COL_FE_32,QI_COL_FE_31, \
-    QI_COL_FE_30,QI_COL_FE_29,QI_COL_FE_28,QI_COL_FE_27,QI_COL_FE_26, \
-    QI_COL_FE_25,QI_COL_FE_24,QI_COL_FE_23,QI_COL_FE_22,QI_COL_FE_21, \
-    QI_COL_FE_20,QI_COL_FE_19,QI_COL_FE_18,QI_COL_FE_17,QI_COL_FE_16, \
-    QI_COL_FE_15,QI_COL_FE_14,QI_COL_FE_13,QI_COL_FE_12,QI_COL_FE_11, \
-    QI_COL_FE_10,QI_COL_FE_9,QI_COL_FE_8,QI_COL_FE_7,QI_COL_FE_6, \
-    QI_COL_FE_5,QI_COL_FE_4,QI_COL_FE_3,QI_COL_FE_2,QI_COL_FE_1)(m, __VA_ARGS__))
-
-// --- consumers of a QI_FIELD(...) tuple, e.g. (userId, QiNotNull|QiUnique) --
-//
-// Metadata: expands to a QiModelMetaInfoField* (Table / m are in scope inside
-// the generated fields() function). A trailing comma separates array elements.
-#define QI_FIELD_META(field, ...) \
-    new QiModelMetaInfoField(#field, offsetof(Table,field), m.field.type(), m.field.clause() , ##__VA_ARGS__)
-#define QI_COL_EMIT_META(tuple) QI_FIELD_META tuple ,
-
-// Column descriptor member: a named QiWhere carrying the column name.
-#define QI_FIELD_COLUMN(field, ...) QiWhere field{QStringLiteral(#field)};
-#define QI_COL_EMIT_COLUMN(tuple) QI_FIELD_COLUMN tuple
-
-/// Generate the nested Model::Columns struct and the static Model::col().
-#define QI_GEN_COLUMNS(MODEL, ...) \
-    struct MODEL::Columns { \
-        QiWhere id{QStringLiteral("id")}; \
-        QI_COL_FOR_EACH(QI_COL_EMIT_COLUMN, __VA_ARGS__) \
-    }; \
-    inline MODEL::Columns MODEL::col() { return MODEL::Columns(); }
-
-/// As QI_GEN_COLUMNS, but WITHOUT the built-in `.id` member — for a
-/// QI_DECLARE_MODEL_NOID model whose table has no `id` column.
-#define QI_GEN_COLUMNS_NOID(MODEL, ...) \
-    struct MODEL::Columns { \
-        QI_COL_FOR_EACH(QI_COL_EMIT_COLUMN, __VA_ARGS__) \
-    }; \
-    inline MODEL::Columns MODEL::col() { return MODEL::Columns(); }
-
-#endif // QiCOLUMNS_H
-
 // ---- src/qisharedlist.h ------------------------------------------
 #ifndef QiABSTRACTMODELLIST_H
 #define QiABSTRACTMODELLIST_H
@@ -950,6 +818,378 @@ inline QString _qiModelTableName(QString model){
 #define QI_MODEL_NAME(X) _qiModelTableName<X>(#X)
 
 #endif // QiMODELMETATYPE_H
+
+// ---- src/qilist.h ------------------------------------------------
+#ifndef QiLIST_H
+#define QiLIST_H
+
+#include <QSharedDataPointer>
+#include <QExplicitlySharedDataPointer>
+
+/// Storage of a list of model item instance
+/**
+
+  @remarks It is an explicity shared class
+ */
+
+template <class T>
+class QiList : public QiSharedList
+{
+public:
+
+    /// Construct an empty QiList instance
+    QiList() : QiSharedList() {
+        setMetaInfo(qiMetaInfo<T>());
+    }
+
+    /// Construct a QiList which is the reference to other QiList instance
+    QiList(const QiList &rhs) : QiSharedList(rhs) {
+    }
+
+    /// Construct a QiList which is a refernece to a QiSharedList
+    QiList(const QiSharedList& rhs ) : QiSharedList(rhs) {
+    }
+
+    /// Make a reference to other QiList
+    /** It will drop the reference of current data and refer to other QiList
+     */
+    QiList &operator=(const QiList &rhs){
+        QiSharedList::operator=( rhs);
+        return *this;
+    }
+
+    /// Returns the item at index position i in the list. i must be a valid index position in the list (i.e., 0 <= i < size()).
+    T* at(int i) const {
+        QiAbstractModel* m = QiSharedList::at(i);
+        if (m->metaInfo() != qiMetaInfo<T>() ) {
+            qWarning() << QString("QiList::at() - Can not convert %1 to %2")
+                          .arg(m->metaInfo()->className()).arg(qiMetaInfo<T>()->className());
+            m = 0;
+        }
+        return (T*) m;
+    }
+
+    /// Append a model to the list
+    /**
+      It is a overloaded function for append().
+     */
+    QiList& operator<<(const T& model){
+        if (!append(model)){
+            qWarning() << "QiList::operator<<(model) - Failed to append";
+        }
+        return *this;
+    }
+
+
+    /// Append a model to the list.
+    /**
+      @param model The input model. A copy of instance of the model will be stored to the list.
+     */
+    bool append(const T& model) {
+        T* t = new T(model);
+        bool res = QiSharedList::append(t);
+        if (!res) {
+            delete t;
+        }
+        return res;
+    }
+
+    /// Append a model to the list.
+    /**
+      @param model The input model. Ownership will be taken.
+     */
+
+    bool append(T* model) {
+        return QiSharedList::append(model);
+    }
+
+    /// Cast it to QiSharedList
+    operator QiSharedList() {
+        QiSharedList res (*this);
+        return res;
+    }
+
+};
+
+template <class T>
+inline QDebug operator<< (QDebug d, const QiList<T>& rhs ){
+    QStringList record;
+    int n = rhs.size();
+    QiModelMetaInfo *metaInfo;
+    for (int i = 0 ; i < n;i++) {
+        QiAbstractModel *model = rhs.at(i);
+        metaInfo = model->metaInfo();
+        QStringList fields = metaInfo->fieldNameList();
+        QStringList col;
+        foreach (QString field,fields){
+            QVariant value = metaInfo->value(model,field);
+            if (value.isNull())
+                continue;
+            col << QString("%1=%2").arg(field).arg(value.toString());
+        }
+
+        QString res = QString("(%2)")
+                      .arg(col.join(","));
+        record << res;
+    }
+
+    metaInfo = qiMetaInfo<T>();
+
+    d.nospace() << QString("%1[%2]")
+                    .arg(metaInfo->className())
+                    .arg(record.join(","));
+
+    return d.space();
+}
+
+
+#endif // QiLIST_H
+
+// ---- src/qicbormapper.h ------------------------------------------
+#ifndef QiCBORMAPPER_H
+#define QiCBORMAPPER_H
+
+#include <QByteArray>
+#include <QCborArray>
+#include <QCborMap>
+#include <QCborValue>
+
+/// Maps between CBOR (QCborMap / QCborArray) and Qivot models
+/**
+  QiCborMapper is the binary twin of QiJsonMapper. CBOR (RFC 8949) is a compact
+  binary format with the same shape as JSON — maps, arrays, strings, numbers —
+  plus a few types JSON lacks. It is built into Qt Core, so this adds no
+  dependency. A model becomes a CBOR map keyed by field name.
+
+  Where it differs from JSON:
+  - QByteArray fields are written as raw bytes, not base64 text.
+  - QDateTime fields are written as CBOR date-times (tag 0), QUrl and QUuid as
+    their CBOR tags; QDate and QTime as ISO-8601 text.
+  - 64-bit integers are kept exact instead of passing through a double.
+  - Nested QJsonObject / QJsonArray / QVariantMap / QVariantList / QStringList
+    fields are embedded as nested CBOR maps and arrays.
+  - A NULL field is written as CBOR null.
+
+  Reading is as forgiving as QiJsonMapper: only declared fields are read, extra
+  keys are ignored, missing keys leave the field untouched, and values are
+  coerced to the field's type (an ISO string still reads into a QDateTime, a
+  base64 string into a QByteArray). Pure QtCore: no I/O, no threads.
+
+\code
+    QByteArray bytes = QiCborMapper::serialize(&user);        // model -> CBOR
+    User copy = QiCborMapper::deserialize<User>(bytes);       // CBOR -> model
+
+    QByteArray many = QiCborMapper::serialize(User::objects().all());
+    QiList<User> users = QiCborMapper::deserializeList<User>(many);
+\endcode
+ */
+class QiCborMapper {
+public:
+    /// Populate an existing model from a CBOR map
+    /**
+      @param model The model to populate (its fields are matched by name).
+      @param map   The source CBOR map; its keys are field names.
+      @return TRUE if at least one field was assigned.
+     */
+    static bool fromCbor(QiAbstractModel *model, const QCborMap &map);
+
+    /// Create and populate a model of the given meta type from a CBOR map
+    /**
+      @return A newly allocated model. Ownership is passed to the caller.
+     */
+    static QiAbstractModel *fromCbor(QiModelMetaInfo *metaInfo, const QCborMap &map);
+
+    /// Map a CBOR array of maps into a QiSharedList of the given meta type
+    /**
+      Elements that are not maps are skipped. The returned list owns the models.
+     */
+    static QiSharedList fromCbor(QiModelMetaInfo *metaInfo, const QCborArray &array);
+
+    /// Serialize a model to a CBOR map (one entry per declared field)
+    static QCborMap toCbor(const QiAbstractModel *model);
+
+    /// Typed convenience: map a CBOR array into a QiList\<T\>
+    template <typename T>
+    static QiList<T> map(const QCborArray &array) {
+        return QiList<T>( fromCbor(qiMetaInfo<T>(), array) );
+    }
+
+    /// Typed convenience: map a CBOR map into a T
+    template <typename T>
+    static T map(const QCborMap &map) {
+        T model;
+        fromCbor(&model, map);
+        return model;
+    }
+
+    /// Coerce a CBOR value to a QVariant of the field's declared QMetaType id
+    static QVariant cborToVariant(const QCborValue &value, int targetType);
+
+    /// Convert a field value to CBOR, keeping its native type where CBOR has one
+    static QCborValue variantToCbor(const QVariant &value);
+
+    // --- raw bytes <-> object (no database involved) -------------------------
+
+    /// Deserialize an encoded CBOR *map* into a model of type T.
+    /**
+      Pure in-memory: decodes the bytes and populates a T. Nothing is persisted.
+      If the bytes are not valid CBOR, or not a map, a default T is returned and
+      `error` (when given) says why.
+     */
+    template <typename T>
+    static T deserialize(const QByteArray &cbor, QCborParserError *error = nullptr) {
+        return map<T>(decode(cbor, error).toMap());
+    }
+
+    /// Deserialize an encoded CBOR *array* of maps into a QiList<T>.
+    template <typename T>
+    static QiList<T> deserializeList(const QByteArray &cbor, QCborParserError *error = nullptr) {
+        return map<T>(decode(cbor, error).toArray());
+    }
+
+    /// Serialize a model to an encoded CBOR map.
+    static QByteArray serialize(const QiAbstractModel *model);
+
+    /// Serialize a list of models to an encoded CBOR array of maps.
+    static QByteArray serialize(const QiSharedList &list);
+
+private:
+    static QCborValue decode(const QByteArray &cbor, QCborParserError *error);
+};
+
+#endif // QiCBORMAPPER_H
+
+// ---- src/qicolumns.h ---------------------------------------------
+#ifndef QiCOLUMNS_H
+#define QiCOLUMNS_H
+
+/** @file qicolumns.h
+    @brief Preprocessor helpers behind the automatic Model::col() descriptor.
+
+    QI_DECLARE_MODEL consumes each QI_FIELD(...) entry twice: once to build the
+    runtime metadata array, and once to generate a typed column descriptor so
+    you can name columns through the class instead of a hand-typed string:
+
+\code
+    auto U = User::col();
+    auto top = User::objects()
+                   .filter( U.karma > 100 && U.userId != "admin" )
+                   .all();
+
+    User u;
+    u.load( User::col().userId == "anonymous" );
+\endcode
+
+    Because each `.field` is a real member (plus the built-in `.id`), renaming a
+    column turns a stale query into a compile error at the use site. col() yields
+    a QiWhere, exactly like qiField(&User::field) (see qifieldref.h), so the two
+    styles mix freely.
+
+    This is wired in automatically for every model — there is nothing extra to
+    write. These macros are internal; do not use them directly.
+ */
+
+// --- small preprocessor FOR_EACH (supports up to 50 columns) ---------------
+#define QI_COL_EXPAND(x) x
+
+#define QI_COL_FE_1(m, x)       m(x)
+#define QI_COL_FE_2(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_1(m, __VA_ARGS__))
+#define QI_COL_FE_3(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_2(m, __VA_ARGS__))
+#define QI_COL_FE_4(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_3(m, __VA_ARGS__))
+#define QI_COL_FE_5(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_4(m, __VA_ARGS__))
+#define QI_COL_FE_6(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_5(m, __VA_ARGS__))
+#define QI_COL_FE_7(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_6(m, __VA_ARGS__))
+#define QI_COL_FE_8(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_7(m, __VA_ARGS__))
+#define QI_COL_FE_9(m, x, ...)  m(x) QI_COL_EXPAND(QI_COL_FE_8(m, __VA_ARGS__))
+#define QI_COL_FE_10(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_9(m, __VA_ARGS__))
+#define QI_COL_FE_11(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_10(m, __VA_ARGS__))
+#define QI_COL_FE_12(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_11(m, __VA_ARGS__))
+#define QI_COL_FE_13(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_12(m, __VA_ARGS__))
+#define QI_COL_FE_14(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_13(m, __VA_ARGS__))
+#define QI_COL_FE_15(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_14(m, __VA_ARGS__))
+#define QI_COL_FE_16(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_15(m, __VA_ARGS__))
+#define QI_COL_FE_17(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_16(m, __VA_ARGS__))
+#define QI_COL_FE_18(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_17(m, __VA_ARGS__))
+#define QI_COL_FE_19(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_18(m, __VA_ARGS__))
+#define QI_COL_FE_20(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_19(m, __VA_ARGS__))
+#define QI_COL_FE_21(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_20(m, __VA_ARGS__))
+#define QI_COL_FE_22(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_21(m, __VA_ARGS__))
+#define QI_COL_FE_23(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_22(m, __VA_ARGS__))
+#define QI_COL_FE_24(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_23(m, __VA_ARGS__))
+#define QI_COL_FE_25(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_24(m, __VA_ARGS__))
+#define QI_COL_FE_26(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_25(m, __VA_ARGS__))
+#define QI_COL_FE_27(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_26(m, __VA_ARGS__))
+#define QI_COL_FE_28(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_27(m, __VA_ARGS__))
+#define QI_COL_FE_29(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_28(m, __VA_ARGS__))
+#define QI_COL_FE_30(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_29(m, __VA_ARGS__))
+#define QI_COL_FE_31(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_30(m, __VA_ARGS__))
+#define QI_COL_FE_32(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_31(m, __VA_ARGS__))
+#define QI_COL_FE_33(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_32(m, __VA_ARGS__))
+#define QI_COL_FE_34(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_33(m, __VA_ARGS__))
+#define QI_COL_FE_35(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_34(m, __VA_ARGS__))
+#define QI_COL_FE_36(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_35(m, __VA_ARGS__))
+#define QI_COL_FE_37(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_36(m, __VA_ARGS__))
+#define QI_COL_FE_38(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_37(m, __VA_ARGS__))
+#define QI_COL_FE_39(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_38(m, __VA_ARGS__))
+#define QI_COL_FE_40(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_39(m, __VA_ARGS__))
+#define QI_COL_FE_41(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_40(m, __VA_ARGS__))
+#define QI_COL_FE_42(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_41(m, __VA_ARGS__))
+#define QI_COL_FE_43(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_42(m, __VA_ARGS__))
+#define QI_COL_FE_44(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_43(m, __VA_ARGS__))
+#define QI_COL_FE_45(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_44(m, __VA_ARGS__))
+#define QI_COL_FE_46(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_45(m, __VA_ARGS__))
+#define QI_COL_FE_47(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_46(m, __VA_ARGS__))
+#define QI_COL_FE_48(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_47(m, __VA_ARGS__))
+#define QI_COL_FE_49(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_48(m, __VA_ARGS__))
+#define QI_COL_FE_50(m, x, ...) m(x) QI_COL_EXPAND(QI_COL_FE_49(m, __VA_ARGS__))
+
+#define QI_COL_FE_NTH( \
+    _1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17, \
+    _18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33, \
+    _34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50, N, ...) N
+
+/// Apply macro `m` to each argument (each argument may itself be a (…) tuple).
+#define QI_COL_FOR_EACH(m, ...) QI_COL_EXPAND(QI_COL_FE_NTH(__VA_ARGS__, \
+    QI_COL_FE_50,QI_COL_FE_49,QI_COL_FE_48,QI_COL_FE_47,QI_COL_FE_46, \
+    QI_COL_FE_45,QI_COL_FE_44,QI_COL_FE_43,QI_COL_FE_42,QI_COL_FE_41, \
+    QI_COL_FE_40,QI_COL_FE_39,QI_COL_FE_38,QI_COL_FE_37,QI_COL_FE_36, \
+    QI_COL_FE_35,QI_COL_FE_34,QI_COL_FE_33,QI_COL_FE_32,QI_COL_FE_31, \
+    QI_COL_FE_30,QI_COL_FE_29,QI_COL_FE_28,QI_COL_FE_27,QI_COL_FE_26, \
+    QI_COL_FE_25,QI_COL_FE_24,QI_COL_FE_23,QI_COL_FE_22,QI_COL_FE_21, \
+    QI_COL_FE_20,QI_COL_FE_19,QI_COL_FE_18,QI_COL_FE_17,QI_COL_FE_16, \
+    QI_COL_FE_15,QI_COL_FE_14,QI_COL_FE_13,QI_COL_FE_12,QI_COL_FE_11, \
+    QI_COL_FE_10,QI_COL_FE_9,QI_COL_FE_8,QI_COL_FE_7,QI_COL_FE_6, \
+    QI_COL_FE_5,QI_COL_FE_4,QI_COL_FE_3,QI_COL_FE_2,QI_COL_FE_1)(m, __VA_ARGS__))
+
+// --- consumers of a QI_FIELD(...) tuple, e.g. (userId, QiNotNull|QiUnique) --
+//
+// Metadata: expands to a QiModelMetaInfoField* (Table / m are in scope inside
+// the generated fields() function). A trailing comma separates array elements.
+#define QI_FIELD_META(field, ...) \
+    new QiModelMetaInfoField(#field, offsetof(Table,field), m.field.type(), m.field.clause() , ##__VA_ARGS__)
+#define QI_COL_EMIT_META(tuple) QI_FIELD_META tuple ,
+
+// Column descriptor member: a named QiWhere carrying the column name.
+#define QI_FIELD_COLUMN(field, ...) QiWhere field{QStringLiteral(#field)};
+#define QI_COL_EMIT_COLUMN(tuple) QI_FIELD_COLUMN tuple
+
+/// Generate the nested Model::Columns struct and the static Model::col().
+#define QI_GEN_COLUMNS(MODEL, ...) \
+    struct MODEL::Columns { \
+        QiWhere id{QStringLiteral("id")}; \
+        QI_COL_FOR_EACH(QI_COL_EMIT_COLUMN, __VA_ARGS__) \
+    }; \
+    inline MODEL::Columns MODEL::col() { return MODEL::Columns(); }
+
+/// As QI_GEN_COLUMNS, but WITHOUT the built-in `.id` member — for a
+/// QI_DECLARE_MODEL_NOID model whose table has no `id` column.
+#define QI_GEN_COLUMNS_NOID(MODEL, ...) \
+    struct MODEL::Columns { \
+        QI_COL_FOR_EACH(QI_COL_EMIT_COLUMN, __VA_ARGS__) \
+    }; \
+    inline MODEL::Columns MODEL::col() { return MODEL::Columns(); }
+
+#endif // QiCOLUMNS_H
 
 // ---- src/qiindex.h -----------------------------------------------
 #ifndef QiINDEX_H
@@ -3054,132 +3294,6 @@ inline QiWhere qiField(M T::* member) {
 }
 
 #endif // QiFIELDREF_H
-
-// ---- src/qilist.h ------------------------------------------------
-#ifndef QiLIST_H
-#define QiLIST_H
-
-#include <QSharedDataPointer>
-#include <QExplicitlySharedDataPointer>
-
-/// Storage of a list of model item instance
-/**
-
-  @remarks It is an explicity shared class
- */
-
-template <class T>
-class QiList : public QiSharedList
-{
-public:
-
-    /// Construct an empty QiList instance
-    QiList() : QiSharedList() {
-        setMetaInfo(qiMetaInfo<T>());
-    }
-
-    /// Construct a QiList which is the reference to other QiList instance
-    QiList(const QiList &rhs) : QiSharedList(rhs) {
-    }
-
-    /// Construct a QiList which is a refernece to a QiSharedList
-    QiList(const QiSharedList& rhs ) : QiSharedList(rhs) {
-    }
-
-    /// Make a reference to other QiList
-    /** It will drop the reference of current data and refer to other QiList
-     */
-    QiList &operator=(const QiList &rhs){
-        QiSharedList::operator=( rhs);
-        return *this;
-    }
-
-    /// Returns the item at index position i in the list. i must be a valid index position in the list (i.e., 0 <= i < size()).
-    T* at(int i) const {
-        QiAbstractModel* m = QiSharedList::at(i);
-        if (m->metaInfo() != qiMetaInfo<T>() ) {
-            qWarning() << QString("QiList::at() - Can not convert %1 to %2")
-                          .arg(m->metaInfo()->className()).arg(qiMetaInfo<T>()->className());
-            m = 0;
-        }
-        return (T*) m;
-    }
-
-    /// Append a model to the list
-    /**
-      It is a overloaded function for append().
-     */
-    QiList& operator<<(const T& model){
-        if (!append(model)){
-            qWarning() << "QiList::operator<<(model) - Failed to append";
-        }
-        return *this;
-    }
-
-
-    /// Append a model to the list.
-    /**
-      @param model The input model. A copy of instance of the model will be stored to the list.
-     */
-    bool append(const T& model) {
-        T* t = new T(model);
-        bool res = QiSharedList::append(t);
-        if (!res) {
-            delete t;
-        }
-        return res;
-    }
-
-    /// Append a model to the list.
-    /**
-      @param model The input model. Ownership will be taken.
-     */
-
-    bool append(T* model) {
-        return QiSharedList::append(model);
-    }
-
-    /// Cast it to QiSharedList
-    operator QiSharedList() {
-        QiSharedList res (*this);
-        return res;
-    }
-
-};
-
-template <class T>
-inline QDebug operator<< (QDebug d, const QiList<T>& rhs ){
-    QStringList record;
-    int n = rhs.size();
-    QiModelMetaInfo *metaInfo;
-    for (int i = 0 ; i < n;i++) {
-        QiAbstractModel *model = rhs.at(i);
-        metaInfo = model->metaInfo();
-        QStringList fields = metaInfo->fieldNameList();
-        QStringList col;
-        foreach (QString field,fields){
-            QVariant value = metaInfo->value(model,field);
-            if (value.isNull())
-                continue;
-            col << QString("%1=%2").arg(field).arg(value.toString());
-        }
-
-        QString res = QString("(%2)")
-                      .arg(col.join(","));
-        record << res;
-    }
-
-    metaInfo = qiMetaInfo<T>();
-
-    d.nospace() << QString("%1[%2]")
-                    .arg(metaInfo->className())
-                    .arg(record.join(","));
-
-    return d.space();
-}
-
-
-#endif // QiLIST_H
 
 // ---- src/qilog.h -------------------------------------------------
 #ifndef QiLOG_H
@@ -6618,6 +6732,252 @@ QVariant QiBaseField::operator() () const {
 
      return dbg.space();
  }
+
+// ---- src/qicbormapper.cpp ----------------------------------------
+#include <QDate>
+#include <QDateTime>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QMetaType>
+#include <QStringList>
+#include <QTime>
+#include <QUrl>
+#include <QUuid>
+#include <limits>
+
+/// TRUE if the QMetaType id names an enum (an enum field is stored as its integer).
+static bool qiIsEnumType(int type) {
+    return type != QMetaType::UnknownType
+        && (QMetaType(type).flags() & QMetaType::IsEnumeration);
+}
+
+QCborValue QiCborMapper::variantToCbor(const QVariant &value) {
+    if (!value.isValid() || value.isNull())
+        return QCborValue(QCborValue::Null);
+
+    const int type = value.userType();
+    switch (type) {
+    case QMetaType::Bool:
+        return QCborValue(value.toBool());
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::Long:
+    case QMetaType::Short:
+    case QMetaType::UShort:
+    case QMetaType::LongLong:
+        return QCborValue(value.toLongLong());
+    case QMetaType::ULong:
+    case QMetaType::ULongLong: {
+        // CBOR integers in Qt are signed 64-bit; beyond that, fall back to a double.
+        const qulonglong u = value.toULongLong();
+        if (u <= qulonglong(std::numeric_limits<qint64>::max()))
+            return QCborValue(qint64(u));
+        return QCborValue(double(u));
+    }
+    case QMetaType::Float:
+    case QMetaType::Double:
+        return QCborValue(value.toDouble());
+    case QMetaType::QString:
+        return QCborValue(value.toString());
+    case QMetaType::QByteArray:
+        return QCborValue(value.toByteArray());          // raw bytes, no base64
+    case QMetaType::QDateTime: {
+        const QDateTime dt = value.toDateTime();
+        return dt.isValid() ? QCborValue(dt) : QCborValue(QCborValue::Null);
+    }
+    case QMetaType::QDate: {
+        const QDate d = value.toDate();
+        return d.isValid() ? QCborValue(d.toString(Qt::ISODate)) : QCborValue(QCborValue::Null);
+    }
+    case QMetaType::QTime: {
+        const QTime t = value.toTime();
+        return t.isValid() ? QCborValue(t.toString(Qt::ISODateWithMs)) : QCborValue(QCborValue::Null);
+    }
+    case QMetaType::QUrl:
+        return QCborValue(value.toUrl());
+    case QMetaType::QUuid:
+        return QCborValue(value.toUuid());
+    // Structured fields are embedded as nested CBOR, not stringified.
+    case QMetaType::QJsonObject:
+        return QCborValue::fromJsonValue(QJsonValue(value.toJsonObject()));
+    case QMetaType::QJsonArray:
+        return QCborValue::fromJsonValue(QJsonValue(value.toJsonArray()));
+    case QMetaType::QJsonValue:
+        return QCborValue::fromJsonValue(value.toJsonValue());
+    default:
+        break;
+    }
+
+    if (qiIsEnumType(type))
+        return QCborValue(value.toLongLong());
+
+    // QVariantMap, QVariantList, QStringList and anything else Qt knows how to map.
+    return QCborValue::fromVariant(value);
+}
+
+QVariant QiCborMapper::cborToVariant(const QCborValue &value, int targetType) {
+    if (value.isNull() || value.isUndefined() || value.isInvalid())
+        return QVariant();
+
+    const QVariant v = value.toVariant();
+
+    // Coerce to the field's declared type, as QiJsonMapper does, so the model
+    // holds what it was designed for and saves cleanly to SQL.
+    switch (targetType) {
+    case QMetaType::Int:
+        return v.toInt();
+    case QMetaType::UInt:
+        return v.toUInt();
+    case QMetaType::LongLong:
+        return v.toLongLong();
+    case QMetaType::ULongLong:
+        return v.toULongLong();
+    case QMetaType::Double:
+        return v.toDouble();
+    case QMetaType::Float:
+        return v.toFloat();
+    case QMetaType::Bool:
+        return v.toBool();
+    case QMetaType::QString:
+        return v.toString();
+    case QMetaType::QDateTime:
+        if (value.isDateTime())
+            return value.toDateTime();
+        if (value.isString())
+            return QDateTime::fromString(value.toString(), Qt::ISODate);
+        break;
+    case QMetaType::QDate:
+        if (value.isDateTime())
+            return value.toDateTime().date();
+        if (value.isString())
+            return QDate::fromString(value.toString(), Qt::ISODate);
+        break;
+    case QMetaType::QTime:
+        if (value.isString())
+            return QTime::fromString(value.toString(), Qt::ISODateWithMs);
+        break;
+    case QMetaType::QByteArray:
+        if (value.isByteArray())
+            return value.toByteArray();
+        if (value.isString())                             // base64 text, as JSON carries it
+            return QByteArray::fromBase64(value.toString().toUtf8());
+        break;
+    case QMetaType::QUrl:
+        if (value.isString())
+            return QUrl(value.toString());
+        break;
+    case QMetaType::QUuid:
+        if (value.isString())
+            return QUuid(value.toString());
+        if (value.isByteArray() && value.toByteArray().size() == 16)
+            return QUuid::fromRfc4122(value.toByteArray());
+        break;
+    case QMetaType::QJsonObject:
+        return value.isMap() ? QVariant(value.toMap().toJsonObject()) : QVariant();
+    case QMetaType::QJsonArray:
+        return value.isArray() ? QVariant(value.toArray().toJsonArray()) : QVariant();
+    case QMetaType::QVariantMap:
+        return value.isMap() ? QVariant(value.toMap().toVariantMap()) : QVariant();
+    case QMetaType::QVariantList:
+        return value.isArray() ? QVariant(value.toArray().toVariantList()) : QVariant();
+    case QMetaType::QStringList:
+        return value.isArray() ? QVariant(v.toStringList()) : QVariant();
+    default:
+        break;
+    }
+
+    return v;
+}
+
+bool QiCborMapper::fromCbor(QiAbstractModel *model, const QCborMap &map) {
+    if (!model)
+        return false;
+
+    QiModelMetaInfo *metaInfo = model->metaInfo();
+    if (!metaInfo)
+        return false;
+
+    bool assigned = false;
+    const int n = metaInfo->size();
+
+    for (int i = 0 ; i < n ; i++) {
+        const QiModelMetaInfoField *field = metaInfo->at(i);
+        if (!map.contains(field->name))
+            continue;
+
+        QVariant value = cborToVariant(map.value(field->name), field->type);
+        metaInfo->setValue(model, field->name, value);
+        assigned = true;
+    }
+
+    return assigned;
+}
+
+QiAbstractModel *QiCborMapper::fromCbor(QiModelMetaInfo *metaInfo, const QCborMap &map) {
+    if (!metaInfo)
+        return nullptr;
+
+    QiAbstractModel *model = metaInfo->create();
+    fromCbor(model, map);
+    return model;
+}
+
+QiSharedList QiCborMapper::fromCbor(QiModelMetaInfo *metaInfo, const QCborArray &array) {
+    QiSharedList list;
+    if (!metaInfo)
+        return list;
+
+    for (const QCborValue &value : array) {
+        if (!value.isMap())
+            continue;
+        QiAbstractModel *model = fromCbor(metaInfo, value.toMap());
+        if (model)
+            list.append(model);
+    }
+
+    return list;
+}
+
+QCborMap QiCborMapper::toCbor(const QiAbstractModel *model) {
+    QCborMap map;
+    if (!model)
+        return map;
+
+    QiModelMetaInfo *metaInfo = model->metaInfo();
+    if (!metaInfo)
+        return map;
+
+    const int n = metaInfo->size();
+    for (int i = 0 ; i < n ; i++) {
+        const QiModelMetaInfoField *field = metaInfo->at(i);
+        // convert = false: the field's own type (a QStringList stays a list, a
+        // QJsonObject stays an object) rather than its SQL representation.
+        QVariant value = metaInfo->value(model, field->name, false);
+        map.insert(field->name, variantToCbor(value));
+    }
+
+    return map;
+}
+
+QByteArray QiCborMapper::serialize(const QiAbstractModel *model) {
+    return QCborValue(toCbor(model)).toCbor();
+}
+
+QByteArray QiCborMapper::serialize(const QiSharedList &list) {
+    QCborArray array;
+    for (int i = 0 ; i < list.size() ; i++)
+        array.append(toCbor(list.at(i)));
+    return QCborValue(array).toCbor();
+}
+
+QCborValue QiCborMapper::decode(const QByteArray &cbor, QCborParserError *error) {
+    QCborParserError local;
+    QCborValue value = QCborValue::fromCbor(cbor, &local);
+    if (error)
+        *error = local;
+    return value;
+}
 
 // ---- src/qiclause.cpp --------------------------------------------
 /**

@@ -20,6 +20,7 @@
 #include <qivalidation.h>
 #include <qischema.h>
 #include <qijsonmapper.h>
+#include <qicbormapper.h>
 // Note: <qiasync.h> is intentionally NOT included here — it depends on
 // QtConcurrent. Include it explicitly (and add QT += concurrent) where needed.
 
