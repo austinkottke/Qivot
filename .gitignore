@@ -49,3 +49,6 @@ examples/insider/
 
 # tools/package-release.sh output
 dist/release/
+
+# Claude Code local settings and worktrees (private paths, permissions)
+.claude/

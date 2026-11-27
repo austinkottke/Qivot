@@ -5,7 +5,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO austinkottke/Qivot
     REF "v${VERSION}"
-    SHA512 0  # filled in by tools/update-package-recipes.sh once the tag is pushed
+    SHA512 9a2dc9f7297f94eb3c19cd617d8d79be75d62c8c5a5257435fbc60e8b6997ed01d75d70d4bb660aa07ad96653e2c937fc29e1f51723eb64be658f9d72c278e97
     HEAD_REF main
 )
 
